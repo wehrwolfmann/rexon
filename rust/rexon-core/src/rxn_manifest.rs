@@ -388,7 +388,8 @@ pub enum DepSource {
     Repo,
     /// AUR — только Arch и только с явным префиксом `aur/`.
     Aur,
-    /// extensions.gnome.org: `uuid` и проверка версии GNOME Shell.
+    /// extensions.gnome.org: `uuid` и проверка версии GNOME Shell. Ставится
+    /// сразу, окном оболочки (`gnome_ext_section::install_dependency`).
     GnomeExtensions,
 }
 
@@ -2633,7 +2634,7 @@ pub fn scrub_text(text: &str, ctx: &ScrubContext) -> Scrubbed {
 }
 
 /// `home` как начало пути: `/home/al` не задевает `/home/alex`.
-fn replace_path_prefix(text: &str, home: &str, var: &str) -> String {
+pub(crate) fn replace_path_prefix(text: &str, home: &str, var: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(pos) = rest.find(home) {

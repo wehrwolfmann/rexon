@@ -11,6 +11,12 @@
 // QML-контракт при этом ТОТ ЖЕ, что у оригинала: `enabled`, `status`,
 // `error`, `reload()`. SettingsPage по `status == 2` перечитывает
 // состояние, по `status == 3` показывает тост с `.error`.
+// С waywallen#380 (14.11.2026) к договору добавились `supported` и
+// `unavailableReason` (+ сигнал `availabilityChanged`): переключатель
+// серый, пока `supported` ложно, причина — подсказка у подписи. У апстрима
+// без ответа демона `supported` остаётся ложным; у нас ответ локальный
+// ([`autostart_state_on`]) и есть с момента создания объекта, поэтому
+// переключатель живой и при лежачем демоне.
 //
 // Решения (какой механизм, какие файлы, какие argv, какие сообщения) —
 // целиком в ядре (`rexon_core::we_client`), здесь только исполнение:
@@ -39,6 +45,9 @@ pub mod qobject {
         #[qproperty(bool, forward_error, cxx_name = "forwardError", READ = forward_error,
                     WRITE = set_forward_error, NOTIFY = forward_error_changed)]
         #[qproperty(bool, enabled, READ = enabled, NOTIFY = enabled_changed)]
+        #[qproperty(bool, supported, READ = supported, NOTIFY = availability_changed)]
+        #[qproperty(QString, unavailable_reason, cxx_name = "unavailableReason",
+                    READ = unavailable_reason, NOTIFY = availability_changed)]
         type AutostartGetQuery = super::AutostartGetQueryRust;
 
         #[qobject]
@@ -110,6 +119,10 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "enabledChanged"]
         fn enabled_changed(self: Pin<&mut AutostartSetQuery>);
+        /// Одно оповещение на оба свойства доступности — как у апстрима.
+        #[qsignal]
+        #[cxx_name = "availabilityChanged"]
+        fn availability_changed(self: Pin<&mut AutostartGetQuery>);
     }
 
     extern "RustQt" {
@@ -130,6 +143,9 @@ pub mod qobject {
         fn set_forward_error(self: Pin<&mut AutostartSetQuery>, value: bool);
 
         fn enabled(self: &AutostartGetQuery) -> bool;
+        fn supported(self: &AutostartGetQuery) -> bool;
+        #[cxx_name = "unavailableReason"]
+        fn unavailable_reason(self: &AutostartGetQuery) -> QString;
         fn enabled(self: &AutostartSetQuery) -> bool;
         #[cxx_name = "setEnabled"]
         fn set_enabled(self: Pin<&mut AutostartSetQuery>, value: bool);
@@ -150,11 +166,16 @@ pub mod qobject {
         fn deliver_response(self: Pin<&mut AutostartSetQuery>, token: i64,
                             frame: &QByteArray);
     }
+
+    // Состояние читается уже в конструкторе: вендорная страница зовёт
+    // `reload()` только при готовом демоне, а автозапуск Rexon демона не
+    // касается. Объявление трейта обязано быть В МОСТЕ.
+    impl cxx_qt::Initialize for AutostartGetQuery {}
 }
 
 use core::pin::Pin;
 use cxx_qt::CxxQtType;
-use cxx_qt_lib::QByteArray;
+use cxx_qt_lib::{QByteArray, QString};
 
 use rexon_core::we_client;
 use rexon_core::we_query::{self, QuerySignal, QueryState, STATUS_ERROR, STATUS_FINISHED,
@@ -355,6 +376,27 @@ pub fn autostart_service_present() -> bool {
     std::path::Path::new(&path).is_file()
 }
 
+/// Состояние автозапуска для `W.AutostartGetQuery`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutostartState {
+    pub enabled: bool,
+    /// Может ли Rexon поставить автозапуск здесь ([`we_client::autostart_availability`]).
+    pub supported: bool,
+    /// Почему не может; пусто, когда `supported`.
+    pub unavailable_reason: String,
+}
+
+/// Снять всё состояние разом — без демона, только наблюдения `host`.
+pub fn autostart_state_on<H: AutostartHost + ?Sized>(host: &mut H) -> AutostartState {
+    let (supported, unavailable_reason) =
+        we_client::autostart_availability(host.daemon_binary().as_deref());
+    AutostartState {
+        enabled: autostart_enabled_on(host),
+        supported,
+        unavailable_reason,
+    }
+}
+
 /// Порт `client.autostart_enabled()` — на живой машине.
 pub fn autostart_enabled() -> bool {
     autostart_enabled_on(&mut Machine)
@@ -508,25 +550,56 @@ pub fn set_autostart_on<H: AutostartHost + ?Sized>(host: &mut H, enabled: bool) 
 pub struct AutostartGetQueryRust {
     base: QueryState,
     enabled: bool,
+    supported: bool,
+    unavailable_reason: String,
 }
 
 impl_query_base!(AutostartGetQuery);
+
+impl cxx_qt::Initialize for qobject::AutostartGetQuery {
+    /// Первое чтение — в конструкторе, а не по `reload()`: страница waywallen
+    /// (и v0.6.0, и с #380) зовёт `reload()` только при готовом демоне, и без
+    /// этого при лежачем демоне переключатель был бы серым и «выключенным».
+    /// Статус не трогается: это не запрос, а начальное значение свойств.
+    fn initialize(mut self: Pin<&mut Self>) {
+        let state = autostart_state_on(&mut Machine);
+        let signals = self.as_mut().apply_state(state);
+        self.dispatch(signals);
+    }
+}
 
 impl qobject::AutostartGetQuery {
     pub fn enabled(&self) -> bool {
         self.enabled
     }
 
+    pub fn supported(&self) -> bool {
+        self.supported
+    }
+
+    pub fn unavailable_reason(&self) -> QString {
+        QString::from(self.unavailable_reason.as_str())
+    }
+
+    /// Разложить снятое состояние по полям → оповещения ТОЛЬКО о том, что
+    /// изменилось (как у оригинала); на оба свойства доступности — одно.
+    fn apply_state(self: Pin<&mut Self>, state: AutostartState) -> Vec<QuerySignal> {
+        let mut signals = Vec::new();
+        let mut rust = self.rust_mut();
+        we_query::assign(&mut rust.enabled, state.enabled, "enabled", &mut signals);
+        if rust.supported != state.supported || rust.unavailable_reason != state.unavailable_reason {
+            rust.supported = state.supported;
+            rust.unavailable_reason = state.unavailable_reason;
+            signals.push(QuerySignal::Property("availability"));
+        }
+        signals
+    }
+
     pub fn reload(mut self: Pin<&mut Self>) {
         let signals = we_query::set_status(&mut self.as_mut().rust_mut().base, STATUS_QUERYING);
         self.as_mut().dispatch(signals);
-        let enabled = autostart_enabled();
-        // Сигнал ТОЛЬКО при изменении — как у оригинала.
-        let mut signals = Vec::new();
-        {
-            let mut rust = self.as_mut().rust_mut();
-            we_query::assign(&mut rust.enabled, enabled, "enabled", &mut signals);
-        }
+        let state = autostart_state_on(&mut Machine);
+        let signals = self.as_mut().apply_state(state);
         let signals = we_query::finish(&mut self.as_mut().rust_mut().base, signals);
         self.dispatch(signals);
     }
@@ -539,6 +612,7 @@ impl qobject::AutostartGetQuery {
     pub fn emit_property(mut self: Pin<&mut Self>, name: &str) {
         match name {
             "enabled" => self.as_mut().enabled_changed(),
+            "availability" => self.as_mut().availability_changed(),
             other => debug_assert!(false, "нет сигнала для свойства {other}"),
         }
     }
@@ -708,6 +782,76 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&корень);
+    }
+
+    /// Состояние для `W.AutostartGetQuery` (`enabled`, `supported`,
+    /// `unavailableReason`) снимается без демона: наружу уходит разве что
+    /// `systemctl --user is-enabled`, ни одного кадра движку. Переключатель
+    /// серый ровно тогда, когда включать нечего, — движка нет.
+    #[test]
+    fn состояние_автозапуска_без_демона() {
+        for systemd in [true, false] {
+            let root = std::env::temp_dir().join(format!(
+                "rexon-autostart-state-{}-{systemd}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).unwrap();
+            let binary = root.join("waywallen").to_string_lossy().into_owned();
+            let mut host = FakeHost {
+                корень: root.clone(),
+                systemd,
+                бинарь: binary,
+                вызовы: Vec::new(),
+            };
+
+            let before = autostart_state_on(&mut host);
+            assert!(before.supported, "движок есть — переключатель обязан быть живым");
+            assert_eq!(before.unavailable_reason, "");
+            // FakeHost на is-enabled отвечает «enabled», так что без systemd
+            // включённость решает только файл XDG — его ещё нет.
+            assert_eq!(before.enabled, systemd);
+            for call in &host.вызовы {
+                assert_eq!(call, &we_client::autostart_is_enabled_argv(), "лишний вызов {call:?}");
+            }
+
+            // После включения чтение видит его сразу — без демона.
+            assert!(set_autostart_on(&mut host, true).0);
+            assert!(autostart_state_on(&mut host).enabled);
+            assert!(set_autostart_on(&mut host, false).0);
+
+            struct NoEngine(FakeHost);
+            impl AutostartHost for NoEngine {
+                fn xdg_config_home(&self) -> Option<String> {
+                    self.0.xdg_config_home()
+                }
+                fn home(&self) -> String {
+                    self.0.home()
+                }
+                fn systemd_available(&self) -> bool {
+                    self.0.systemd_available()
+                }
+                fn daemon_binary(&self) -> Option<String> {
+                    None
+                }
+                fn run(&mut self, argv: &[String]) -> Option<(i32, String, String)> {
+                    self.0.run(argv)
+                }
+            }
+            let mut bare = NoEngine(host);
+            let state = autostart_state_on(&mut bare);
+            assert!(!state.supported);
+            // Сам перевод сверяет ядро (`we_client_parity`); здесь важно,
+            // что причина — та же переводимая строка, а не пустота.
+            assert_eq!(state, AutostartState {
+                // FakeHost на is-enabled всегда отвечает «enabled».
+                enabled: systemd,
+                supported: false,
+                unavailable_reason: we_client::autostart_availability(None).1,
+            });
+            assert!(!state.unavailable_reason.is_empty());
+            let _ = std::fs::remove_dir_all(&root);
+        }
     }
 
     #[test]

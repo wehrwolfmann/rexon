@@ -153,6 +153,20 @@ Item {
     readonly property RexonArrows arrows: RexonArrows {
         mirrored: root.LayoutMirroring.enabled
     }
+    /// Подстановки в подписи, которые собирает сама разметка (изолят при
+    /// письме справа налево).
+    RexonBidi { id: bidi }
+
+    /// Подписи раздела «Расширения GNOME» (ядро:
+    /// `gnome_ext_section::page_texts`).
+    readonly property var gnomeTexts: {
+        try {
+            return root.actions && root.actions.gnomeExtTexts
+                   ? JSON.parse(root.actions.gnomeExtTexts()) : ({});
+        } catch (e) {
+            return ({});
+        }
+    }
     readonly property int windowMinWidth: page.windowMinWidth
     readonly property int windowMinHeight: page.windowMinHeight
 
@@ -722,6 +736,19 @@ Item {
             root.actions.applyLocalById(itemId);
     }
 
+    /// Действие расширения GNOME, которое знает оболочка: `toggle`,
+    /// `prefs`, `folder`, `errorDetails` (удаление — через `removeLocal`:
+    /// вопрос и «Вернуть», как у тем; ядро:
+    /// `gnome_ext_section::run_action`). Итог — `gnomeExtensionDone`, у
+    /// переключения и удаления ещё и `actionDone`.
+    function gnomeAction(itemId, action) {
+        if (!root.actions || !root.actions.gnomeExtensionAction)
+            return;
+        if (action === "toggle")
+            page.actionBegin(itemId, "apply");
+        root.actions.gnomeExtensionAction(itemId, action);
+    }
+
     function actOnCard(kind, itemId) {
         if (!root.actions)
             return;
@@ -840,6 +867,41 @@ Item {
 
         function onAurJobsChanged(payload) {
             page.setAurJobs(payload);
+        }
+
+        // Итог действия расширения GNOME. Переключение и удаление сообщают о
+        // себе ещё и `actionDone` (строка под кнопками) — здесь сетка
+        // перечитывается по свежему слову оболочки; подробности ошибки —
+        // в своё окно; путь системного скопирован — строкой состояния.
+        function onGnomeExtensionDone(payload) {
+            let r = {};
+            try {
+                r = JSON.parse(payload);
+            } catch (e) {
+                return;
+            }
+            if (r.action === "errorDetails") {
+                if (r.ok)
+                    gnomeErrorPopup.answer(r);
+                else
+                    page.setStatus(r.message || "");
+                return;
+            }
+            const busy = r.action === "toggle" || r.action === "enable"
+                         || r.action === "disable" || r.action === "uninstall";
+            if (busy) {
+                if (r.ok && r.action === "uninstall" && page.screen === "detail")
+                    page.closeDetail();
+                if (r.ok)
+                    grid.refreshKeepingScroll();
+                return;
+            }
+            if ((r.message || "") === "")
+                return;
+            if (page.screen === "detail")
+                page.setDetailStatus(r.message, r.ok === true);
+            else
+                page.setStatus(r.message);
         }
 
         function onShellPaletteDone(text, ok) {
@@ -1645,6 +1707,142 @@ Item {
         }
 
         onOpened: pkgbuildClose.forceActiveFocus()
+    }
+
+    // «Подробнее об ошибке» расширения GNOME: что сказала оболочка, когда
+    // оно упало (последняя ошибка и её журнал), — скопировать целиком и
+    // отнести автору на его страницу.
+    Popup {
+        id: gnomeErrorPopup
+        objectName: "gnomeErrorPopup"
+        parent: root
+        anchors.centerIn: parent
+        width: Math.min(root.width - 40, 760)
+        height: Math.min(root.height - 40, 520)
+        modal: true
+        focus: true
+        padding: 16
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        property string itemId: ""
+        property string name: ""
+        property string url: ""
+        property string text: ""
+
+        function showFor(itemId, name) {
+            gnomeErrorPopup.itemId = itemId;
+            gnomeErrorPopup.name = name;
+            gnomeErrorPopup.url = "";
+            gnomeErrorPopup.text = "";
+            open();
+            root.gnomeAction(itemId, "errorDetails");
+        }
+
+        function answer(r) {
+            if (!gnomeErrorPopup.opened)
+                return;
+            gnomeErrorPopup.text = r.details || "";
+            gnomeErrorPopup.url = r.url || "";
+            if ((r.name || "") !== "")
+                gnomeErrorPopup.name = r.name;
+        }
+
+        Overlay.modal: Rectangle { color: root.pal.modal_dim }
+        background: Rectangle {
+            color: root.colBg
+            border.color: root.colBorder
+            radius: 4
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                RexonText {
+                    Layout.fillWidth: true
+                    text: bidi.arg(root.gnomeTexts.error_title || "%1", gnomeErrorPopup.name)
+                    color: root.colText
+                    font.bold: true
+                    font.pointSize: 13
+                    elide: Text.ElideRight
+                }
+
+                RexonButton {
+                    id: gnomeErrorClose
+                    pal: root.pal
+                    text: "❌"
+                    onClicked: gnomeErrorPopup.close()
+                }
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                TextArea {
+                    id: gnomeErrorText
+                    objectName: "gnomeErrorText"
+                    readOnly: true
+                    selectByMouse: true
+                    text: gnomeErrorPopup.text
+                    textFormat: TextEdit.PlainText
+                    wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+                    // Ошибка JavaScript — код, он читается слева направо при
+                    // любом языке интерфейса: выравнивание явное и физически
+                    // слева (как у PKGBUILD выше).
+                    horizontalAlignment: LayoutMirroring.enabled ? TextEdit.AlignRight
+                                                                 : TextEdit.AlignLeft
+                    color: root.colText
+                    font.family: "monospace"
+                    font.pointSize: 10
+                    background: Rectangle {
+                        color: root.colSecondary
+                        border.color: root.colBorder
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Item { Layout.fillWidth: true }
+
+                RexonButton {
+                    objectName: "gnomeErrorCopy"
+                    pal: root.pal
+                    tone: root.toneSecondary
+                    enabled: gnomeErrorPopup.text !== ""
+                    text: root.gnomeTexts.copy || ""
+                    onClicked: {
+                        gnomeErrorText.selectAll();
+                        gnomeErrorText.copy();
+                        gnomeErrorText.deselect();
+                    }
+                }
+
+                RexonButton {
+                    objectName: "gnomeErrorWriteAuthor"
+                    pal: root.pal
+                    visible: gnomeErrorPopup.url !== ""
+                    text: root.gnomeTexts.write_author || ""
+                    ToolTip.text: root.gnomeTexts.write_author_tooltip || ""
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 600
+                    onClicked: {
+                        if (root.actions && root.actions.openUrl)
+                            root.actions.openUrl(gnomeErrorPopup.url);
+                    }
+                }
+            }
+        }
+
+        onOpened: gnomeErrorClose.forceActiveFocus()
     }
 
     RexonImageViewer {
@@ -2472,6 +2670,103 @@ Item {
                     function onConkyPreviewsReady() {
                         if (conkyToolsRow.active && page.screen === "grid")
                             grid.refreshKeepingScroll();
+                        // Открытая карточка (сменили цвета или настройки) —
+                        // показать свежий снимок.
+                        if (conkyToolsRow.active && page.screen === "detail")
+                            page.refreshConkyDetailPicture();
+                    }
+                }
+            }
+
+            // ── Ряд раздела «Расширения GNOME» ────────────────────────────
+            //
+            // «Только для вашей версии GNOME» (по умолчанию включено;
+            // выключено — витрина показывает всё, несовместимое помечено) и
+            // скачанные оболочкой обновления: «Скачано обновлений: N.
+            // Применятся после выхода из сеанса» + «Выйти из сеанса»
+            // (подтверждение спрашивает сам GNOME). Подписи и число — ядро
+            // (`gnome_ext_section`).
+            RowLayout {
+                id: gnomeToolsRow
+                objectName: "gnomeToolsRow"
+                readonly property bool active: page.installFileSection === "gnomeext"
+                property var updates: ({})
+                function reloadUpdates() {
+                    try {
+                        gnomeToolsRow.updates = root.actions && root.actions.gnomeUpdates
+                                                ? JSON.parse(root.actions.gnomeUpdates()) : ({});
+                    } catch (e) {
+                        gnomeToolsRow.updates = ({});
+                    }
+                }
+                Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.bottomMargin: 8
+                visible: active && page.screen === "grid"
+                spacing: 8
+
+                onActiveChanged: {
+                    if (active)
+                        gnomeToolsRow.reloadUpdates();
+                }
+
+                RexonCheckBox {
+                    id: gnomeCompatibleBox
+                    objectName: "gnomeCompatibleOnly"
+                    pal: root.pal
+                    // Положение — у модели: после перезапуска страницы
+                    // флажок показывает то, по чему отобрана витрина.
+                    checked: page.egoCompatibleOnly
+                    text: root.gnomeTexts.only_compatible || ""
+                    ToolTip.text: root.gnomeTexts.only_compatible_tooltip || ""
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 600
+                    onToggled: {
+                        page.setEgoCompatibleOnly(checked);
+                        // Нажатие рвёт привязку — вернуть её к модели.
+                        checked = Qt.binding(function () { return page.egoCompatibleOnly; });
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                RexonText {
+                    objectName: "gnomeUpdatesStatus"
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: implicitWidth
+                    visible: text !== ""
+                    text: gnomeToolsRow.updates.text || ""
+                    color: root.colText
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignLeft
+                    elide: Text.ElideRight
+                }
+
+                RexonButton {
+                    objectName: "gnomeLogOut"
+                    pal: root.pal
+                    visible: (gnomeToolsRow.updates.count || 0) > 0
+                    text: gnomeToolsRow.updates.logoutLabel || ""
+                    onClicked: {
+                        if (root.actions && root.actions.logOutForUpdates)
+                            root.actions.logOutForUpdates();
+                    }
+                }
+
+                Connections {
+                    target: root.actions
+                    ignoreUnknownSignals: true
+                    function onGnomeUpdatesChanged(payload) {
+                        try {
+                            gnomeToolsRow.updates = JSON.parse(payload);
+                        } catch (e) {
+                        }
+                    }
+                    // Ответ каталога раздела пересчитал скачанные.
+                    function onCatalogReady(payload) {
+                        if (gnomeToolsRow.active)
+                            gnomeToolsRow.reloadUpdates();
                     }
                 }
             }
@@ -2583,6 +2878,112 @@ Item {
                             conkyRibbon.reload();
                     }
                 }
+            }
+
+            // ── Превью виджетов Conky: нет Xvfb ───────────────────────────
+            //
+            // Одна строка на раздел, а не на каждую плитку: превью не
+            // рисуются, потому что нет невидимого X-сервера. Кнопка ставит
+            // пакет общим путём недостающих программ (окно пароля), ✕ —
+            // больше не показывать. Решение, текст и пакет — ядро
+            // (`conky_preview::xvfb_hint`).
+            Rectangle {
+                id: conkyXvfbBar
+                objectName: "conkyXvfbBar"
+
+                property int rev: 0
+                property bool busy: false
+                readonly property var info: {
+                    conkyToolsRow.active; conkyXvfbBar.rev;
+                    try {
+                        return conkyToolsRow.active && root.actions && root.actions.conkyXvfbHint
+                               ? JSON.parse(root.actions.conkyXvfbHint()) : ({});
+                    } catch (e) {
+                        return ({});
+                    }
+                }
+
+                Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.bottomMargin: 8
+                visible: conkyToolsRow.visible && conkyXvfbBar.info.visible === true
+                implicitHeight: conkyXvfbRow.implicitHeight + 16
+                radius: 6
+                color: root.colCard
+                border.color: root.colBorder
+                border.width: 1
+
+                RowLayout {
+                    id: conkyXvfbRow
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: 8
+                    spacing: 8
+
+                    RexonText {
+                        Layout.fillWidth: true
+                        text: "ℹ️ " + (conkyXvfbBar.info.text || "")
+                        color: root.colTextSecondary
+                        font.pointSize: 9
+                        wrapMode: Text.WordWrap
+                    }
+
+                    RexonButton {
+                        objectName: "conkyXvfbInstallButton"
+                        pal: root.pal
+                        visible: (conkyXvfbBar.info.button || "") !== ""
+                        enabled: !conkyXvfbBar.busy
+                        text: conkyXvfbBar.info.button || ""
+                        onClicked: {
+                            conkyXvfbBar.busy = true;
+                            root.actions.installConkyXvfb();
+                        }
+                    }
+
+                    RexonButton {
+                        objectName: "conkyXvfbCloseButton"
+                        pal: root.pal
+                        text: "✕"
+                        focusPolicy: Qt.NoFocus
+                        ToolTip.text: conkyXvfbBar.info.close_tooltip || ""
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 600
+                        onClicked: {
+                            root.actions.closeConkyXvfbHint();
+                            conkyXvfbBar.rev++;
+                        }
+                    }
+                }
+
+                Connections {
+                    target: root.actions
+                    ignoreUnknownSignals: true
+                    function onActionDone(text, ok) {
+                        if (conkyXvfbBar.busy) {
+                            conkyXvfbBar.busy = false;
+                            conkyXvfbBar.rev++;
+                        }
+                    }
+                }
+            }
+
+            // ── Мини-карта экрана ─────────────────────────────────────────
+            //
+            // Запущенные виджеты Conky на схеме экрана: перетащить — сдвинуть
+            // на столе (`conky_layout`, запись — накладка виджета).
+            ConkyScreenMap {
+                id: conkyScreenMap
+                objectName: "conkyScreenMap"
+                Layout.fillWidth: true
+                Layout.leftMargin: 16
+                Layout.rightMargin: 16
+                Layout.bottomMargin: 8
+                visible: conkyRibbon.visible
+                pal: root.pal
+                actions: root.actions
+                busy: page.actionBusy
             }
 
             // ── Наборы виджетов Conky ─────────────────────────────────────
@@ -3140,6 +3541,29 @@ Item {
                     }
                 }
 
+                // Источник «Razer Axon» раздела обоев — библиотека Axon на
+                // этом компьютере вместо сетки магазина (`SCREEN_AXON`).
+                // Строится при первом выборе чипа и дальше живёт; при
+                // каждом заходе перечитывает библиотеку сама.
+                Loader {
+                    id: axonLoader
+                    objectName: "axonLoader"
+                    anchors.fill: parent
+                    visible: page.screen === "axon"
+                    active: page.screen === "axon" || axonLoader.built
+                    asynchronous: true
+                    property bool built: false
+                    onLoaded: axonLoader.built = true
+
+                    sourceComponent: Component {
+                        AxonLibraryView {
+                            pal: root.pal
+                            layout: page
+                            onMessage: text => page.setStatus(text)
+                        }
+                    }
+                }
+
                 // Пустой экран без объяснения — худшее, что можно показать
                 // человеку (правило #13). Текст собирает ядро по матрице
                 // кастомизации.
@@ -3361,9 +3785,24 @@ Item {
                             Layout.rightMargin: 16
                             spacing: 8
 
+                            // Расширение GNOME, которое знает оболочка
+                            // (JSON ядра, `detailGnome`): вместо
+                            // «Установить»/«Применить» — его кнопки ниже.
+                            QtObject {
+                                id: detailGnome
+                                readonly property var st: {
+                                    try {
+                                        return JSON.parse(page.detailGnome || "{}");
+                                    } catch (e) {
+                                        return ({});
+                                    }
+                                }
+                                readonly property bool on: st.visible === true
+                            }
+
                             Button {
                                 id: installBtn
-                                visible: !page.detailIsLocal
+                                visible: !page.detailIsLocal && !detailGnome.on
                                 readonly property bool isAur: page.detailSource === "aur"
                                 // Кнопка пакета AUR — ровно та, что на его
                                 // плитке (очередь установок). Ревизия
@@ -3464,7 +3903,7 @@ Item {
                             // выключенная кнопка наведения не ловит, его
                             // ловит обёртка.
                             Item {
-                                visible: page.detailUninstallVisible
+                                visible: page.detailUninstallVisible && !detailGnome.on
                                 implicitWidth: uninstallButton.implicitWidth
                                 implicitHeight: uninstallButton.implicitHeight
 
@@ -3518,12 +3957,119 @@ Item {
                             }
 
                             RexonButton {
-                                visible: page.detailIsLocal
+                                visible: page.detailIsLocal && !detailGnome.on
                                 pal: root.pal
                                 text: page.detailApplyLocalText
                                 enabled: page.detailApplyLocalEnabled
                                          && !page.actionBusy
                                 onClicked: root.applyLocal(page.detailItemId)
+                            }
+
+                            // ── Кнопки расширения GNOME ──────────────────
+                            // «Включить/Выключить» — по правде оболочки
+                            // (запертое администратором выключено, причина
+                            // подсказкой — её ловит обёртка), «Настройки»,
+                            // «Открыть папку» своего или «Скопировать путь»
+                            // системного, «Подробнее об ошибке», «Удалить»
+                            // только своего.
+                            Item {
+                                objectName: "detailGnomeToggle"
+                                visible: detailGnome.on
+                                implicitWidth: gnomeToggleBtn.implicitWidth
+                                implicitHeight: gnomeToggleBtn.implicitHeight
+
+                                Button {
+                                    id: gnomeToggleBtn
+                                    anchors.fill: parent
+                                    readonly property var t: detailGnome.st.toggle || ({})
+                                    enabled: t.enabled === true && !page.actionBusy
+                                    implicitHeight: 40
+                                    leftPadding: 14
+                                    rightPadding: 14
+                                    text: t.text || ""
+                                    onClicked: root.gnomeAction(page.detailItemId, "toggle")
+
+                                    readonly property var colors: page.detailButtonColors(t.state || "")
+
+                                    background: Rectangle {
+                                        radius: 3
+                                        color: gnomeToggleBtn.colors.bg === ""
+                                               ? "transparent" : gnomeToggleBtn.colors.bg
+                                        border.color: gnomeToggleBtn.activeFocus
+                                                      ? root.colAccent
+                                                      : (gnomeToggleBtn.colors.border === ""
+                                                         ? "transparent"
+                                                         : gnomeToggleBtn.colors.border)
+                                        border.width: gnomeToggleBtn.activeFocus ? 2 : 1
+                                    }
+
+                                    contentItem: RexonText {
+                                        text: gnomeToggleBtn.text
+                                        color: gnomeToggleBtn.colors.fg
+                                        font.bold: true
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+
+                                HoverHandler { id: gnomeToggleHover }
+                                ToolTip.text: detailGnome.st.tooltip || ""
+                                ToolTip.visible: gnomeToggleHover.hovered
+                                                 && (detailGnome.st.tooltip || "") !== ""
+                                ToolTip.delay: 400
+                            }
+
+                            RexonButton {
+                                objectName: "detailGnomePrefs"
+                                visible: detailGnome.on && detailGnome.st.prefs === true
+                                pal: root.pal
+                                tone: root.toneSecondary
+                                text: root.gnomeTexts.prefs || ""
+                                ToolTip.text: root.gnomeTexts.prefs_tooltip || ""
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 600
+                                onClicked: root.gnomeAction(page.detailItemId, "prefs")
+                            }
+
+                            RexonButton {
+                                objectName: "detailGnomeFolder"
+                                readonly property bool copy: detailGnome.st.folder === "copy"
+                                visible: detailGnome.on && (detailGnome.st.folder || "") !== ""
+                                pal: root.pal
+                                tone: root.toneSecondary
+                                text: copy ? (root.gnomeTexts.folder_copy || "")
+                                           : (root.gnomeTexts.folder_open || "")
+                                ToolTip.text: copy ? (root.gnomeTexts.folder_copy_tooltip || "")
+                                                   : (root.gnomeTexts.folder_open_tooltip || "")
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 600
+                                onClicked: root.gnomeAction(page.detailItemId, "folder")
+                            }
+
+                            RexonButton {
+                                objectName: "detailGnomeError"
+                                visible: detailGnome.on && detailGnome.st.error === true
+                                pal: root.pal
+                                tone: root.toneSecondary
+                                text: root.gnomeTexts.error_details || ""
+                                ToolTip.text: root.gnomeTexts.error_details_tooltip || ""
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 600
+                                onClicked: gnomeErrorPopup.showFor(page.detailItemId,
+                                                                   detailGnome.st.name || "")
+                            }
+
+                            RexonDangerButton {
+                                objectName: "detailGnomeRemove"
+                                visible: detailGnome.on && detailGnome.st.remove === true
+                                pal: root.pal
+                                enabled: !page.actionBusy
+                                text: root.gnomeTexts.uninstall || ""
+                                ToolTip.text: root.gnomeTexts.uninstall_tooltip || ""
+                                ToolTip.visible: hovered
+                                ToolTip.delay: 600
+                                // Вопрос и «Вернуть» — как у плитки.
+                                onClicked: root.removeLocal(page.detailItemId)
                             }
 
                             // «Настроить…» стиля приложений (Breeze, Oxygen,
@@ -3948,6 +4494,23 @@ Item {
                                 busy: page.actionBusy
                                 itemId: page.detailItemId
                                 conf: detailConky.settingsConf
+                            }
+
+                            // Палитра цветов — для всего виджета (все его
+                            // файлы), а не для выбранной части.
+                            ConkyColours {
+                                id: conkyColours
+                                objectName: "conkyColours"
+                                Layout.fillWidth: true
+                                visible: detailConky.parts.length > 0
+                                pal: root.pal
+                                actions: root.actions
+                                busy: page.actionBusy
+                                itemId: page.detailItemId
+                                Connections {
+                                    target: page
+                                    function onDetailChanged() { conkyColours.reload(); }
+                                }
                             }
 
                             RexonText {
@@ -4443,10 +5006,10 @@ Item {
                     // столбцов зияла пустая полоса шириной почти в плитку.
                     readonly property int usableWidth:
                         width - leftMargin - rightMargin
-                    readonly property int columns: Math.max(1, Math.floor(
-                        usableWidth / (page.cardWidth + page.gridSpacing)))
-                    cellWidth: Math.max(page.cardWidth + page.gridSpacing,
-                                        Math.floor(usableWidth / columns))
+                    // Расчёт — ядро (`ap::grid_columns`/`grid_cell_width`),
+                    // один на все сетки плиток (и на библиотеку Razer Axon).
+                    readonly property int columns: page.gridColumns(usableWidth)
+                    cellWidth: page.gridCellWidth(usableWidth)
                     // Страница каталога — целые ряды: ядро нарезает её по
                     // этим столбцам (`ap::grid_page_size`), иначе при девяти
                     // столбцах последний ряд из двадцати выходил в две плитки.
@@ -4598,6 +5161,9 @@ Item {
                         required property bool removeEnabled
                         required property string removeTooltip
                         required property bool current
+                        required property string gnomeUuid
+                        required property bool gnomePrefs
+                        required property bool gnomeErrorInfo
                         // Текущая тема раздела выделяется, как в KDE: рамка
                         // цвета выделения и жирная подпись (у остальных
                         // плиток раздела подпись обычная).
@@ -4958,7 +5524,15 @@ Item {
                                                              && cell.buttonTooltip !== ""
                                             ToolTip.delay: 600
 
-                                            onClicked: root.actOnCard(cell.kind, cell.itemId)
+                                            // Расширение GNOME, которое знает
+                                            // оболочка, включает и выключает
+                                            // она сама.
+                                            onClicked: {
+                                                if (cell.gnomeUuid !== "")
+                                                    root.gnomeAction(cell.itemId, "toggle");
+                                                else
+                                                    root.actOnCard(cell.kind, cell.itemId);
+                                            }
                                             // Пробел кнопка ловит сама; Enter —
                                             // то же нажатие (у виджета Conky —
                                             // запустить/остановить).
@@ -5029,6 +5603,37 @@ Item {
                                             }
                                         }
 
+                                        // «⚙️» и «⚠️» расширения GNOME: свои
+                                        // настройки и подробности ошибки
+                                        // (папка — в подробностях).
+                                        RexonButton {
+                                            objectName: "gnomeTilePrefs"
+                                            visible: cell.gnomePrefs
+                                            Layout.preferredWidth: page.cardButtonHeight
+                                            implicitHeight: page.cardButtonHeight
+                                            pal: root.pal
+                                            tone: root.toneSecondary
+                                            text: "⚙️"
+                                            ToolTip.text: root.gnomeTexts.prefs_tooltip || ""
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 400
+                                            onClicked: root.gnomeAction(cell.itemId, "prefs")
+                                        }
+
+                                        RexonButton {
+                                            objectName: "gnomeTileError"
+                                            visible: cell.gnomeErrorInfo
+                                            Layout.preferredWidth: page.cardButtonHeight
+                                            implicitHeight: page.cardButtonHeight
+                                            pal: root.pal
+                                            tone: root.toneSecondary
+                                            text: "⚠️"
+                                            ToolTip.text: root.gnomeTexts.error_details_tooltip || ""
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: 400
+                                            onClicked: gnomeErrorPopup.showFor(cell.itemId, cell.name)
+                                        }
+
                                         // «🗑» — удалить тему с диска (решает ядро,
                                         // `theme_removal`). У включённой и системной
                                         // кнопка недоступна, причина — подсказкой;
@@ -5044,13 +5649,20 @@ Item {
                                                 pal: root.pal
                                                 enabled: cell.removeEnabled
                                                 text: "🗑️"
+                                                // Своё расширение GNOME — тем же
+                                                // путём, что тема: вопрос с его
+                                                // именем и строка «Вернуть»
+                                                // (снимет оболочка); системное
+                                                // «🗑» не получает вовсе.
                                                 onClicked: root.removeLocal(cell.itemId)
                                             }
 
                                             HoverHandler { id: removeHover }
                                             ToolTip.text: cell.removeTooltip !== ""
                                                           ? cell.removeTooltip
-                                                          : page.detailUninstallText
+                                                          : (cell.gnomeUuid !== ""
+                                                             ? (root.gnomeTexts.uninstall_tooltip || "")
+                                                             : page.detailUninstallText)
                                             ToolTip.visible: removeHover.hovered
                                             ToolTip.delay: 400
                                         }
@@ -5181,8 +5793,8 @@ Item {
             RexonText {
                 objectName: "removalBarText"
                 Layout.fillWidth: true
-                // «Тема «X» будет удалена. Через 8 секунд, если не нажать
-                // «Вернуть».» — подписи ядра (`theme_removal`).
+                // «Удаляем «X». Осталось 8 секунд — «Вернуть» отменит
+                // удаление.» — подписи ядра (`theme_removal`).
                 text: removalBar.message + " "
                       + page.removalCountdownText(removalBar.remainingSeconds)
                 textFormat: Text.PlainText

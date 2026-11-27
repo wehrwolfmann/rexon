@@ -59,9 +59,8 @@ pub fn label(ctx: &Ctx, extra: &[String], p: &ConkyProc) -> String {
     let Some(conf) = p.conf.as_deref() else {
         return tr("conky with its default settings file");
     };
-    let root = format!("{}/", crate::de_apply::conky_root(ctx));
-    if let Some((id, _)) = conf.strip_prefix(&root).and_then(|r| r.split_once('/')) {
-        return id.to_string();
+    if let Some(id) = crate::de_apply::conky_widget_of_conf(&crate::animations::SystemIo, ctx, conf) {
+        return crate::conky_scan::widget_title(&id);
     }
     let owner = crate::conky_scan::owner_of_conf(ctx, extra, conf).unwrap_or_else(|| conf.to_string());
     let name = owner.rsplit('/').next().unwrap_or(&owner).to_string();

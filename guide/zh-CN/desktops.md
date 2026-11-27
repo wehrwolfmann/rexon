@@ -1,4 +1,4 @@
-[English](../en/desktops.md) | [Русский](../ru/desktops.md) | [Deutsch](../de/desktops.md) | 简体中文 | [Français](../fr/desktops.md)
+[English](../en/desktops.md) | [Русский](../ru/desktops.md) | [Deutsch](../de/desktops.md) | 简体中文 | [Français](../fr/desktops.md) | [Español](../es/desktops.md)
 
 # 桌面环境
 

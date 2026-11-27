@@ -664,6 +664,51 @@ pub fn code_fingerprint(io: &dyn LookIo, ctx: &Ctx, id: &str) -> String {
     fingerprint(io, &w, &refs)
 }
 
+/// Файлы виджета `id`, где он задаёт свой вид: файлы настроек и сценарии
+/// Lua — все `.lua` его каталога и то, что грузит `lua_load` (так же, как
+/// их видит проверка опасных директив). Палитра цветов
+/// (`conky_colors`) ищет цвета ровно в них.
+pub fn look_files(io: &dyn LookIo, ctx: &Ctx, id: &str) -> Vec<String> {
+    let w = widget(io, ctx, id);
+    let mut out = w.confs.clone();
+    let add = |p: String, out: &mut Vec<String>| {
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    };
+    if w.path == w.base {
+        let mut all = Vec::new();
+        walk(io, &w.base, 1, &mut all);
+        for p in all.into_iter().filter(|p| ext_of(p) == "lua") {
+            add(p, &mut out);
+        }
+    }
+    for conf in &w.confs {
+        let Some(text) = io.read(conf) else { continue };
+        let work_dir = crate::de_apply::conky_work_dir(conf).to_string();
+        for (kind, what) in scan_conf(&text) {
+            if kind == RiskKind::LuaScript {
+                if let Some(p) = resolve(ctx, &work_dir, &what).or_else(|| Some(format!("{work_dir}/{what}"))) {
+                    if io.read(&p).is_some() {
+                        add(p, &mut out);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Виджет выполняет команды, и человек разрешил его ровно в нынешнем виде.
+/// Rexon, меняя у такого виджета только цвета, после правки запоминает
+/// разрешение заново ([`remember`]) — своя правка не должна заставлять
+/// человека отвечать на вопрос о командах второй раз.
+pub fn trusted_as_is(io: &dyn LookIo, ctx: &Ctx, id: &str) -> bool {
+    let w = widget(io, ctx, id);
+    let Scan { risks, refs } = scan(io, ctx, &w);
+    !risks.is_empty() && trusted_hash(io, ctx, &w.path).is_some_and(|h| h == fingerprint(io, &w, &refs))
+}
+
 /// Файл разрешений: `~/.config/rexon/conky-trust.json`.
 pub fn trust_path(ctx: &Ctx) -> String {
     ctx.config("rexon/conky-trust.json")
@@ -918,6 +963,26 @@ fn command_programs(cmd: &str) -> Vec<String> {
             && !prog.chars().all(|c| c.is_ascii_digit());
         if plain && !SHELL_WORDS.contains(&prog) && !out.iter().any(|p| p == prog) {
             out.push(prog.to_string());
+        }
+    }
+    out
+}
+
+/// Программы, которые вызывают команды виджета `id` (`cava`, `sensors`), —
+/// для списка зависимостей набора, сохранённого в файл: на другой машине их
+/// может не быть. Вызов из Lua с выражением не разбирается (команда известна
+/// только при запуске), сама программа Conky не считается.
+pub fn widget_programs(io: &dyn LookIo, ctx: &Ctx, id: &str) -> Vec<String> {
+    let w = widget(io, ctx, id);
+    let mut out: Vec<String> = Vec::new();
+    for r in scan(io, ctx, &w).risks {
+        if r.kind != RiskKind::Command || r.what.starts_with("os.execute(") || r.what.starts_with("io.popen(") {
+            continue;
+        }
+        for prog in command_programs(&r.what) {
+            if prog != "conky" && !out.contains(&prog) {
+                out.push(prog);
+            }
         }
     }
     out

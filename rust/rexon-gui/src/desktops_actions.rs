@@ -1565,7 +1565,7 @@ impl qobject::DesktopsActions {
         false
     }
 
-    fn panel_restore(self: Pin<&mut Self>) -> bool {
+    fn panel_restore(mut self: Pin<&mut Self>) -> bool {
         let agreed = crate::extensions_actions::ask_confirm(
             &QString::from(&qd::panel_restore_confirm_title()),
             &QString::from(&qd::panel_restore_confirm_text()),
@@ -1590,7 +1590,25 @@ impl qobject::DesktopsActions {
             }
             _ => crate::settings_actions::panel_restore_now(None),
         };
-        self.set_status(panel_status(&qd::panel_restore_result(ok, &message)));
+        let status = panel_status(&qd::panel_restore_result(ok, &message));
+        self.as_mut().set_status(status.clone());
+        // GNOME: настройки вернулись, недостающие расширения из копии ставятся
+        // с extensions.gnome.org в рабочем потоке (окно подтверждения
+        // оболочки ждёт человека); итог дописывается к строке состояния.
+        if ok && current_de().as_deref() == Some("gnome") {
+            let handle = self.as_mut().qt_thread();
+            std::thread::spawn(move || {
+                let Some(report) = rexon_core::backup::gnome_ext_copy_deliver_live() else {
+                    return;
+                };
+                let text = format!("{status} — {}", report.replace('\n', " "));
+                if let Err(e) = handle.queue(move |object| object.set_status(text)) {
+                    if !matches!(e, ThreadingQueueError::ObjectDestroyed) {
+                        rexon_core::log_warn!("desktops", "итог доставки расширений GNOME не доставлен: {e:?}");
+                    }
+                }
+            });
+        }
         false
     }
 

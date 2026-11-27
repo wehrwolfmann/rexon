@@ -87,12 +87,21 @@ pub trait LookIo {
     fn spawn(&self, _argv: &[String]) -> bool {
         false
     }
+    /// Расширения GNOME со слов запущенной оболочки (D-Bus
+    /// `ListExtensions`). `None` — оболочки нет. По умолчанию `None`:
+    /// подделки в тестах шину не трогают.
+    fn gnome_shell_extensions(&self) -> Option<Vec<crate::gnome_shell_ext::ExtInfo>> {
+        None
+    }
 }
 
 /// Настоящая машина.
 pub struct SystemIo;
 
 impl LookIo for SystemIo {
+    fn gnome_shell_extensions(&self) -> Option<Vec<crate::gnome_shell_ext::ExtInfo>> {
+        crate::gnome_ext_section::live_snapshot()
+    }
     fn spawn(&self, argv: &[String]) -> bool {
         let Some(program) = argv.first() else {
             return false;

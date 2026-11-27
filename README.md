@@ -1,4 +1,4 @@
-English | [Русский](README.ru.md) | [Deutsch](README.de.md) | [简体中文](README.zh-CN.md) | [Français](README.fr.md)
+English | [Русский](README.ru.md) | [Deutsch](README.de.md) | [简体中文](README.zh-CN.md) | [Français](README.fr.md) | [Español](README.es.md)
 
 # Rexon
 
@@ -29,7 +29,7 @@ and test platform is Arch Linux / CachyOS.
 ## User guide
 
 A step-by-step guide to every tab — Desktops, Appearance, Extensions,
-Wallpaper Engine, Steam and Settings — in English, Russian, German, Chinese and French:
+Wallpaper Engine, Steam and Settings — in English, Russian, German, Chinese, French and Spanish:
 [guide/](guide/README.md).
 
 ## Features
@@ -343,7 +343,7 @@ Removing the Rexon package removes its helpers, policies and the login-rescue un
 The interface is translated with GNU gettext: one catalog for both the Rust code and
 the QML pages. The template is [`po/rexon.pot`](po/rexon.pot), and each language is
 one file in [`po/`](po/). English is the base language, and translations are
-available in Russian, German, Simplified Chinese and French. See [`po/README.md`](po/README.md) to add a
+available in Russian, German, Simplified Chinese, French and Spanish. See [`po/README.md`](po/README.md) to add a
 language — no code changes are needed.
 
 ## Credits

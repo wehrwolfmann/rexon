@@ -233,6 +233,7 @@ fn scan_startup_movies() {
         &builtin,
         &inventory,
         &names,
+        &[],
     ));
     // Починка №3: у файла без «_» id — из стема, а не из полного имени
     // с расширением (Python давал id/имя «weird.webm»).
@@ -2473,4 +2474,318 @@ fn splash_none_tile_asks_in_own_words() {
     assert!(!c.question.contains("None"), "{}", c.question);
     assert!(!c.kept.contains("None"), "{}", c.kept);
     assert!(!c.keep_applies_rest, "«Нет» — значит не применять");
+}
+
+// ============================================================================
+// Свой ролик: третий источник скана, проверка файла, новые встроенные ролики
+// ============================================================================
+
+/// Встроенные ролики — ровно те, что лежат в `steamui/movies` клиента
+/// (ноябрь 2026), в прежнем порядке и с новыми устройствами Valve в конце.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn builtin_names_cover_new_steam_devices() {
+    let keys: Vec<&str> = ss::BUILTIN_NAMES.iter().map(|(k, _)| *k).collect();
+    assert_eq!(
+        keys,
+        vec![
+            "deck_startup",
+            "oled_startup",
+            "bigpicture_startup",
+            "steam_os_startup",
+            "startup_machine",
+            "steamframe_startup_450x450",
+            "steam_os_family_startup",
+        ]
+    );
+    let files = ss::builtin_movie_filenames();
+    assert_eq!(files.len(), 7);
+    assert!(files.contains(&"steamframe_startup_450x450.webm".to_string()));
+    {
+        let _lang = i18n_pin::en();
+        let name = |k: &str| {
+            let (_, n) = ss::BUILTIN_NAMES.iter().find(|(key, _)| *key == k).unwrap();
+            rexon_core::i18n::tr(n)
+        };
+        assert_eq!(name("steam_os_startup"), "SteamOS");
+        assert_eq!(name("startup_machine"), "Steam Machine");
+        assert_eq!(name("steamframe_startup_450x450"), "Steam Frame");
+        assert_eq!(name("steam_os_family_startup"), "Steam Deck (Factory Image)");
+    }
+    let _lang = i18n_pin::ru();
+    let movies = ss::scan_movies(
+        "/S",
+        &["steam_os_family_startup.webm".to_string(), "startup_machine.webm".to_string()],
+        &[],
+        &json!({}),
+        &[],
+    );
+    let names: Vec<&str> = movies.iter().map(|m| m["name"].as_str().unwrap()).collect();
+    // Порядок — по списку, не по листингу.
+    assert_eq!(names, vec!["Steam Machine", "Steam Deck (заводской образ)"]);
+    assert_eq!(movies[0]["path"], "/S/steamui/movies/startup_machine.webm");
+}
+
+/// `config/uioverrides/movies/*.webm` — как в самом Steam: только `.webm`
+/// (с учётом регистра), скрытые пропускаются, миниатюра `.jpg` рядом.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn scan_reads_custom_movies_like_steam() {
+    let _lang = i18n_pin::ru();
+    let custom: Vec<String> = [
+        "моя заставка.webm",
+        "b.webm",
+        "b.webm.jpg",
+        "моя заставка.jpg",
+        "a.webm",
+        ".a.webm",
+        ".webm",
+        "clip.mp4",
+        "LOUD.WEBM",
+        "notes.txt",
+    ]
+    .iter()
+    .map(|x| x.to_string())
+    .collect();
+    let out = ss::scan_movies(
+        "/S",
+        &["deck_startup.webm".to_string()],
+        &["34806_ab.webm".to_string()],
+        &json!({}),
+        &custom,
+    );
+    let ids: Vec<&str> = out.iter().map(|m| m["id"].as_str().unwrap()).collect();
+    assert_eq!(
+        ids,
+        vec![
+            "deck_startup",
+            "34806",
+            "/S/config/uioverrides/movies/a.webm",
+            "/S/config/uioverrides/movies/b.webm",
+            "/S/config/uioverrides/movies/моя заставка.webm",
+        ]
+    );
+    let mine = &out[4];
+    assert_eq!(mine["name"], "моя заставка.webm"); // как в списке Steam
+    assert_eq!(mine["title"], "моя заставка");
+    assert_eq!(mine["builtin"], false);
+    assert_eq!(mine["origin"], ss::ORIGIN_CUSTOM);
+    assert_eq!(mine["origin_label"], "Свой ролик");
+    assert_eq!(mine["thumb"], "/S/config/uioverrides/movies/моя заставка.jpg");
+    assert_eq!(out[3]["thumb"], "/S/config/uioverrides/movies/b.webm.jpg");
+    assert_eq!(out[2]["thumb"], "");
+    // Обогащение не превращает свой ролик в «Points Shop».
+    let enriched = ss::enrich_movies(&out, &json!({}), &[]);
+    assert_eq!(enriched[4]["origin"], ss::ORIGIN_CUSTOM);
+    assert_eq!(enriched[4]["origin_label"], "Свой ролик");
+    assert_eq!(enriched[4]["title"], "моя заставка");
+    assert_eq!(enriched[1]["origin"], ss::ORIGIN_SHOP);
+    assert_eq!(enriched[0]["origin"], ss::ORIGIN_BUILTIN);
+    // Вручную выбранный файл (видит только Rexon) подписан по-прежнему.
+    assert_eq!(ss::origin_label(ss::ORIGIN_CUSTOM), "Свой файл");
+}
+
+/// Живой маршрут скана: исполнитель листает `uioverrides/movies`.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn flow_scan_reads_custom_movies_dir() {
+    let _lang = i18n_pin::ru();
+    let root = "/HOME/.local/share/Steam";
+    let dir = format!("{root}/config/uioverrides/movies");
+    let mut io = FakeIo::new()
+        .with_dir(root)
+        .with_dir(&format!("{root}/config"))
+        .with_dir(&format!("{root}/config/uioverrides"))
+        .with_dir(&dir)
+        .with_file(&format!("{dir}/intro.webm"))
+        .with_file(&format!("{dir}/intro.jpg"));
+    assert_eq!(ss::steam_custom_movies_dir(root), dir);
+    let movies = Splash::new(&mut io, HOME).scan_startup_movies();
+    assert_eq!(movies.len(), 1);
+    assert_eq!(movies[0]["path"], format!("{dir}/intro.webm"));
+    assert_eq!(movies[0]["thumb"], format!("{dir}/intro.jpg"));
+    assert_eq!(movies[0]["origin"], "custom");
+    assert_eq!(movies[0]["origin_label"], "Свой ролик");
+    assert_eq!(movies[0]["title"], "intro");
+}
+
+/// Образец вывода `ffprobe -show_streams -show_format -of json`.
+fn probe_json(format: &str, duration: Option<&str>, streams: Value) -> String {
+    let mut fmt = json!({"format_name": format});
+    if let Some(d) = duration {
+        fmt["duration"] = json!(d);
+    }
+    json!({"streams": streams, "format": fmt}).to_string()
+}
+
+fn vstream(codec: &str, w: i64, h: i64) -> Value {
+    json!({"codec_type": "video", "codec_name": codec, "width": w, "height": h,
+           "disposition": {"attached_pic": 0}})
+}
+
+fn astream(codec: &str) -> Value {
+    json!({"codec_type": "audio", "codec_name": codec})
+}
+
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn movie_probe_verdicts() {
+    let _lang = i18n_pin::ru();
+    use ss::MovieVerdict::{AsIs, Reject, Transcode};
+    let webm = "matroska,webm";
+    let mp4 = "mov,mp4,m4a,3gp,3g2,mj2";
+    let check = |fmt: &str, d: Option<&str>, st: Value| ss::check_movie_probe(&probe_json(fmt, d, st));
+
+    // Как есть: webm VP9/VP8/AV1 + Opus/Vorbis или без звука.
+    let c = check(webm, Some("5.000000"), json!([vstream("vp9", 1920, 1200), astream("opus")]));
+    assert_eq!(c.verdict, AsIs, "{c:?}");
+    assert_eq!((c.width, c.height, c.duration), (1920, 1200, 5.0));
+    assert_eq!((c.video_codec.as_str(), c.audio_codec.as_str()), ("vp9", "opus"));
+    assert!(c.reason.is_empty() && c.warnings.is_empty());
+    assert_eq!(check(webm, Some("3.1"), json!([vstream("vp8", 1280, 720), astream("vorbis")])).verdict, AsIs);
+    assert_eq!(check(webm, Some("3.1"), json!([vstream("av1", 1280, 800)])).verdict, AsIs);
+    // Вертикальный ролик с телефона — годится.
+    assert_eq!(check(webm, Some("3"), json!([vstream("vp9", 720, 1280)])).verdict, AsIs);
+    // Длительность числом, а не строкой — тоже читается.
+    let num = json!({"streams": [vstream("vp9", 1280, 720)],
+                     "format": {"format_name": webm, "duration": 4.5}}).to_string();
+    assert_eq!(ss::check_movie_probe(&num).duration, 4.5);
+
+    // Перекодировать: другой контейнер/кодек, лишние дорожки, нет длительности.
+    assert_eq!(check(mp4, Some("5"), json!([vstream("h264", 1920, 1080), astream("aac")])).verdict, Transcode);
+    assert_eq!(check(webm, Some("5"), json!([vstream("h264", 1920, 1080)])).verdict, Transcode);
+    assert_eq!(check(webm, Some("5"), json!([vstream("vp9", 1920, 1080), astream("aac")])).verdict, Transcode);
+    assert_eq!(
+        check(webm, Some("5"), json!([vstream("vp9", 1920, 1080), astream("opus"),
+                                      {"codec_type": "subtitle", "codec_name": "ass"}])).verdict,
+        Transcode
+    );
+    assert_eq!(
+        check(webm, Some("5"), json!([vstream("vp9", 1920, 1080), astream("opus"), astream("opus")])).verdict,
+        Transcode
+    );
+    let c = check(webm, None, json!([vstream("vp9", 1920, 1080)]));
+    assert_eq!((c.verdict, c.duration), (Transcode, 0.0));
+
+    // Отказы — человеческим языком.
+    let c = ss::check_movie_probe("не json");
+    assert_eq!(c.verdict, Reject);
+    assert_eq!(c.reason, "Не удалось прочитать файл — возможно, он повреждён или это не видео.");
+    assert_eq!(ss::check_movie_probe("{}").verdict, Reject);
+    // mp3 с обложкой альбома: «видеопоток» есть, видео нет.
+    let cover = json!({"codec_type": "video", "codec_name": "mjpeg", "width": 1000, "height": 1000,
+                       "disposition": {"attached_pic": 1}});
+    let c = check("mp3", Some("200"), json!([astream("mp3"), cover]));
+    assert_eq!(c.verdict, Reject);
+    assert_eq!(c.reason, "В этом файле нет изображения — выберите видеофайл.");
+    let c = check(webm, Some("0.5"), json!([vstream("vp9", 1920, 1080)]));
+    assert_eq!(c.verdict, Reject);
+    assert_eq!(c.reason, "Ролик короче секунды — он мелькнёт незаметно. Выберите ролик подлиннее.");
+    let c = check(mp4, Some("60.5"), json!([vstream("h264", 1920, 1080)]));
+    assert_eq!(c.verdict, Reject);
+    assert_eq!(c.reason, "Ролик длиннее минуты — заставка должна быть короткой. Обрежьте его или выберите другой.");
+    let c = check(webm, Some("4"), json!([vstream("vp9", 450, 450)]));
+    assert_eq!(c.verdict, Reject);
+    assert_eq!(
+        c.reason,
+        "Картинка слишком маленькая (450×450) — на экране она будет мутной. Выберите ролик не меньше 640×360."
+    );
+    assert_eq!(check(webm, Some("4"), json!([vstream("vp9", 640, 359)])).verdict, Reject);
+
+    // Границы: ровно 1 с, ровно 60 с и 640×360 — принимаются.
+    assert_eq!(check(webm, Some("1"), json!([vstream("vp9", 640, 360)])).verdict, AsIs);
+    let c = check(webm, Some("60"), json!([vstream("vp9", 640, 360)]));
+    assert_eq!(c.verdict, AsIs);
+    // Дольше 30 с — предупреждение, но не отказ.
+    assert_eq!(
+        c.warnings,
+        vec!["Ролик длиннее 30 секунд — это заставка, а не фильм: ждать её придётся при каждом входе.".to_string()]
+    );
+    assert!(check(webm, Some("30"), json!([vstream("vp9", 640, 360)])).warnings.is_empty());
+    let c = check(mp4, Some("45"), json!([vstream("h264", 1920, 1080)]));
+    assert_eq!((c.verdict, c.warnings.len()), (Transcode, 1));
+    assert_eq!(
+        ss::msg_movie_will_convert(),
+        "Ролик будет перекодирован в WebM, чтобы его мог показать Steam. Исходный файл останется как есть."
+    );
+}
+
+/// Ролик проверяется тем же ffprobe, что и длительность для витрины.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn flow_probe_movie_runs_ffprobe() {
+    let _lang = i18n_pin::ru();
+    let out = probe_json("matroska,webm", Some("4.0"), json!([vstream("vp9", 1280, 720)]));
+    let mut io = FakeIo::new()
+        .with_bin("ffprobe")
+        .with_run("-show_streams", 0, &out, "");
+    let c = Splash::new(&mut io, HOME).probe_movie("/v.webm");
+    assert_eq!(c.verdict, ss::MovieVerdict::AsIs);
+    assert!(io.has("run /usr/bin/ffprobe -v error -show_streams -show_format -of json /v.webm"));
+    // ffprobe нет или он упал — отказ, а не молчаливый приём.
+    let mut io = FakeIo::new();
+    assert_eq!(Splash::new(&mut io, HOME).probe_movie("/v.webm").verdict, ss::MovieVerdict::Reject);
+    let mut io = FakeIo::new().with_bin("ffprobe").with_run("-show_streams", 1, "", "Invalid data");
+    assert_eq!(Splash::new(&mut io, HOME).probe_movie("/v.webm").verdict, ss::MovieVerdict::Reject);
+}
+
+/// Настоящие маленькие ролики ffmpeg'ом во временном каталоге — разбор
+/// живого вывода ffprobe, а не только образцов.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: ffmpeg и ffprobe")]
+fn movie_probe_on_real_clips() {
+    use std::process::Command;
+    let have = |b: &str| Command::new(b).arg("-version").output().map(|o| o.status.success()).unwrap_or(false);
+    if !have("ffmpeg") || !have("ffprobe") {
+        eprintln!("ffmpeg/ffprobe нет — проверка пропущена");
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("rexon-movie-probe-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let make = |name: &str, size: &str, secs: &str, codec: &[&str]| {
+        let path = dir.join(name);
+        let mut args: Vec<String> = ["-v", "error", "-y", "-f", "lavfi", "-i"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        args.push(format!("testsrc=size={size}:rate=10:duration={secs}"));
+        args.extend(["-f", "lavfi", "-i"].iter().map(|s| s.to_string()));
+        args.push(format!("sine=duration={secs}"));
+        args.extend(codec.iter().map(|s| s.to_string()));
+        args.push("-shortest".into());
+        args.push(path.to_string_lossy().into_owned());
+        let ok = Command::new("ffmpeg").args(&args).status().map(|s| s.success()).unwrap_or(false);
+        assert!(ok, "ffmpeg не сделал {name}");
+        let argv = ss::ffprobe_streams_argv("ffprobe", &path.to_string_lossy());
+        let out = Command::new(&argv[0]).args(&argv[1..]).output().unwrap();
+        ss::check_movie_probe(&String::from_utf8_lossy(&out.stdout))
+    };
+    let vp9 = ["-c:v", "libvpx-vp9", "-deadline", "realtime", "-cpu-used", "8", "-c:a", "libopus"];
+    let c = make("ok.webm", "640x360", "2", &vp9);
+    assert_eq!(c.verdict, ss::MovieVerdict::AsIs, "{c:?}");
+    assert!((c.duration - 2.0).abs() < 0.2, "{c:?}");
+    let c = make("small.webm", "320x240", "2", &vp9);
+    assert_eq!(c.verdict, ss::MovieVerdict::Reject, "{c:?}");
+    let c = make("other.mkv", "640x360", "2", &["-c:v", "mpeg4", "-c:a", "mp2"]);
+    assert_eq!(c.verdict, ss::MovieVerdict::Transcode, "{c:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Новые подписи по-английски — без русского.
+#[test]
+fn custom_movie_texts_in_english() {
+    let _lang = i18n_pin::en();
+    assert_eq!(ss::custom_movie_label(), "Your own movie");
+    for text in [
+        ss::msg_movie_unreadable(),
+        ss::msg_movie_no_picture(),
+        ss::msg_movie_too_short(),
+        ss::msg_movie_too_long(),
+        ss::msg_movie_too_small(320, 240),
+        ss::msg_movie_long_warning(),
+        ss::msg_movie_will_convert(),
+    ] {
+        assert!(!text.is_empty() && !has_cyrillic(&text), "{text}");
+    }
+    assert!(ss::msg_movie_too_small(320, 240).contains("(320×240)"));
 }

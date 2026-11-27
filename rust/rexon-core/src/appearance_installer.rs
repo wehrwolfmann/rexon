@@ -5532,6 +5532,30 @@ impl LiveInstaller {
         (ok, msg)
     }
 
+    /// Тема курсора, включённая в этом окружении (`None` — не узнать).
+    pub fn active_cursor_theme(&self) -> Option<String> {
+        let xdg = xdg_config_home();
+        live_cursor_value(&self.de, &self.home, xdg.as_deref(), false)
+    }
+
+    /// Применить заново ту же тему курсора — после того как её файлы
+    /// заменены на месте (перевод заново из оригиналов Windows). Тот же
+    /// план, что у «Применить» раздела курсоров, но без записи в историю:
+    /// человек ничего не выбирал, «Вернуть как было» остаётся прежним.
+    pub fn refresh_cursor(&mut self, theme: &str) -> bool {
+        let mut facts = PressFacts {
+            de: self.de.clone(),
+            home: self.home.clone(),
+            xdg_config_home: xdg_config_home(),
+            ..PressFacts::default()
+        };
+        self.cursor_facts(theme, &mut facts);
+        match press_plan_with(&ApplyAction::Cursor, theme, &facts) {
+            PressPlan::Steps { steps, .. } => self.exec_press("", None, theme, &steps).ok,
+            _ => false,
+        }
+    }
+
     /// Текущий размер курсора в этом окружении (`None` — никто не задавал).
     pub fn cursor_size(&self) -> Option<u32> {
         let xdg = xdg_config_home();

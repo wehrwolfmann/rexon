@@ -318,6 +318,58 @@ pub fn found_items(found: &[Found], running: &[String]) -> Vec<ThemeItem> {
         .collect()
 }
 
+/// Плитки своих виджетов с учётом пакетов из нескольких виджетов
+/// ([`crate::de_apply::conky_nested_widgets`]): плитка такого пакета
+/// `<id>` заменяется плитками его вложенных виджетов `<id>/<подпапка>`
+/// (те, чьи папки на месте); плитка вложенного виджета, пришедшая из
+/// списка запущенных, получает подпись и путь своей папки. `running` —
+/// имена запущенных. Остальные плитки — как были.
+pub fn split_package_items(io: &dyn LookIo, ctx: &Ctx, items: Vec<ThemeItem>, running: &[String]) -> Vec<ThemeItem> {
+    let mut out: Vec<ThemeItem> = Vec::with_capacity(items.len());
+    let fix = |it: &mut ThemeItem, name: &str| {
+        it.id = format!("local:conky:{name}");
+        it.name = widget_title(name);
+        it.install_path = widget_path(ctx, name);
+    };
+    for item in items {
+        let Some(name) = item.id.strip_prefix("local:conky:").map(str::to_string) else {
+            out.push(item);
+            continue;
+        };
+        if is_found_name(&name) {
+            out.push(item);
+            continue;
+        }
+        if let Some((top, _)) = name.split_once('/') {
+            if crate::de_apply::conky_nested_widgets(io, ctx, top).contains(&name) && !out.iter().any(|o| o.id == item.id) {
+                let mut it = item;
+                fix(&mut it, &name);
+                out.push(it);
+            }
+            continue;
+        }
+        let nested = crate::de_apply::conky_nested_widgets(io, ctx, &name);
+        if nested.is_empty() {
+            out.push(item);
+            continue;
+        }
+        for n in nested {
+            if !is_dir(io, &widget_path(ctx, &n)) || out.iter().any(|o| o.id == format!("local:conky:{n}")) {
+                continue;
+            }
+            let mut it = item.clone();
+            fix(&mut it, &n);
+            it.preview_local = String::new();
+            it.description = String::new();
+            let on = running.contains(&n);
+            it.local_kind = on.then(|| "active".to_string());
+            it.applied = on;
+            out.push(it);
+        }
+    }
+    out
+}
+
 /// Свои папки с виджетами из настроек Rexon ([`EXTRA_DIRS_KEY`]).
 pub fn live_extra_dirs() -> Vec<String> {
     let settings = crate::settings::load_settings(&crate::settings::settings_file());
@@ -378,11 +430,13 @@ pub fn extra_dirs_for(ctx: &Ctx) -> Vec<String> {
 }
 
 /// Часть имени файла автозапуска (`rexon-conky-<часть>.desktop`): у виджета
-/// Rexon — его имя (как писала установка), у найденного — `found-` и
-/// отпечаток пути (в имени файла косой черты быть не может).
+/// Rexon — его имя (как писала установка), у вложенного виджета пакета
+/// (`<id>/<подпапка>`, [`crate::de_apply::conky_nested_widgets`]) —
+/// `<id>@<подпапка>`, у найденного — `found-` и отпечаток пути (в имени
+/// файла косой черты быть не может).
 pub fn autostart_key(name: &str) -> String {
     if !is_found_name(name) {
-        return name.to_string();
+        return name.replace('/', "@");
     }
     // FNV-1a, 64 бита: стабилен между запусками и выпусками.
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
@@ -630,16 +684,13 @@ fn stop_and_trash(io: &dyn LookIo, ctx: &Ctx, name: &str, title: &str, home_tras
 // так же, как найденный: после вопроса гаснут его процессы (по номерам),
 // уходит запись автозапуска, папка — в корзину.
 
-/// Имя своего виджета по пути его папки: прямой потомок каталога Rexon,
-/// папка (не ссылка и не файл). Иначе `None`.
+/// Имя своего виджета по пути его папки: прямой потомок каталога Rexon
+/// либо вложенный виджет пакета (`<id>/<подпапка>`), папка (не ссылка и не
+/// файл). Иначе `None`.
 pub fn own_widget_name(ctx: &Ctx, path: &str) -> Option<String> {
-    let root = format!("{}/", crate::de_apply::conky_root(ctx));
-    let id = path.trim_end_matches('/').strip_prefix(&root)?;
-    if id.is_empty() || id == "." || id == ".." || id.contains('/') {
-        return None;
-    }
-    let meta = std::fs::symlink_metadata(format!("{root}{id}")).ok()?;
-    meta.is_dir().then(|| id.to_string())
+    let id = crate::de_apply::conky_widget_of_dir(&crate::animations::SystemIo, ctx, path)?;
+    let meta = std::fs::symlink_metadata(widget_path(ctx, &id)).ok()?;
+    meta.is_dir().then_some(id)
 }
 
 /// Вопрос перед «Удалить» своего запущенного виджета: `(заголовок, текст)`.
@@ -838,6 +889,14 @@ pub fn widget_credits_html(io: &dyn LookIo, path: &str) -> Option<String> {
         }
     }
     (!parts.is_empty()).then(|| parts.join("<br>"))
+}
+
+/// Картинка плитки виджета `name` сейчас: своя картинка автора, иначе
+/// готовый снимок Rexon (`conky_preview`). Открытая карточка берёт её
+/// заново, когда снимок пересняли (сменили цвета, настройки).
+pub fn tile_picture(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
+    let confs = widget_confs(io, ctx, name, None);
+    widget_picture(io, &widget_path(ctx, name), &confs).or_else(|| crate::conky_preview::cached(ctx, &confs))
 }
 
 /// Плитка виджета Conky: картинка из папки виджета, если её ещё нет, и

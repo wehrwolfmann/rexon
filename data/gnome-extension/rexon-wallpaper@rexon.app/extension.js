@@ -152,6 +152,19 @@ function earlyExitText(argv, status) {
         '). Запускали: ' + argv.join(' ') + '. Причину называет сама ' +
         'программа показа — её видно в журнале сеанса.';
 }
+
+// Хост проработал дольше этого и лёг — это уже не отказ запуска, а падение
+// на ходу (сон, сброс видеокарты, ошибка драйвера). Такие Rexon поднимает
+// сам: его сторож видит пропажу хоста по метке сердцебиения и перезапускает
+// обои через настройки расширения, а если падения пойдут подряд — ставит
+// неподвижный кадр и говорит об этом ОДНИМ уведомлением. Сообщение оболочки
+// здесь было бы вторым, и на каждое падение.
+const EARLY_EXIT_MS = 10000;
+
+// Считать ли выход хоста отказом запуска (показать сообщение).
+function isLaunchFailure(livedMs) {
+    return livedMs < EARLY_EXIT_MS;
+}
 // [rexon-wp:launch-diagnostics:end]
 
 
@@ -567,10 +580,15 @@ export default class RexonWallpaperExtension extends Extension {
                 return;
             }
             this._daemon_pid = pid;
+            const startedUs = GLib.get_monotonic_time();
             GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, (_pid, status) => {
                 console.log('[rexon-wp] daemon exited, status=' + status);
-                this._daemon_pid = null;
                 GLib.spawn_close_pid(_pid);
+                // Выход ПРЕЖНЕГО хоста (сняли сами либо перезапуск): текущий
+                // уже другой — его актёров и номер не трогаем. Прежде такой
+                // запоздалый выход снимал актёры только что поднятого хоста.
+                if (this._daemon_pid !== _pid) return;
+                this._daemon_pid = null;
                 // Сами сняли демона (смена обоев, выключение) — это не отказ.
                 const stopping = this._daemon_stopping;
                 this._daemon_stopping = false;
@@ -579,7 +597,12 @@ export default class RexonWallpaperExtension extends Extension {
                 // так и останется чёрным прямоугольником без обоев.
                 this._stopTick();
                 this._removeActors();
-                this._reportFailure(earlyExitText(argv, status), cfg);
+                const livedMs = (GLib.get_monotonic_time() - startedUs) / 1000;
+                if (isLaunchFailure(livedMs))
+                    this._reportFailure(earlyExitText(argv, status), cfg);
+                else
+                    console.warn('[rexon-wp] показ обоев завершился на ходу (код ' +
+                        status + ') — поднимет сторож Rexon');
             });
         } catch (e) {
             this._reportFailure(spawnFailureText(argv, e.message), cfg);

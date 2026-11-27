@@ -239,11 +239,35 @@ pub enum Rule {
         anchor: &'static str,
         precision: Precision,
         may_lag: &'static [&'static str],
+        /// Члены со СВОЕЙ нумерацией начиная с указанной версии (`qt6-webengine`
+        /// с 6.140.0): с неё номер с опорным не сравнивается вовсе — это не
+        /// версия Qt. Ниже — член сверяется как обычно (с учётом `may_lag`).
+        own_numbering: &'static [OwnNumbering],
     },
     /// Номера разные, но двигаться обязаны вместе: один член обновляется,
     /// а у другого в репозиториях уже есть новее, чем ставит pacman
     /// (репозиторий с приоритетом держит старую сборку), — разойдутся.
     MoveTogether,
+}
+
+/// Член набора, который с какой-то версии нумеруется сам по себе.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OwnNumbering {
+    pub package: &'static str,
+    /// Первая версия своей нумерации (первые числа: `[6, 140]`).
+    pub from: &'static [u128],
+}
+
+impl OwnNumbering {
+    /// Эта версия пакета — уже в своей нумерации.
+    fn covers(&self, name: &str, version: &str) -> bool {
+        name == self.package && ver_tuple(&upstream_version(version)).as_slice() >= self.from
+    }
+}
+
+/// Версия члена — в своей нумерации, сверять с опорным нечего.
+fn own_scheme(own: &[OwnNumbering], name: &str, version: &str) -> bool {
+    own.iter().any(|o| o.covers(name, version))
 }
 
 /// Чем грозит разошедшийся набор.
@@ -273,8 +297,18 @@ pub struct PackageSet {
 ///   `qt6-base`, привязанным к ТОЧНОЙ версии (`QtPrivate_6_12_0`; замер
 ///   08.10.2026 `objdump -T`: 16 пакетов `qt6-*` требуют этот знак). Исключение
 ///   — `qt6-webengine`: его библиотеки приватным интерфейсом с такой
-///   привязкой не пользуются, и в Arch он штатно отстаёт (сейчас 6.11.2 при
-///   `qt6-base` 6.12.0, `ldd -r` чисто). Отставать ему можно, обгонять — нет.
+///   привязкой не пользуются (замер 14.11.2026 `objdump -T`: у 6.140.0 нет
+///   ни одного `QtPrivate_6_*`, у `qt6-declarative` 6.12.0 — 57, у
+///   `qt6-wayland` — 4). Пока он нумеровался как Qt, ему можно было
+///   отставать (6.11.2 при `qt6-base` 6.12.0), но не обгонять. С Qt 6.12
+///   Qt WebEngine (вместе с Qt PDF и движком Qt WebView) — отдельный продукт
+///   со СВОЕЙ нумерацией: второе число — базовая версия Chromium (6.140.0 —
+///   Chromium 140, вышел рядом с Qt 6.12.0; блог qt.io «Qt WebEngine will
+///   release separately»). Номер 6.140 ничего не говорит о версии Qt, и
+///   сравнивать его с `qt6-base` нельзя (ложная тревога 14.11.2026: «qt6-base
+///   6.12.0 при qt6-webengine 6.140.0», пакет из Arch `extra`, `ldd` чисто).
+///   ⚠️ Граница: требование «Qt не старее той, под которую собран» по номеру
+///   своей нумерации не видно — в Arch `depends` у него просто `qt6-base`.
 /// * **KDE Frameworks** и **Plasma** — до второго числа (группы pacman
 ///   `kf6` и `plasma`: точечные выпуски отдельных пакетов — норма).
 /// * **GNOME** — `gnome-shell` работает только со своим `mutter` (номер
@@ -286,28 +320,33 @@ pub const PACKAGE_SETS: &[PackageSet] = &[
         id: "qt6",
         name: "Qt",
         members: Members::Prefix("qt6-"),
-        rule: Rule::SameVersion { anchor: "qt6-base", precision: Precision::Patch, may_lag: &["qt6-webengine"] },
+        rule: Rule::SameVersion {
+            anchor: "qt6-base",
+            precision: Precision::Patch,
+            may_lag: &["qt6-webengine"],
+            own_numbering: &[OwnNumbering { package: "qt6-webengine", from: &[6, 140] }],
+        },
         effect: Effect::LoginScreen,
     },
     PackageSet {
         id: "kf6",
         name: "KDE Frameworks",
         members: Members::Group("kf6"),
-        rule: Rule::SameVersion { anchor: "kcoreaddons", precision: Precision::Minor, may_lag: &[] },
+        rule: Rule::SameVersion { anchor: "kcoreaddons", precision: Precision::Minor, may_lag: &[], own_numbering: &[] },
         effect: Effect::LoginScreen,
     },
     PackageSet {
         id: "plasma",
         name: "Plasma",
         members: Members::Group("plasma"),
-        rule: Rule::SameVersion { anchor: "plasma-workspace", precision: Precision::Minor, may_lag: &[] },
+        rule: Rule::SameVersion { anchor: "plasma-workspace", precision: Precision::Minor, may_lag: &[], own_numbering: &[] },
         effect: Effect::LoginScreen,
     },
     PackageSet {
         id: "gnome",
         name: "GNOME",
         members: Members::Names(&["mutter", "gnome-shell"]),
-        rule: Rule::SameVersion { anchor: "mutter", precision: Precision::Major, may_lag: &[] },
+        rule: Rule::SameVersion { anchor: "mutter", precision: Precision::Major, may_lag: &[], own_numbering: &[] },
         effect: Effect::LoginScreen,
     },
     PackageSet {
@@ -430,7 +469,9 @@ pub fn evaluate(survey: &Survey, sets: &[PackageSet]) -> Vec<Finding> {
 
 fn evaluate_set(set: &PackageSet, survey: &Survey) -> Vec<Finding> {
     match set.rule {
-        Rule::SameVersion { anchor, precision, may_lag } => same_version(set, survey, anchor, precision, may_lag),
+        Rule::SameVersion { anchor, precision, may_lag, own_numbering } => {
+            same_version(set, survey, anchor, precision, may_lag, own_numbering)
+        }
         Rule::MoveTogether => move_together(set, survey).into_iter().collect(),
     }
 }
@@ -441,12 +482,14 @@ fn mismatched(
     anchor: &str,
     precision: Precision,
     may_lag: &[&str],
+    own: &[OwnNumbering],
     version: &dyn Fn(&str) -> String,
 ) -> Vec<String> {
     let anchor_key = key_of(&version(anchor), precision);
     names
         .iter()
         .filter(|n| **n != anchor)
+        .filter(|n| !own_scheme(own, n, &version(n)))
         .filter(|n| {
             let k = key_of(&version(n), precision);
             if may_lag.contains(n) {
@@ -465,6 +508,7 @@ fn same_version(
     anchor: &str,
     precision: Precision,
     may_lag: &[&str],
+    own: &[OwnNumbering],
 ) -> Vec<Finding> {
     let members = members_of(set, survey);
     let Some(anchor_installed) = members.iter().find(|(n, _)| n == anchor).map(|(_, v)| v.clone()) else {
@@ -491,6 +535,7 @@ fn same_version(
     let anchor_after = key_of(&after(anchor), precision);
     let mut out: Vec<Finding> = orphans
         .iter()
+        .filter(|n| !own_scheme(own, n, &installed(n)))
         .filter(|n| {
             let k = key_of(&installed(n), precision);
             if may_lag.contains(n) {
@@ -508,8 +553,8 @@ fn same_version(
         })
         .collect();
 
-    let before_odd = mismatched(&names, anchor, precision, may_lag, &installed);
-    let after_odd = mismatched(&names, anchor, precision, may_lag, &after);
+    let before_odd = mismatched(&names, anchor, precision, may_lag, own, &installed);
+    let after_odd = mismatched(&names, anchor, precision, may_lag, own, &after);
     let (stage, odd, version): (Stage, Vec<String>, &dyn Fn(&str) -> String) =
         match (before_odd.is_empty(), after_odd.is_empty()) {
             (true, true) => return out,
@@ -1993,6 +2038,84 @@ mod tests {
         let found = evaluate(&survey_with(all_612, "qt6-webengine 6.11.2-2 -> 6.13.0-1\n"), PACKAGE_SETS);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].odd[0].0, "qt6-webengine");
+    }
+
+    /// Случай 14.11.2026: Arch выложил qt6-webengine 6.140.0 — у Qt WebEngine
+    /// своя нумерация (второе число — Chromium), это не «части Qt разных
+    /// версий». Молчим и когда он уже стоит, и когда только приходит.
+    #[test]
+    fn webengine_own_numbering_is_not_mixed_qt() {
+        let qt_612 = installed(&[
+            ("qt6-base", "6.12.0-5"),
+            ("qt6-declarative", "6.12.0-4.1"),
+            ("qt6-wayland", "6.12.0-1.1"),
+            ("qt6-webview", "6.12.0-1.1"),
+            ("qt6-webengine", "6.140.0-1"),
+        ]);
+        assert!(evaluate(&survey_with(qt_612.clone(), ""), PACKAGE_SETS).is_empty());
+        let mut old_web = qt_612.clone();
+        old_web[4].1 = "6.11.2-2".into();
+        assert!(evaluate(&survey_with(old_web, "qt6-webengine 6.11.2-2 -> 6.140.0-1\n"), PACKAGE_SETS).is_empty());
+        // Следующий выпуск своей нумерации — тоже молчим.
+        assert!(evaluate(&survey_with(qt_612.clone(), "qt6-webengine 6.140.0-1 -> 6.146.0-1\n"), PACKAGE_SETS).is_empty());
+        // Весь Qt уходит на 6.13, webengine остаётся 6.140 — молчим.
+        let whole = "qt6-base 6.12.0-5 -> 6.13.0-1\nqt6-declarative 6.12.0-4.1 -> 6.13.0-1\n\
+                     qt6-wayland 6.12.0-1.1 -> 6.13.0-1\nqt6-webview 6.12.0-1.1 -> 6.13.0-1\n";
+        assert!(evaluate(&survey_with(qt_612, whole), PACKAGE_SETS).is_empty());
+    }
+
+    /// Настоящее частичное обновление рядом с webengine своей нумерации:
+    /// тревога есть, и в тексте только модули с нумерацией Qt.
+    #[test]
+    fn real_mixed_qt_next_to_webengine_own_numbering() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let mixed = installed(&[
+            ("qt6-base", "6.12.0-5"),
+            ("qt6-declarative", "6.11.2-1.1"),
+            ("qt6-webengine", "6.140.0-1"),
+        ]);
+        let found = evaluate(&survey_with(mixed.clone(), ""), PACKAGE_SETS);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].stage, Stage::DontReboot);
+        let odd: Vec<&str> = found[0].odd.iter().map(|(n, _, _)| n.as_str()).collect();
+        assert_eq!(odd, ["qt6-declarative"]);
+        // Откатывать webengine к «серии 6.11» нельзя: его номер — не Qt.
+        assert_eq!(found[0].rollback.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["qt6-base"]);
+        let text = finding_text(&found[0], true);
+        assert!(text.contains("qt6-base 6.12.0 with qt6-declarative 6.11.2"), "{text}");
+        assert!(!text.contains("webengine"), "{text}");
+        // До обновления: qt6-base уходит на 6.13, declarative остаётся — «не обновляйтесь».
+        let qt_612 = installed(&[
+            ("qt6-base", "6.12.0-5"),
+            ("qt6-declarative", "6.12.0-4.1"),
+            ("qt6-webengine", "6.140.0-1"),
+        ]);
+        let hold = evaluate(&survey_with(qt_612, "qt6-base 6.12.0-5 -> 6.13.0-1\n"), PACKAGE_SETS);
+        assert_eq!(hold.len(), 1, "{hold:?}");
+        assert_eq!(hold[0].stage, Stage::Hold);
+        assert_eq!(hold[0].odd.iter().map(|(n, _, _)| n.as_str()).collect::<Vec<_>>(), ["qt6-declarative"]);
+    }
+
+    /// Граница своей нумерации — ровно 6.140: 6.14.0 ещё нумерация Qt (и
+    /// обгоняет qt6-base 6.12 — тревога), 6.139.x тоже; сам 6.140.0 — уже своя.
+    #[test]
+    fn webengine_own_numbering_boundary() {
+        let qt = |web: &str| {
+            installed(&[("qt6-base", "6.12.0-5"), ("qt6-declarative", "6.12.0-4.1"), ("qt6-webengine", web)])
+        };
+        for web in ["6.14.0-1", "6.139.0-1", "1:6.13.0-1"] {
+            let found = evaluate(&survey_with(qt(web), ""), PACKAGE_SETS);
+            assert_eq!(found.len(), 1, "{web}: {found:?}");
+            assert_eq!(found[0].odd[0].0, "qt6-webengine", "{web}");
+        }
+        for web in ["6.140.0-1", "6.140.1-2", "1:6.150.0-1"] {
+            assert!(evaluate(&survey_with(qt(web), ""), PACKAGE_SETS).is_empty(), "{web}");
+        }
+        // Своя нумерация — только у webengine: qt6-webview 6.140 — тревога.
+        let mut odd_view = qt("6.140.0-1");
+        odd_view.push(("qt6-webview".into(), "6.140.0-1".into()));
+        let found = evaluate(&survey_with(odd_view, ""), PACKAGE_SETS);
+        assert_eq!(found[0].odd.iter().map(|(n, _, _)| n.as_str()).collect::<Vec<_>>(), ["qt6-webview"]);
     }
 
     /// Обновление уже развело Qt и не чинит — «не перезагружайтесь», откат из

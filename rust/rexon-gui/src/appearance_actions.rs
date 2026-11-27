@@ -268,6 +268,21 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "shellPaletteDone"]
         fn shell_palette_done(self: Pin<&mut AppearanceActions>, text: QString, ok: bool);
+
+        /// Итог действия плитки расширения GNOME (`gnomeExtensionAction`):
+        /// строка JSON `{ok, action, uuid, message, folder?, path?,
+        /// details?}` (`gnome_ext_section::run_action`).
+        #[qsignal]
+        #[cxx_name = "gnomeExtensionDone"]
+        fn gnome_extension_done(self: Pin<&mut AppearanceActions>, payload: QString);
+
+        /// Сколько обновлений расширений GNOME оболочка уже скачала:
+        /// строка JSON `{count, text, logoutLabel}`
+        /// (`gnome_ext_section::updates_answer`). `text` — строка состояния
+        /// раздела, пусто — обновлений нет.
+        #[qsignal]
+        #[cxx_name = "gnomeUpdatesChanged"]
+        fn gnome_updates_changed(self: Pin<&mut AppearanceActions>, payload: QString);
     }
 
     extern "RustQt" {
@@ -440,6 +455,34 @@ pub mod qobject {
         #[cxx_name = "applyCursorSize"]
         fn apply_cursor_size(self: Pin<&mut AppearanceActions>, size: i32);
 
+        /// Действие плитки расширения GNOME: `toggle`, `enable`, `disable`,
+        /// `prefs`, `uninstall` (только своё), `folder` (своё — открыть
+        /// папку, системное — скопировать путь), `errorDetails`. При
+        /// запущенной оболочке — через неё, без неё — запасной путь. Итог —
+        /// `gnomeExtensionDone` (и `actionDone` у переключения и удаления).
+        #[qinvokable]
+        #[cxx_name = "gnomeExtensionAction"]
+        fn gnome_extension_action(self: Pin<&mut AppearanceActions>, item_id: &QString, action: &QString);
+
+        /// Скачанные обновления расширений GNOME сейчас (та же строка, что
+        /// у `gnomeUpdatesChanged`).
+        #[qinvokable]
+        #[cxx_name = "gnomeUpdates"]
+        fn gnome_updates(self: &AppearanceActions) -> QString;
+
+        /// Подписи раздела «Расширения GNOME» (JSON
+        /// `gnome_ext_section::page_texts`).
+        #[qinvokable]
+        #[cxx_name = "gnomeExtTexts"]
+        fn gnome_ext_texts(self: &AppearanceActions) -> QString;
+
+        /// «Выйти из сеанса», чтобы скачанные обновления расширений
+        /// применились: `gnome-session-quit --logout`, подтверждение
+        /// показывает GNOME. `false` — запустить не удалось.
+        #[qinvokable]
+        #[cxx_name = "logOutForUpdates"]
+        fn log_out_for_updates(self: &AppearanceActions) -> bool;
+
         /// Удалить установленную тему. Товар магазина — по журналу
         /// установленных; тема с диска (`local:…`) — как `removeLocalById`.
         #[qinvokable]
@@ -568,6 +611,24 @@ pub mod qobject {
         #[cxx_name = "resetConkySettings"]
         fn reset_conky_settings(self: Pin<&mut AppearanceActions>, item_id: &QString, conf: &QString) -> QString;
 
+        /// Палитра цветов виджета Conky плитки `itemId` — JSON
+        /// `conky_colors::View`: кружки цветов со счётчиком мест, оговорки.
+        #[qinvokable]
+        #[cxx_name = "conkyColours"]
+        fn conky_colours(self: &AppearanceActions, item_id: &QString) -> QString;
+
+        /// Поменять цвет `from` на `to` (`#rrggbb`) во всех местах файлов
+        /// виджета. Итог — сигналом `actionDone`; отдаёт палитру заново.
+        #[qinvokable]
+        #[cxx_name = "setConkyColour"]
+        fn set_conky_colour(self: Pin<&mut AppearanceActions>, item_id: &QString, from: &QString, to: &QString) -> QString;
+
+        /// «Вернуть цвета»: файлы виджета — как до первой смены цвета
+        /// (правили и после Rexon — сперва вопрос). Отдаёт палитру заново.
+        #[qinvokable]
+        #[cxx_name = "revertConkyColours"]
+        fn revert_conky_colours(self: Pin<&mut AppearanceActions>, item_id: &QString) -> QString;
+
         /// Подписи раздела «Виджеты Conky» (JSON `conky_procs::SectionTexts`).
         #[qinvokable]
         #[cxx_name = "conkyTexts"]
@@ -603,6 +664,13 @@ pub mod qobject {
         #[cxx_name = "applyConkySet"]
         fn apply_conky_set(self: Pin<&mut AppearanceActions>, name: &QString);
 
+        /// «Сохранить набор в файл…»: окно сохранения, вопрос, если в
+        /// виджетах нашлось личное, затем `.rxn`. Итог — сигналом
+        /// `actionDone`; `true` — сохранён.
+        #[qinvokable]
+        #[cxx_name = "exportConkySet"]
+        fn export_conky_set(self: Pin<&mut AppearanceActions>, name: &QString) -> bool;
+
         /// Удалить свой набор после вопроса. Итог — сигналом `actionDone`.
         #[qinvokable]
         #[cxx_name = "removeConkySet"]
@@ -627,6 +695,55 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setConkyPreviewScreen"]
         fn set_conky_preview_screen(self: &AppearanceActions, width: i32, height: i32, dpi: i32);
+
+        /// Мини-карта экрана: запущенные виджеты Conky и файл `conf`
+        /// плитки `itemId` (пусто — без карточки) — JSON
+        /// `conky_layout::MapView`. `screens` — экраны окна (JSON
+        /// `[{name, x, y, width, height}]`).
+        #[qinvokable]
+        #[cxx_name = "conkyScreenMap"]
+        fn conky_screen_map(self: &AppearanceActions, item_id: &QString, conf: &QString, screens: &QString) -> QString;
+
+        /// Виджет перетащили на мини-карте: окно файла `conf` теперь в
+        /// `x, y, w, h` (точки экрана); `snap` — прилипать к краям. Итог —
+        /// сигналом `actionDone`.
+        #[qinvokable]
+        #[cxx_name = "moveConkyWidget"]
+        fn move_conky_widget(
+            self: Pin<&mut AppearanceActions>,
+            item_id: &QString,
+            conf: &QString,
+            x: i32,
+            y: i32,
+            w: i32,
+            h: i32,
+            snap: bool,
+            screens: &QString,
+        ) -> bool;
+
+        /// «Вернуть» на мини-карте: положение файла `conf` — `saved`
+        /// (JSON из карты).
+        #[qinvokable]
+        #[cxx_name = "restoreConkyPosition"]
+        fn restore_conky_position(self: Pin<&mut AppearanceActions>, item_id: &QString, conf: &QString, saved: &QString) -> bool;
+
+        /// Подсказка «превью нет — нет Xvfb» раздела Conky (JSON
+        /// `conky_preview::XvfbHint`).
+        #[qinvokable]
+        #[cxx_name = "conkyXvfbHint"]
+        fn conky_xvfb_hint(self: &AppearanceActions) -> QString;
+
+        /// Закрыть подсказку про Xvfb навсегда.
+        #[qinvokable]
+        #[cxx_name = "closeConkyXvfbHint"]
+        fn close_conky_xvfb_hint(self: &AppearanceActions);
+
+        /// Поставить Xvfb в фоне общим путём недостающих программ (окно
+        /// пароля). Итог — сигналом `actionDone`, затем `conkyDiskChanged`,
+        /// чтобы плитки переснялись.
+        #[qinvokable]
+        #[cxx_name = "installConkyXvfb"]
+        fn install_conky_xvfb(self: Pin<&mut AppearanceActions>);
 
         /// Разовая чистка протухших переводов: место в кеше, не более.
         #[qinvokable]
@@ -784,6 +901,8 @@ use rexon_core::aur::{self, AurPackage};
 use rexon_core::aur_install;
 use rexon_core::categories;
 use rexon_core::cinnamon_spices as cs;
+use rexon_core::gnome_ego as ego;
+use rexon_core::gnome_ext_section as gext;
 use rexon_core::wallhaven as wh;
 use rexon_core::de_apply;
 use rexon_core::favorites;
@@ -880,6 +999,11 @@ struct State {
     /// Рабочий стол последнего скана диска: по нему снятие проверяет,
     /// не включена ли тема в разделе окружения.
     last_de: Mutex<String>,
+    /// Проверка обновлений расширений GNOME уже запрошена в этом сеансе
+    /// (`CheckForUpdates()` — один раз, при первом открытии раздела).
+    gnome_updates_checked: std::sync::atomic::AtomicBool,
+    /// Сколько обновлений расширений оболочка уже скачала.
+    gnome_updates: Mutex<usize>,
 }
 
 /// Страница закрылась (или программа вышла), а строка «Вернуть» ещё висела:
@@ -892,7 +1016,7 @@ impl Drop for State {
             return;
         }
         let de = self.last_de.get_mut().map(|d| d.clone()).unwrap_or_default();
-        let (ok, msg) = removal::live_commit(pending, &de);
+        let (ok, msg) = commit_pending(pending, &de);
         rexon_core::log_info!("theme", "удаление на закрытии: {} — {msg}", if ok { "удалось" } else { "не всё" });
     }
 }
@@ -1167,6 +1291,34 @@ impl qobject::AppearanceActions {
         self.conky_settings(item_id, conf)
     }
 
+    fn conky_colours(&self, item_id: &QString) -> QString {
+        let name = ap::local_theme_name(&item_id.to_string(), "");
+        QString::from(&serde_json::to_string(&rexon_core::conky_colors::live_view(&name)).unwrap_or_default())
+    }
+
+    fn set_conky_colour(mut self: Pin<&mut Self>, item_id: &QString, from: &QString, to: &QString) -> QString {
+        let name = ap::local_theme_name(&item_id.to_string(), "");
+        let (ok, msg) = rexon_core::conky_colors::live_set(&name, &from.to_string(), &to.to_string());
+        if !msg.is_empty() {
+            self.as_mut().action_done(QString::from(&ap::action_result_status(ok, &msg)), ok);
+        }
+        self.conky_colours(item_id)
+    }
+
+    fn revert_conky_colours(mut self: Pin<&mut Self>, item_id: &QString) -> QString {
+        let name = ap::local_theme_name(&item_id.to_string(), "");
+        // Файлы правили и после Rexon: возврат сотрёт и эти правки —
+        // сперва вопрос.
+        if let Some((title, text)) = rexon_core::conky_colors::live_revert_question(&name) {
+            if !crate::extensions_actions::ask_confirm(&QString::from(&title), &QString::from(&text)) {
+                return self.conky_colours(item_id);
+            }
+        }
+        let (ok, msg) = rexon_core::conky_colors::live_revert(&name);
+        self.as_mut().action_done(QString::from(&ap::action_result_status(ok, &msg)), ok);
+        self.conky_colours(item_id)
+    }
+
     fn conky_texts(&self) -> QString {
         QString::from(&serde_json::to_string(&rexon_core::conky_procs::section_texts()).unwrap_or_default())
     }
@@ -1233,6 +1385,37 @@ impl qobject::AppearanceActions {
             let (ok, msg) = sets::live_apply(&plan, trusted);
             finish_action(&state, &handle, msg, ok);
         });
+    }
+
+    fn export_conky_set(mut self: Pin<&mut Self>, name: &QString) -> bool {
+        use rexon_core::conky_sets as sets;
+        let name = name.to_string();
+        let (title, filter) = sets::export_dialog();
+        let chosen = crate::extensions_actions::qobject::save_file(
+            &QString::from(&title),
+            &QString::from(&filter),
+            &QString::from(&sets::export_suggested(&home(), &name)),
+        )
+        .to_string();
+        if chosen.is_empty() {
+            return false;
+        }
+        let dest = sets::export_path(&chosen);
+        let mut result = sets::live_export(&name, &dest, false);
+        if let Err(sets::ExportError::Private(found)) = &result {
+            let (q_title, q_text) = sets::export_private_question(&name, found);
+            if !crate::extensions_actions::ask_confirm(&QString::from(&q_title), &QString::from(&q_text)) {
+                return false;
+            }
+            result = sets::live_export(&name, &dest, true);
+        }
+        let (ok, msg) = match result {
+            Ok(done) => (true, sets::export_message(&done)),
+            Err(sets::ExportError::Failed(why)) => (false, why),
+            Err(sets::ExportError::Private(_)) => (false, String::new()),
+        };
+        self.as_mut().action_done(QString::from(&ap::action_result_status(ok, &msg)), ok);
+        ok
     }
 
     fn remove_conky_set(mut self: Pin<&mut Self>, name: &QString) -> bool {
@@ -1307,6 +1490,62 @@ impl qobject::AppearanceActions {
 
     fn set_conky_preview_screen(&self, width: i32, height: i32, dpi: i32) {
         rexon_core::conky_preview::set_screen(width.max(0) as u32, height.max(0) as u32, dpi.max(0) as u32);
+    }
+
+    fn conky_screen_map(&self, item_id: &QString, conf: &QString, screens: &QString) -> QString {
+        let id = item_id.to_string();
+        let name = if id.is_empty() { String::new() } else { ap::local_theme_name(&id, "") };
+        let map = rexon_core::conky_layout::live_map(&name, &conf.to_string(), &screens.to_string());
+        QString::from(&serde_json::to_string(&map).unwrap_or_default())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn move_conky_widget(
+        mut self: Pin<&mut Self>,
+        item_id: &QString,
+        conf: &QString,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        snap: bool,
+        screens: &QString,
+    ) -> bool {
+        let name = ap::local_theme_name(&item_id.to_string(), "");
+        let r = rexon_core::conky_layout::Rect { x, y, w, h };
+        let (ok, msg) = rexon_core::conky_layout::live_move(&name, &conf.to_string(), r, snap, &screens.to_string());
+        self.as_mut().action_done(QString::from(&ap::action_result_status(ok, &msg)), ok);
+        ok
+    }
+
+    fn restore_conky_position(mut self: Pin<&mut Self>, item_id: &QString, conf: &QString, saved: &QString) -> bool {
+        let name = ap::local_theme_name(&item_id.to_string(), "");
+        let saved: Value = serde_json::from_str(&saved.to_string()).unwrap_or(Value::Null);
+        let (ok, msg) = rexon_core::conky_layout::live_restore(&name, &conf.to_string(), &saved);
+        self.as_mut().action_done(QString::from(&ap::action_result_status(ok, &msg)), ok);
+        ok
+    }
+
+    fn conky_xvfb_hint(&self) -> QString {
+        let hint = rexon_core::conky_preview::live_xvfb_hint();
+        QString::from(&serde_json::to_string(&hint).unwrap_or_default())
+    }
+
+    fn close_conky_xvfb_hint(&self) {
+        rexon_core::conky_preview::close_xvfb_hint();
+    }
+
+    fn install_conky_xvfb(mut self: Pin<&mut Self>) {
+        let handle = self.as_mut().qt_thread();
+        std::thread::spawn(move || {
+            let (ok, msg) = rexon_core::conky_preview::install_xvfb_live();
+            let _ = handle.queue(move |mut o| {
+                o.as_mut().action_done(QString::from(&ap::action_result_status(ok, &msg)), ok);
+                if ok {
+                    o.as_mut().conky_disk_changed();
+                }
+            });
+        });
     }
 
     fn open_url(&self, url: &QString) -> bool {
@@ -1401,6 +1640,9 @@ impl qobject::AppearanceActions {
             cancels.insert(key.clone(), token.clone());
         }
         std::thread::spawn(move || {
+            if s(&req, "categoryKey") == gext::SECTION_KEY {
+                start_gnome_update_check(&state, &handle);
+            }
             let answer = match kind.as_str() {
                 "combined" => fetch_combined(&state, &req, &token),
                 other => fetch_kind(&state, &req, &token, other),
@@ -1664,6 +1906,10 @@ impl qobject::AppearanceActions {
             self.as_mut().action_done(QString::default(), false);
             return;
         };
+        if ego::is_item_id(&item.id) {
+            self.install_gnome_extension(item);
+            return;
+        }
         // Слот заставки при входе один на всех — спор за него разбирается ДО
         // фоновой работы: диалог живёт в потоке интерфейса.
         let (apply_after, keep_video, note) = if apply_after {
@@ -1798,6 +2044,133 @@ impl qobject::AppearanceActions {
         });
     }
 
+    /// Поставить расширение GNOME: через оболочку (её окно подтверждения,
+    /// работает сразу), без неё — zip выпуска под эту версию GNOME
+    /// (заработает при следующем входе). Удалось — запись в журнал
+    /// установленного (`provider_id = ego`).
+    fn install_gnome_extension(mut self: Pin<&mut Self>, item: ThemeItem) {
+        let Some(uuid) = ego::parse_item_id(&item.id).map(str::to_string) else {
+            self.as_mut().action_done(QString::default(), false);
+            return;
+        };
+        let state = self.as_ref().get_ref().rust().state.clone();
+        let handle = self.as_mut().qt_thread();
+        rexon_core::log_info!("gnome-ext", "установка: {uuid}");
+        std::thread::spawn(move || {
+            let data_home = rexon_core::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), &home());
+            let mut io = rexon_core::gnome_shell_ext::LiveShell::new();
+            let shell = ego_shell_version();
+            let token = CancelToken::new();
+            let mut fetch = || {
+                let work = mkdtemp("rexon-gext-").ok_or_else(|| ap::install_download_failed())?;
+                gext::live_fetch_zip(&uuid, shell.as_ref(), std::path::Path::new(&work), &token)
+            };
+            let name = if item.name.is_empty() { uuid.clone() } else { item.name.clone() };
+            let (ok, msg) = match gext::install(&mut io, &uuid, &data_home, &mut fetch) {
+                Ok(outcome) => {
+                    if outcome != rexon_core::gnome_shell_ext::InstallOutcome::Cancelled {
+                        let version = rexon_core::gnome_shell_ext::extension_info(&mut io, &uuid)
+                            .ok()
+                            .flatten()
+                            .map(|i| i.version)
+                            .unwrap_or_else(|| item.version.clone());
+                        let entry = gext::journal_item(&uuid, &name, &version, &item.author);
+                        let now = rexon_core::engine_update::now_iso(
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_secs() as i64)
+                                .unwrap_or(0),
+                        );
+                        if let Err(e) = gext::live_journal_edit(&home(), |log| {
+                            gext::journal_record(log, &entry, &data_home, &uuid, &now)
+                        }) {
+                            rexon_core::log_warn!("gnome-ext", "журнал установленного: {e}");
+                        }
+                    }
+                    gext::install_message(&name, outcome)
+                }
+                Err(e) => (false, e.message()),
+            };
+            finish_action(&state, &handle, msg, ok);
+        });
+    }
+
+    fn gnome_extension_action(mut self: Pin<&mut Self>, item_id: &QString, action: &QString) {
+        let id = item_id.to_string();
+        let (Some(uuid), Some(act)) = (gext::uuid_of_id(&id).map(str::to_string), gext::Action::parse(&action.to_string()))
+        else {
+            self.as_mut().action_done(QString::default(), false);
+            return;
+        };
+        let state = self.as_ref().get_ref().rust().state.clone();
+        let disk_path = state
+            .items
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&id).map(|it| it.install_path.clone()))
+            .unwrap_or_default();
+        let handle = self.as_mut().qt_thread();
+        rexon_core::log_info!("gnome-ext", "действие {act:?}: {uuid}");
+        std::thread::spawn(move || {
+            let data_home = rexon_core::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), &home());
+            let mut io = rexon_core::gnome_shell_ext::LiveShell::new();
+            let answer = gext::run_action(&mut io, act, &uuid, &data_home, &disk_path);
+            let ok = answer["ok"].as_bool().unwrap_or(false);
+            let msg = answer["message"].as_str().unwrap_or("").to_string();
+            if ok && act == gext::Action::Uninstall {
+                if let Err(e) = gext::live_journal_edit(&home(), |log| {
+                    gext::journal_forget(log, &uuid);
+                }) {
+                    rexon_core::log_warn!("gnome-ext", "журнал установленного: {e}");
+                }
+            }
+            if matches!(act, gext::Action::Toggle | gext::Action::Enable | gext::Action::Disable | gext::Action::Uninstall) {
+                finish_action(&state, &handle, msg, ok);
+            } else if !ok {
+                rexon_core::log_warn!("gnome-ext", "{act:?} {uuid}: {msg}");
+            }
+            let folder = answer["folder"].as_str().unwrap_or("").to_string();
+            let path = answer["path"].as_str().unwrap_or("").to_string();
+            let payload = answer.to_string();
+            post(&handle, move |mut object| {
+                match folder.as_str() {
+                    "open" => {
+                        qobject::open_url_external(&QString::from(&format!("file://{path}")));
+                    }
+                    "copy" => crate::we_action::qobject::rexon_we_copy_to_clipboard(&QString::from(&path)),
+                    _ => {}
+                }
+                object.as_mut().gnome_extension_done(QString::from(&payload));
+            });
+        });
+    }
+
+    fn gnome_ext_texts(&self) -> QString {
+        QString::from(&gext::page_texts().to_string())
+    }
+
+    fn gnome_updates(&self) -> QString {
+        let n = self.rust().state.gnome_updates.lock().map(|n| *n).unwrap_or(0);
+        QString::from(&gext::updates_answer(n).to_string())
+    }
+
+    fn log_out_for_updates(&self) -> bool {
+        let (program, args) = gext::LOGOUT_ARGV.split_first().expect("команда выхода");
+        match std::process::Command::new(program)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => true,
+            Err(e) => {
+                rexon_core::log_warn!("gnome-ext", "выход из сеанса: {e}");
+                false
+            }
+        }
+    }
+
     fn install_files(mut self: Pin<&mut Self>, paths_json: &QString, section: &QString) {
         let paths: Vec<String> = serde_json::from_str(&paths_json.to_string()).unwrap_or_default();
         let section = section.to_string();
@@ -1886,6 +2259,12 @@ impl qobject::AppearanceActions {
                 return;
             }
             self.install_spice(item);
+            return;
+        }
+        // Расширение GNOME ставит сама оболочка (ссылок на архив у
+        // карточки нет — общий путь установки им не годится).
+        if ego::is_item_id(&item.id) {
+            self.install_gnome_extension(item);
             return;
         }
         let home = home();
@@ -2053,6 +2432,9 @@ impl qobject::AppearanceActions {
     fn remove_local_by_id(mut self: Pin<&mut Self>, item_id: &QString) {
         let id = item_id.to_string();
         let state = self.as_ref().get_ref().rust().state.clone();
+        if self.as_mut().mark_gnome_removal(&state, &id) {
+            return;
+        }
         let Some(item) = state.items.lock().ok().and_then(|m| m.get(&id).cloned()) else {
             self.as_mut().action_done(QString::default(), false);
             return;
@@ -2142,6 +2524,43 @@ impl qobject::AppearanceActions {
         }
     }
 
+    /// «🗑» у расширения GNOME, которое знает оболочка (и с диска, и с
+    /// витрины): вопрос с его именем, после «Да» — пометка к удалению и
+    /// строка «Вернуть», как у тем; снимет оболочка (`commit_pending`).
+    /// Системное не удаляется — отказ словами. `false` — не расширение или
+    /// оболочки нет: обычный путь темы с диска.
+    fn mark_gnome_removal(mut self: Pin<&mut Self>, state: &Arc<State>, id: &str) -> bool {
+        let Some(uuid) = gext::uuid_of_id(id) else {
+            return false;
+        };
+        let Some(info) = gext::live_snapshot().and_then(|l| l.into_iter().find(|e| e.uuid == uuid)) else {
+            return false;
+        };
+        if info.is_system {
+            let msg = rexon_core::gnome_shell_ext::ShellExtError::SystemExtension.message();
+            self.as_mut().action_done(QString::from(&msg), false);
+            return true;
+        }
+        let name = state
+            .items
+            .lock()
+            .ok()
+            .and_then(|m| m.get(id).map(|it| it.name.clone()))
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| if info.name.is_empty() { uuid.to_string() } else { info.name.clone() });
+        let (title, text) = gext::removal_question(&name);
+        if !crate::extensions_actions::ask_confirm(&QString::from(&title), &QString::from(&text)) {
+            return true;
+        }
+        rexon_core::log_info!("gnome-ext", "к удалению: {uuid}");
+        let text = match state.removals.lock() {
+            Ok(mut queue) => queue.mark(&info.path, &name, id),
+            Err(_) => return true,
+        };
+        self.as_mut().removal_pending(QString::from(&text));
+        true
+    }
+
     fn commit_removals(mut self: Pin<&mut Self>) {
         let state = self.as_ref().get_ref().rust().state.clone();
         let pending = state.removals.lock().map(|mut q| q.take_all()).unwrap_or_default();
@@ -2151,7 +2570,7 @@ impl qobject::AppearanceActions {
         let de = state.last_de.lock().map(|d| d.clone()).unwrap_or_default();
         let handle = self.as_mut().qt_thread();
         std::thread::spawn(move || {
-            let (ok, msg) = removal::live_commit(pending, &de);
+            let (ok, msg) = commit_pending(pending, &de);
             // Снятое пропадает с диска, а неснятое (включили, пока висела
             // строка) обязано вернуться в сетку: кеш сканов — заново.
             if let Ok(mut cache) = state.scan_cache.lock() {
@@ -2483,6 +2902,7 @@ fn fetch_kind(state: &Arc<State>, req: &Value, token: &CancelToken, kind: &str) 
         "aur" => fetch_aur(state, req, token),
         "spices" => fetch_spices(state, req),
         "wallhaven" => fetch_wallhaven(state, req, token),
+        "ego" => fetch_ego(state, req, token),
         _ => fetch_ocs(state, req, token),
     }
 }
@@ -2504,6 +2924,17 @@ fn fetch_combined(state: &Arc<State>, req: &Value, token: &CancelToken) -> Strin
         let mut items: Vec<Value> = local.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
         if cs::type_for_section(s(req, "categoryKey")).is_some() {
             mark_spice_danger(&mut items);
+        }
+        if s(req, "categoryKey") == gext::SECTION_KEY {
+            stamp_gnome_installed(state, req, &mut items, &mut answer);
+            // Снимок витрины — тем же установленным (страница витрины уже
+            // пришла выше, картинка — только из кеша превью, без сети).
+            let home = home();
+            gext::stamp_ego_pictures(&mut items, &|uuid| {
+                let url = ego::live_pictures().lock().ok()?.get(uuid)?.to_string();
+                let path = ap::preview_cache_path(&home, &url);
+                std::path::Path::new(&path).is_file().then_some(path)
+            });
         }
         if let Some(Value::Array(rest)) = answer.get("items") {
             items.extend(rest.iter().cloned());
@@ -2749,6 +3180,205 @@ fn fetch_wallhaven(state: &Arc<State>, req: &Value, token: &CancelToken) -> Stri
     answer.insert("total".to_string(), Value::from(page.total));
     answer.insert("hasMore".to_string(), Value::from(page.has_more));
     Value::Object(answer).to_string()
+}
+
+/// Версия GNOME Shell этой машины в виде сайта расширений (`51`), один раз
+/// за процесс: у запущенной оболочки — с шины, иначе — `gnome-shell
+/// --version` (`gnome_shell_ext::detect_shell_version`). `None` — GNOME
+/// здесь нет, и витрина показывает всё без сверки.
+///
+/// Память не навсегда: версия, взятая не с шины (Rexon запущен до входа в
+/// GNOME или вне его), переспрашивается, как только оболочка появилась на
+/// шине, — иначе витрина так и осталась бы без отбора по версии.
+fn ego_shell_version() -> Option<ego::ShellVersion> {
+    /// (версия, взята ли с запущенной оболочки).
+    static VERSION: Mutex<Option<(Option<ego::ShellVersion>, bool)>> = Mutex::new(None);
+    let mut io = rexon_core::gnome_shell_ext::LiveShell::new();
+    let mut memo = VERSION.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((v, from_bus)) = memo.as_ref() {
+        if *from_bus || !rexon_core::gnome_shell_ext::ShellExtIo::shell_running(&mut io) {
+            return v.clone();
+        }
+    }
+    let from_bus = rexon_core::gnome_shell_ext::ShellExtIo::shell_running(&mut io);
+    let v = rexon_core::gnome_shell_ext::detect_shell_version(&mut io)
+        .as_deref()
+        .and_then(ego::parse_shell_version);
+    *memo = Some((v.clone(), from_bus));
+    v
+}
+
+/// Снять помеченное к удалению: расширения GNOME — оболочкой (без неё —
+/// свой каталог; запись журнала установленного — прочь), темы — общим
+/// снятием папок (`theme_removal::live_commit`). Итог — одной строкой на
+/// каждую часть.
+fn commit_pending(pending: Vec<removal::PendingRemoval>, de: &str) -> (bool, String) {
+    let (gnome, rest) = gext::split_pending(pending);
+    let mut ok = true;
+    let mut lines: Vec<String> = Vec::new();
+    if !rest.is_empty() {
+        let (done, msg) = removal::live_commit(rest, de);
+        ok &= done;
+        if !msg.is_empty() {
+            lines.push(msg);
+        }
+    }
+    if !gnome.is_empty() {
+        let data_home = rexon_core::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), &home());
+        let mut io = rexon_core::gnome_shell_ext::LiveShell::new();
+        for (uuid, p) in gnome {
+            match gext::uninstall_own(&mut io, &uuid, &data_home) {
+                Ok(()) => {
+                    if let Err(e) = gext::live_journal_edit(&home(), |log| {
+                        gext::journal_forget(log, &uuid);
+                    }) {
+                        rexon_core::log_warn!("gnome-ext", "журнал установленного: {e}");
+                    }
+                    lines.push(rexon_core::i18n::trf("🗑️ Removed: %1", &[&p.name]));
+                }
+                Err(e) => {
+                    ok = false;
+                    lines.push(e.message());
+                }
+            }
+        }
+    }
+    (ok, lines.join("\n"))
+}
+
+/// Один раз за сеанс, при первом открытии раздела «Расширения GNOME»:
+/// попросить оболочку проверить обновления (`CheckForUpdates()` — она
+/// скачивает сама) и разослать число скачанных (`gnomeUpdatesChanged`).
+fn start_gnome_update_check(state: &Arc<State>, handle: &Handle) {
+    use std::sync::atomic::Ordering;
+    let mut probe = rexon_core::gnome_shell_ext::LiveShell::new();
+    if !rexon_core::gnome_shell_ext::ShellExtIo::shell_running(&mut probe) {
+        return;
+    }
+    if state.gnome_updates_checked.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let state = state.clone();
+    let handle = handle.clone();
+    std::thread::spawn(move || {
+        let mut io = rexon_core::gnome_shell_ext::LiveShell::new();
+        let mut wait = || {
+            std::thread::sleep(std::time::Duration::from_secs(gext::UPDATE_RECOUNT_SECS));
+            true
+        };
+        let mut report = |n: usize| {
+            if let Ok(mut c) = state.gnome_updates.lock() {
+                *c = n;
+            }
+            let payload = gext::updates_answer(n).to_string();
+            post(&handle, move |mut object| object.as_mut().gnome_updates_changed(QString::from(&payload)));
+        };
+        if let Err(e) = gext::check_updates(&mut io, gext::UPDATE_RECOUNTS, &mut wait, &mut report) {
+            rexon_core::log_warn!("gnome-ext", "проверка обновлений: {e:?}");
+        }
+    });
+}
+
+/// Магазин extensions.gnome.org раздела «Расширения GNOME» — по образцу
+/// [`fetch_wallhaven`]: страница Rexon — одна страница API
+/// (`gnome_ego::live_page`, память ответов сессии и отступ после 5xx;
+/// «Обновить» идёт мимо памяти). Под переключателем «Только для вашей
+/// версии GNOME» (по умолчанию) сайт сам отбирает совместимые; выключен —
+/// листинг без отбора, а несовместимые помечаются вторым запросом (сверка
+/// пачками uuid). Сверка не удалась — плитки без пометок: витрина важнее.
+fn fetch_ego(state: &Arc<State>, req: &Value, token: &CancelToken) -> String {
+    let mut answer = Map::new();
+    answer.insert("key".to_string(), Value::from(s(req, "key")));
+    let force = req.get("force").and_then(Value::as_bool).unwrap_or(false);
+    let only_compatible = req.get("egoCompatibleOnly").and_then(Value::as_bool).unwrap_or(true);
+    let shell = ego_shell_version();
+    let shell = shell.as_ref();
+    let site_shell = shell.map(ego::site_shell_version);
+    let filter = if only_compatible { site_shell.as_deref() } else { None };
+    let size = page_size(req).max(1);
+    let page = match ego::live_page(s(req, "query"), s(req, "sort"), num(req, "page"), size, filter, force, token) {
+        Ok(p) => p,
+        Err(e) => {
+            rexon_core::log_warn!("gnome-ego", "страница каталога: {e:?}");
+            answer.insert("items".to_string(), Value::Array(Vec::new()));
+            answer.insert("total".to_string(), Value::from(0));
+            answer.insert("error".to_string(), Value::from(e.message()));
+            return Value::Object(answer).to_string();
+        }
+    };
+    let unsupported: std::collections::HashSet<String> = match (shell, site_shell.as_deref()) {
+        (Some(_), Some(site)) if !only_compatible && !page.items.is_empty() => {
+            let shown: Vec<&str> = page.items.iter().map(|e| e.uuid.as_str()).collect();
+            match ego::live_compatible(&shown, site, token) {
+                Ok(ok) => ego::unsupported_uuids(&shown, &ok),
+                Err(e) => {
+                    rexon_core::log_warn!("gnome-ego", "сверка совместимости: {e:?}");
+                    Default::default()
+                }
+            }
+        }
+        _ => Default::default(),
+    };
+    let shell_text = shell.map(ego::shell_label).unwrap_or_default();
+    let mut items: Vec<ThemeItem> = page.items.iter().map(ego::theme_item).collect();
+    ap::stamp_installed_live(&home(), &mut items);
+    remember_items(state, &items);
+    let rows: Vec<Value> = items
+        .iter()
+        .zip(&page.items)
+        .map(|(it, e)| ego::catalog_row(it, e, unsupported.contains(&e.uuid).then_some(shell_text.as_str())))
+        .collect();
+    // Что уже стоит — со слов оболочки (поставленное мимо Rexon тоже).
+    let mut rows = rows;
+    if let Some(list) = gext::live_snapshot() {
+        gext::stamp_rows(&mut rows, &list, &shell_text);
+    }
+    answer.insert("items".to_string(), Value::Array(rows));
+    answer.insert("total".to_string(), Value::from(page.total));
+    answer.insert("hasMore".to_string(), Value::from(page.has_more));
+    Value::Object(answer).to_string()
+}
+
+/// Установленное раздела «Расширения GNOME» в сеансе GNOME — со слов
+/// оболочки: к плиткам с диска добавляется то, что знает только она, у
+/// каждой — пометки («Ошибка», «Не поддерживает GNOME N», «Обновление —
+/// после перезахода», «Системное») и что можно сделать. Оболочки нет —
+/// остаётся обзор диска, как прежде. Заодно — число скачанных обновлений
+/// (`gnomeUpdates` в ответе).
+fn stamp_gnome_installed(state: &Arc<State>, req: &Value, items: &mut Vec<Value>, answer: &mut Map<String, Value>) {
+    let Some(list) = gext::live_snapshot() else { return };
+    let known: std::collections::HashSet<String> =
+        items.iter().filter_map(|v| v.get("id").and_then(Value::as_str)).map(str::to_string).collect();
+    let extra: Vec<ThemeItem> = gext::merge_installed(Vec::new(), &list)
+        .into_iter()
+        .filter(|it| !known.contains(&it.id))
+        .filter(|it| {
+            let q = s(req, "query").trim().to_lowercase();
+            q.is_empty() || it.name.to_lowercase().contains(&q) || it.id.to_lowercase().contains(&q)
+        })
+        .collect();
+    // Помеченное к удалению не показывается, пока висит «Вернуть».
+    let mut extra = extra;
+    if let Ok(queue) = state.removals.lock() {
+        queue.retain_visible(&mut extra);
+    }
+    if !extra.is_empty() {
+        remember_items(state, &extra);
+        // Перед карточками витрины: установленное идёт сверху.
+        let local = items.iter().take_while(|v| {
+            v.get("id").and_then(Value::as_str).is_some_and(|id| id.starts_with("local:"))
+        });
+        let at = local.count();
+        let rows = local_rows(&extra, s(req, "which"));
+        items.splice(at..at, rows);
+    }
+    let shell = ego_shell_version().map(|v| ego::shell_label(&v)).unwrap_or_default();
+    gext::stamp_rows(items, &list, &shell);
+    let pending = rexon_core::gnome_shell_ext::pending_updates(&list);
+    if let Ok(mut c) = state.gnome_updates.lock() {
+        *c = pending;
+    }
+    answer.insert("gnomeUpdates".to_string(), gext::updates_answer(pending));
 }
 
 /// Плиткам установленного раздела Cinnamon — пометка `spicesDanger`, если
@@ -3026,7 +3656,10 @@ fn fetch_detail(state: &Arc<State>, handle: &Handle, item: ThemeItem) {
     // путём не ходит: ей нужны свежие ссылки на архив.
     // Спайсу Cinnamon магазин KDE не нужен: всё, что есть у сайта, уже в
     // карточке из индекса.
-    let mut full = if id.starts_with(cs::ID_PREFIX) {
+    // Расширению GNOME магазин KDE тоже не нужен: подробности сайта
+    // расширений подтягивает панель подробностей (шаг QML), здесь —
+    // карточка из витрины.
+    let mut full = if id.starts_with(cs::ID_PREFIX) || ego::is_item_id(&id) {
         item
     } else if let Some(wid) = wh::parse_item_id(&id) {
         // Wallhaven: автор загрузки и метки есть только в сведениях о
@@ -3856,6 +4489,23 @@ fn spawn_uninstall(state: Arc<State>, handle: Handle, content_id: String, reload
         let (ok, msg) = if content_id.starts_with(cs::ID_PREFIX) {
             drop(installer);
             cs::live_uninstall(&content_id, log_sink(&handle))
+        } else if let Some(uuid) = ego::parse_item_id(&content_id).map(str::to_string) {
+            // Расширение GNOME снимает оболочка (без неё — свой каталог);
+            // системное не удаляется.
+            drop(installer);
+            let data_home = rexon_core::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref(), &home());
+            let mut io = rexon_core::gnome_shell_ext::LiveShell::new();
+            match gext::uninstall_own(&mut io, &uuid, &data_home) {
+                Ok(()) => {
+                    if let Err(e) = gext::live_journal_edit(&home(), |log| {
+                        gext::journal_forget(log, &uuid);
+                    }) {
+                        rexon_core::log_warn!("gnome-ext", "журнал установленного: {e}");
+                    }
+                    (true, rexon_core::i18n::trf("🗑️ Removed: %1", &[&uuid]))
+                }
+                Err(e) => (false, e.message()),
+            }
         } else {
             installer.uninstall(&content_id)
         };
@@ -4202,7 +4852,7 @@ fn remember_packages(state: &Arc<State>, pkgs: &[AurPackage]) {
 ///
 /// Судим только файлы СВОЕГО кеша превью: чужой файл (картинка местной темы)
 /// не проверяется и тем более не удаляется.
-fn usable_preview(path: &str, cache_dir: &str) -> bool {
+pub(crate) fn usable_preview(path: &str, cache_dir: &str) -> bool {
     use std::io::Read;
     let ours = !cache_dir.is_empty()
         && std::path::Path::new(path).starts_with(std::path::Path::new(cache_dir));

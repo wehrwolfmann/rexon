@@ -1640,7 +1640,8 @@ msgstr ""
 "(пакет %2)"
 
 #: rust/rexon-core/src/appearance_installer.rs
-#: rust/rexon-core/src/conky_safety.rs rust/rexon-core/src/de_apply.rs
+#: rust/rexon-core/src/conky_preview.rs rust/rexon-core/src/conky_safety.rs
+#: rust/rexon-core/src/de_apply.rs
 msgid "Rexon can't install programs on this system by itself."
 msgstr "На этой системе Rexon не может ставить программы сам."
 
@@ -1824,6 +1825,7 @@ msgid "🔐 Applying “%1” (an administrator password may be requested)…"
 msgstr "🔐 Применяю «%1» (может понадобиться пароль администратора)…"
 
 #: rust/rexon-core/src/appearance_installer.rs rust/rexon-core/src/day_night.rs
+#: rust/rexon-core/src/wallpaper_playlist.rs
 msgid "Wallpaper file not found: %1"
 msgstr "Файл обои не найден: %1"
 
@@ -1884,11 +1886,12 @@ msgstr ""
 "⚠️ Журнал установленных не обновлён (%1) — тема останется в списке до "
 "следующей удачной записи."
 
-#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/wallhaven.rs
+#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/gnome_ego.rs
+#: rust/rexon-core/src/wallhaven.rs
 msgid "🆕 Newest"
 msgstr "🆕 Новые"
 
-#: rust/rexon-core/src/appearance_page.rs
+#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/gnome_ego.rs
 msgid "⬇️ Most Downloaded"
 msgstr "⬇️ Скачивания"
 
@@ -2322,11 +2325,15 @@ msgstr "В избранном: %1"
 msgid "Updated: %1"
 msgstr "Обновлено: %1"
 
-#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/qt_extensions.rs
+#: rust/rexon-core/src/appearance_page.rs
+#: rust/rexon-core/src/gnome_ext_section.rs
+#: rust/rexon-core/src/qt_extensions.rs
 msgid "⏸️ Disable"
 msgstr "⏸️ Выключить"
 
-#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/qt_extensions.rs
+#: rust/rexon-core/src/appearance_page.rs
+#: rust/rexon-core/src/gnome_ext_section.rs
+#: rust/rexon-core/src/qt_extensions.rs
 msgid "▶️ Enable"
 msgstr "▶️ Включить"
 
@@ -2387,7 +2394,8 @@ msgstr "⏳ Сборка…"
 msgid "←  Back to Catalog"
 msgstr "←  Назад к каталогу"
 
-#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/qt_desktops.rs
+#: rust/rexon-core/src/appearance_page.rs
+#: rust/rexon-core/src/gnome_ext_section.rs rust/rexon-core/src/qt_desktops.rs
 #: rust/rexon-core/src/qt_extensions.rs
 msgid "🗑️ Remove"
 msgstr "🗑️ Удалить"
@@ -2501,7 +2509,8 @@ msgstr ""
 msgid "Refresh catalog"
 msgstr "Обновить каталог"
 
-#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/qt_settings.rs
+#: rust/rexon-core/src/appearance_page.rs
+#: rust/rexon-core/src/gnome_ext_section.rs rust/rexon-core/src/qt_settings.rs
 msgid "⚙️ Settings"
 msgstr "⚙️ Настройки"
 
@@ -3550,14 +3559,6 @@ msgstr "Файлы обоев «%1» неполные. Скачайте обои
 msgid "Could not prepare “%1” for playback."
 msgstr "Не удалось подготовить «%1» к показу."
 
-#: rust/rexon-core/src/axon_library.rs
-msgid "Razer Axon (test)"
-msgstr "Razer Axon (тест)"
-
-#: rust/rexon-core/src/axon_library.rs
-msgid "Razer Axon wallpapers (test)"
-msgstr "Обои Razer Axon (тест)"
-
 #. TRANSLATORS: %1 is the name of a Razer Axon wallpaper.
 #: rust/rexon-core/src/axon_library.rs
 msgid "Preparing “%1”…"
@@ -3592,6 +3593,7 @@ msgid "Folder with Razer Axon wallpapers"
 msgstr "Папка с обоями Razer Axon"
 
 #: rust/rexon-core/src/axon_library.rs rust/rexon-core/src/conky_procs.rs
+#: rust/rexon-core/src/gnome_ext_section.rs
 msgid "📂 Open folder"
 msgstr "📂 Открыть папку"
 
@@ -3670,6 +3672,14 @@ msgstr "Сохранённых описаний нет — возвращать 
 msgid "Descriptions restored: %1 (with original files: %2). Failed: %3."
 msgstr ""
 "Возвращено описаний: %1 (вместе с исходными файлами: %2). Не удалось: %3."
+
+#: rust/rexon-core/src/axon_window.rs
+msgid ""
+"Wallpapers you downloaded in Razer Axon on this computer. Rexon shows them "
+"itself: Razer Axon doesn't have to be running."
+msgstr ""
+"Обои, скачанные в Razer Axon на этом компьютере. Rexon показывает их сам: "
+"Razer Axon запускать не нужно."
 
 #: rust/rexon-core/src/axon_window.rs
 msgctxt "Razer Axon"
@@ -3776,6 +3786,49 @@ msgctxt "Razer Axon"
 msgid "Clear filter"
 msgstr "Очистить фильтр"
 
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "FILTER"
+msgstr "ФИЛЬТР"
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Apply"
+msgstr "Применить"
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Open file location"
+msgstr "Перейти к расположению файла"
+
+#: rust/rexon-core/src/axon_window.rs rust/rexon-core/src/session_guard.rs
+msgid "Details"
+msgstr "Подробнее"
+
+#: rust/rexon-core/src/axon_window.rs
+msgid "Double-click — details; right click — menu"
+msgstr "Двойной щелчок — подробности, правый щелчок — меню"
+
+#: rust/rexon-core/src/axon_window.rs
+msgid "On all screens"
+msgstr "На всех экранах"
+
+#: rust/rexon-core/src/axon_window.rs
+msgid ""
+"How Rexon shows wallpapers from Razer Axon. The settings of Razer Axon "
+"itself are not changed here."
+msgstr ""
+"Как Rexon показывает обои из Razer Axon. Настройки самого Razer Axon здесь "
+"не меняются."
+
+#: rust/rexon-core/src/axon_window.rs rust/rexon-core/src/remote_l10n.rs
+msgid "Resolution"
+msgstr "Разрешение"
+
+#: rust/rexon-core/src/axon_window.rs
+msgid "Author: %1"
+msgstr "Автор: %1"
+
 #. TRANSLATORS: goes after a colon inside a restore failure message, hence lowercase.
 #: rust/rexon-core/src/backup.rs
 msgid "restored %n item"
@@ -3852,6 +3905,29 @@ msgstr ""
 #: rust/rexon-core/src/backup.rs
 msgid "There is no saved panel copy yet."
 msgstr "Сохранённой копии панели пока нет."
+
+#: rust/rexon-core/src/backup.rs
+msgid ""
+"“%1” is a system extension and isn't on this computer — it comes with a "
+"distribution package."
+msgstr ""
+"«%1» — системное расширение, а на этом компьютере его нет: оно ставится "
+"пакетом дистрибутива."
+
+#: rust/rexon-core/src/backup.rs
+msgid "“%1” isn't on extensions.gnome.org, so Rexon can't install it again."
+msgstr ""
+"Расширения «%1» нет на extensions.gnome.org, поэтому Rexon не может "
+"поставить его снова."
+
+#: rust/rexon-core/src/backup.rs
+msgid "“%1” has no release for GNOME %2, so it wasn't installed."
+msgstr ""
+"У расширения «%1» нет выпуска для GNOME %2, поэтому оно не установлено."
+
+#: rust/rexon-core/src/backup.rs
+msgid "“%1” wasn't installed: %2"
+msgstr "Расширение «%1» не установлено: %2"
 
 #: rust/rexon-core/src/categories.rs
 msgctxt "appearance section"
@@ -4738,6 +4814,7 @@ msgstr "Сохранить"
 #. TRANSLATORS: button that cancels a running desktop operation.
 #: rust/rexon-core/src/color_scheme_edit.rs rust/rexon-core/src/qt_settings.rs
 #: rust/rexon-core/src/system_de_exec.rs rust/rexon-core/src/widget_shot.rs
+#: rust/rexon-gui/src/axon_actions.rs
 #: rust/rexon-gui/qml/SteamShowcaseSection.qml
 msgid "Cancel"
 msgstr "Отменить"
@@ -4846,7 +4923,8 @@ msgstr "⚠️ yay/paru не найдены — установите вручн�
 msgid "📥 Installing with %1..."
 msgstr "📥 Установка через %1..."
 
-#: rust/rexon-core/src/compliance.rs rust/rexon-core/src/qt_extensions.rs
+#: rust/rexon-core/src/compliance.rs rust/rexon-core/src/gnome_ext_section.rs
+#: rust/rexon-core/src/qt_extensions.rs
 msgid "✅ Installed: %1"
 msgstr "✅ Установлено: %1"
 
@@ -5260,6 +5338,195 @@ msgstr "Только в %1"
 msgid "Don't start this widget when you log in to other desktops."
 msgstr "Не запускать этот виджет при входе в другие рабочие столы."
 
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Widget settings: %n"
+msgid_plural "Widget settings: %n"
+msgstr[0] "Настройки виджета: %n"
+msgstr[1] "Настройки виджета: %n"
+msgstr[2] "Настройки виджета: %n"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Widget text: %n"
+msgid_plural "Widget text: %n"
+msgstr[0] "Текст виджета: %n"
+msgstr[1] "Текст виджета: %n"
+msgstr[2] "Текст виджета: %n"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Graphs: %n"
+msgid_plural "Graphs: %n"
+msgstr[0] "Графики: %n"
+msgstr[1] "Графики: %n"
+msgstr[2] "Графики: %n"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Scripts: %n"
+msgid_plural "Scripts: %n"
+msgstr[0] "Сценарии: %n"
+msgstr[1] "Сценарии: %n"
+msgstr[2] "Сценарии: %n"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "%n place"
+msgid_plural "%n places"
+msgstr[0] "%n место"
+msgstr[1] "%n места"
+msgstr[2] "%n мест"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid ""
+"Rexon can't change “%1”: the file belongs to another user or is read-only. "
+"Change its colours with “📝 Open settings file”."
+msgstr ""
+"Rexon не может изменить «%1»: файл принадлежит другому пользователю или "
+"открыт только для чтения. Цвета в нём меняйте через «📝 Открыть файл "
+"настроек»."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid ""
+"This colour is no longer in the widget's files — the palette has been "
+"refreshed."
+msgstr "Этого цвета в файлах виджета больше нет — палитра обновлена."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Rexon couldn't save the widget's files."
+msgstr "Rexon не удалось сохранить файлы виджета."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid ""
+"There is no copy of the widget's files, so Rexon can't restore the colours."
+msgstr "Копии файлов виджета нет, поэтому Rexon не может вернуть цвета."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Widget colours"
+msgstr "Цвета виджета"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Click a colour to change it everywhere the widget uses it."
+msgstr "Нажмите на цвет, чтобы поменять его везде, где виджет его использует."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "↩️ Restore colours"
+msgstr "↩️ Вернуть цвета"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid ""
+"Put the widget's files back the way they were before the first colour change."
+msgstr "Вернуть файлы виджета к виду до первой смены цвета."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Pick a colour"
+msgstr "Выберите цвет"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Rexon found no colours it can change in this widget's files."
+msgstr "Rexon не нашёл в файлах этого виджета цветов, которые можно поменять."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid ""
+"Some colours are drawn by pictures or computed by the widget's scripts — "
+"change them with “📝 Open settings file”."
+msgstr ""
+"Часть цветов задана картинками или вычисляется сценариями виджета — их "
+"меняйте через «📝 Открыть файл настроек»."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid ""
+"The widget comes with its own picture, so the tile won't show the new "
+"colours. Start the widget to see them."
+msgstr ""
+"У виджета своя картинка, поэтому плитка новых цветов не покажет. Запустите "
+"виджет, чтобы их увидеть."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "✅ “%1”: %2 changed to %3 (%4)"
+msgstr "✅ «%1»: %2 заменён на %3 (%4)"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "Restore colours?"
+msgstr "Вернуть цвета?"
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid ""
+"Some of the widget's files were edited after Rexon changed the colours. "
+"Restoring the colours will undo those edits too."
+msgstr ""
+"Часть файлов виджета правили уже после того, как Rexon поменял цвета. "
+"Возврат цветов отменит и эти правки."
+
+#: rust/rexon-core/src/conky_colors.rs
+msgid "↩️ “%1”: colours restored"
+msgstr "↩️ «%1»: цвета возвращены"
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid "Where the widgets are on the screen"
+msgstr "Где виджеты на экране"
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid ""
+"Drag a widget to move it; it sticks to the edges and the middle. Arrow keys "
+"move the chosen widget (with Shift — by one point)."
+msgstr ""
+"Перетащите виджет, чтобы сдвинуть его; он прилипает к краям и к середине. "
+"Клавиши со стрелками двигают выбранный виджет (с Shift — на одну точку)."
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid "Undo moves"
+msgstr "Вернуть"
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid "Put the widgets moved here back where they were before."
+msgstr "Поставить передвинутые здесь виджеты на прежние места."
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid ""
+"The size is approximate: Rexon will know it exactly once the widget is "
+"running."
+msgstr "Размер примерный: точно Rexon узнает его, когда виджет будет запущен."
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid ""
+"The widget works out its place itself — Rexon shows a guess. Move it to set "
+"your own place."
+msgstr ""
+"Место виджет вычисляет сам — Rexon показывает догадку. Передвиньте его, "
+"чтобы задать своё место."
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid "No widgets on the screen yet. Start a widget to see it here."
+msgstr ""
+"На экране пока нет виджетов. Запустите виджет, чтобы увидеть его здесь."
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid ""
+"On this desktop under Wayland the desktop itself decides where the Conky "
+"window goes, so it can't be moved here."
+msgstr ""
+"На этом рабочем столе под Wayland место окна Conky выбирает сам стол, "
+"поэтому здесь его не сдвинуть."
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid "“%1”: %2, %3 × %4 from the edge"
+msgstr "«%1»: %2, %3 × %4 от края"
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid ""
+"Under Wayland the desktop chooses the screen for Conky, so widgets stay on "
+"one screen."
+msgstr ""
+"Под Wayland экран для Conky выбирает сам стол, поэтому виджеты остаются на "
+"одном экране."
+
+#: rust/rexon-core/src/conky_layout.rs
+msgid "Rexon couldn't find out the size of the screen."
+msgstr "Rexon не смог узнать размер экрана."
+
+#: rust/rexon-core/src/conky_layout.rs rust/rexon-core/src/conky_overlay.rs
+msgid "Rexon can't read this widget's settings file, so it can't change them."
+msgstr ""
+"Rexon не может прочитать файл настроек этого виджета, поэтому не может их "
+"менять."
+
 #: rust/rexon-core/src/conky_overlay.rs
 msgid ""
 "In the Wayland session of this desktop the widget is a regular window: it "
@@ -5277,12 +5544,6 @@ msgid ""
 msgstr ""
 "В сеансе Wayland Conky пока не умеет выбирать экран — виджет появится там, "
 "куда его поставит рабочий стол."
-
-#: rust/rexon-core/src/conky_overlay.rs
-msgid "Rexon can't read this widget's settings file, so it can't change them."
-msgstr ""
-"Rexon не может прочитать файл настроек этого виджета, поэтому не может их "
-"менять."
 
 #: rust/rexon-core/src/conky_overlay.rs
 msgid "Couldn't save the widget's settings."
@@ -5466,6 +5727,48 @@ msgstr "Это значение здесь не подходит."
 #: rust/rexon-core/src/conky_overlay.rs rust/rexon-core/src/conky_procs.rs
 msgid "This file isn't part of the widget."
 msgstr "Этот файл — не часть виджета."
+
+#: rust/rexon-core/src/conky_preview.rs
+msgid "Don't show this hint again"
+msgstr "Больше не показывать эту подсказку"
+
+#: rust/rexon-core/src/conky_preview.rs
+msgid ""
+"To see widget previews, Rexon needs the Xvfb program. On SteamOS it comes "
+"inside Rexon's system extension, which isn't active now — reinstall Rexon to "
+"bring it back."
+msgstr ""
+"Чтобы видеть превью виджетов, Rexon нужна программа Xvfb. На SteamOS она "
+"приходит внутри системного расширения Rexon, а оно сейчас не активно — "
+"переустановите Rexon, чтобы вернуть его."
+
+#. TRANSLATORS: %1 is a package name; an “Install” button follows.
+#: rust/rexon-core/src/conky_preview.rs
+msgid "To see widget previews, the %1 package is needed."
+msgstr "Чтобы видеть превью виджетов, нужен пакет %1."
+
+#: rust/rexon-core/src/conky_preview.rs
+msgid ""
+"To see widget previews, install the Xvfb program with your system's tools."
+msgstr ""
+"Чтобы видеть превью виджетов, установите программу Xvfb средствами вашей "
+"системы."
+
+#. TRANSLATORS: %1 is a package name.
+#: rust/rexon-core/src/conky_preview.rs
+msgid ""
+"To see widget previews, install the %1 package with your system's tools."
+msgstr ""
+"Чтобы видеть превью виджетов, установите пакет %1 средствами вашей системы."
+
+#: rust/rexon-core/src/conky_preview.rs rust/rexon-core/src/qt_compare.rs
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "📦 Install"
+msgstr "📦 Установить"
+
+#: rust/rexon-core/src/conky_preview.rs
+msgid "✅ Xvfb is installed — widget previews will appear on the tiles."
+msgstr "✅ Xvfb установлен — на плитках появятся превью виджетов."
 
 #: rust/rexon-core/src/conky_procs.rs
 msgid "conky with its default settings file"
@@ -5871,6 +6174,18 @@ msgstr ""
 "весь набор вернётся одной кнопкой."
 
 #: rust/rexon-core/src/conky_sets.rs
+msgid "Save set to file…"
+msgstr "Сохранить набор в файл…"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid ""
+"Puts the widgets of the set, their places on the screen and the wallpaper "
+"into one .rxn file. On another computer open it with “Install from File…”."
+msgstr ""
+"Кладёт виджеты набора, их места на экране и обои в один файл .rxn. На другом "
+"компьютере откройте его кнопкой «Установить из файла…»."
+
+#: rust/rexon-core/src/conky_sets.rs
 msgid "Give the set a name."
 msgstr "Дайте набору имя."
 
@@ -5940,6 +6255,85 @@ msgstr "Не удалось установить Conky: %1. Виджеты на�
 #: rust/rexon-core/src/conky_sets.rs
 msgid "Name the set: rexon --conky-set \"<set name>\""
 msgstr "Назовите набор: rexon --conky-set \"<имя набора>\""
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid "The widgets are too big for one file (more than %1 MB)."
+msgstr "Виджеты слишком большие для одного файла (больше %1 МБ)."
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid ""
+"None of the widgets of “%1” is on this computer — there's nothing to save."
+msgstr ""
+"Ни одного виджета набора «%1» на этом компьютере нет — сохранять нечего."
+
+#. TRANSLATORS: description of a saved Conky widget set; %1 lists the widgets.
+#: rust/rexon-core/src/conky_sets.rs
+msgid "Conky widget set: %1"
+msgstr "Набор виджетов Conky: %1"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid "Save the widget set to a file"
+msgstr "Сохранить набор виджетов в файл"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid "Rexon package"
+msgstr "Пакет Rexon"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid "…and %n more"
+msgid_plural "…and %n more"
+msgstr[0] "…и ещё %n"
+msgstr[1] "…и ещё %n"
+msgstr[2] "…и ещё %n"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid "Save “%1” with personal data?"
+msgstr "Сохранить «%1» с личными данными?"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid "The widgets of this set contain what looks like personal data:"
+msgstr "В виджетах этого набора есть то, что похоже на личные данные:"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid ""
+"Anyone who gets the file will see it. Better remove it from the widget files "
+"first. Save anyway?"
+msgstr ""
+"Это увидит любой, кому попадёт файл. Лучше сначала убрать это из файлов "
+"виджетов. Всё равно сохранить?"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid "Saved: %1"
+msgstr "Сохранено: %1"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid "%n widget of the set isn't on this computer and wasn't saved."
+msgid_plural "%n widgets of the set aren't on this computer and weren't saved."
+msgstr[0] "%n виджет набора не найден на этом компьютере и не сохранён."
+msgstr[1] "%n виджета набора не найдены на этом компьютере и не сохранены."
+msgstr[2] "%n виджетов набора не найдены на этом компьютере и не сохранены."
+
+#. TRANSLATORS: %1 lists files like ~/scripts/weather.sh.
+#: rust/rexon-core/src/conky_sets.rs
+msgid "Not included (outside the widget folders): %1"
+msgstr "Не вошло (лежит вне папок виджетов): %1"
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid "The set “%1” is in “Widget sets” — apply it there."
+msgstr "Набор «%1» — в «Наборах виджетов», применить его можно там."
+
+#: rust/rexon-core/src/conky_sets.rs
+msgid ""
+"Some widgets of the set started at login on the other computer: turn on "
+"“Start at login” on their cards if you want that here too."
+msgstr ""
+"На том компьютере часть виджетов набора запускалась при входе: если нужно и "
+"здесь, включите «Запускать при входе в систему» на их карточках."
+
+#. TRANSLATORS: %1 lists font names.
+#: rust/rexon-core/src/conky_sets.rs
+msgid "Fonts the widgets use that aren't installed: %1"
+msgstr "Шрифты виджетов, которых нет в системе: %1"
 
 #: rust/rexon-core/src/constants.rs
 msgid "GTK Theme"
@@ -6182,7 +6576,7 @@ msgstr "тёмное"
 msgid "Now: %1. Next switch: %2 at %3."
 msgstr "Сейчас — %1. Следующая смена — %2 в %3."
 
-#: rust/rexon-core/src/day_night.rs
+#: rust/rexon-core/src/day_night.rs rust/rexon-core/src/wallpaper_playlist.rs
 msgid "Now: %1."
 msgstr "Сейчас — %1."
 
@@ -6403,11 +6797,13 @@ msgstr "«%1» здесь применить нельзя"
 msgid "Couldn't turn “%1” on or off: %2"
 msgstr "Не удалось включить или выключить «%1»: %2"
 
-#: rust/rexon-core/src/de_apply.rs rust/rexon-core/src/qt_extensions.rs
+#: rust/rexon-core/src/de_apply.rs rust/rexon-core/src/gnome_ext_section.rs
+#: rust/rexon-core/src/qt_extensions.rs
 msgid "▶️ Enabled: %1"
 msgstr "▶️ Включено: %1"
 
-#: rust/rexon-core/src/de_apply.rs rust/rexon-core/src/qt_extensions.rs
+#: rust/rexon-core/src/de_apply.rs rust/rexon-core/src/gnome_ext_section.rs
+#: rust/rexon-core/src/qt_extensions.rs
 msgid "⏸️ Disabled: %1"
 msgstr "⏸️ Выключено: %1"
 
@@ -6774,8 +7170,8 @@ msgstr "Удаление пакетов..."
 msgid "Finished"
 msgstr "Завершено"
 
-#: rust/rexon-core/src/de_progress.rs rust/rexon-core/src/qt_settings.rs
-#: rust/rexon-core/src/window_menu.rs
+#: rust/rexon-core/src/de_progress.rs rust/rexon-core/src/gnome_ext_section.rs
+#: rust/rexon-core/src/qt_settings.rs rust/rexon-core/src/window_menu.rs
 msgid "Error"
 msgstr "Ошибка"
 
@@ -6790,6 +7186,7 @@ msgstr "Подождите..."
 #: rust/rexon-core/src/de_progress.rs rust/rexon-core/src/qt_app.rs
 #: rust/rexon-core/src/qt_compare.rs rust/rexon-core/src/qt_desktops.rs
 #: rust/rexon-core/src/qt_extensions.rs rust/rexon-core/src/window_buttons.rs
+#: rust/rexon-gui/src/axon_actions.rs
 msgid "Close"
 msgstr "Закрыть"
 
@@ -7769,10 +8166,6 @@ msgid "Qt programs pick it up after you log in again"
 msgstr "Qt-программы подхватят это после повторного входа"
 
 #: rust/rexon-core/src/distro_looks.rs
-msgid "it needs the GNOME Shell extension %1, and it is not installed"
-msgstr "нужно расширение GNOME Shell %1, а оно не установлено"
-
-#: rust/rexon-core/src/distro_looks.rs
 msgid "the programs it needs are not in this system's repositories"
 msgstr "нужных программ нет в репозиториях этой системы"
 
@@ -7959,6 +8352,10 @@ msgstr "Удаляю: %1"
 #: rust/rexon-core/src/distro_looks.rs
 msgid "Building from the AUR (this takes several minutes): %1"
 msgstr "Сборка из AUR (займёт несколько минут): %1"
+
+#: rust/rexon-core/src/distro_looks.rs
+msgid "Installing the GNOME extension %1…"
+msgstr "Устанавливаю расширение GNOME %1…"
 
 #: rust/rexon-core/src/distro_looks.rs
 msgid "Applying “%1”…"
@@ -8238,6 +8635,20 @@ msgstr "манифест расширения не принят: %1"
 #: rust/rexon-core/src/ext_exec.rs
 msgid "Extension '%1' not found"
 msgstr "Расширение '%1' не найдено"
+
+#. TRANSLATORS: %1 is a cursor theme name; it is the active one.
+#: rust/rexon-core/src/ext_exec.rs
+msgid ""
+"Cursors “%1” updated. Apps opened from now on show the new look; everywhere "
+"— after you log in again."
+msgstr ""
+"Курсоры «%1» обновлены. Новый вид — в программах, открытых с этого момента, "
+"а везде — после повторного входа в сеанс."
+
+#. TRANSLATORS: %1 is a cursor theme name.
+#: rust/rexon-core/src/ext_exec.rs
+msgid "Cursors “%1” updated"
+msgstr "Курсоры «%1» обновлены"
 
 #. TRANSLATORS: shown in the status line after the "couldn't switch
 #. the extension" prefix; %1 is the extension id.
@@ -8720,6 +9131,327 @@ msgid ""
 msgstr ""
 "В открывшемся окне выберите, что снять. Если окно не откроется, экран будет "
 "снят через %1 с — тем временем сверните Rexon."
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid ""
+"The official GNOME extensions site. GNOME itself installs the extension you "
+"pick and asks you to confirm."
+msgstr ""
+"Официальный сайт расширений GNOME. Выбранное расширение устанавливает сам "
+"GNOME и спрашивает подтверждение."
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "🔍 Search GNOME extensions…"
+msgstr "🔍 Поиск расширений GNOME…"
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "🔥 Popular"
+msgstr "🔥 Популярные"
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "🔄 Recently Updated"
+msgstr "🔄 Недавно обновлённые"
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "Only for your GNOME version"
+msgstr "Только для вашей версии GNOME"
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "Show all"
+msgstr "Показать все"
+
+#. TRANSLATORS: %1 is a GNOME version: 51, 3.38.
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "Doesn't support GNOME %1"
+msgstr "Не поддерживает GNOME %1"
+
+#. TRANSLATORS: %1 is a list of GNOME versions: 47–50, 3.38.
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "Supports GNOME %1"
+msgstr "Поддерживает GNOME %1"
+
+#. TRANSLATORS: %1 is the extension's release: 12, 5.1.0.
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "Version for your GNOME: %1"
+msgstr "Версия для вашего GNOME: %1"
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "Also works on the lock screen"
+msgstr "Работает и на экране блокировки"
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid ""
+"The GNOME extensions site isn't responding right now. Outages are shown at "
+"status.gnome.org — try again later. Installed extensions keep working."
+msgstr ""
+"Сайт расширений GNOME сейчас не отвечает. О сбоях сообщают на "
+"status.gnome.org — попробуйте позже. Установленные расширения продолжают "
+"работать."
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "GPL-compatible, as extensions.gnome.org requires"
+msgstr "Совместимая с GPL (этого требует extensions.gnome.org)"
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid "Rating, number of votes and downloads on extensions.gnome.org"
+msgstr "Оценка, число голосов и скачиваний на extensions.gnome.org"
+
+#: rust/rexon-core/src/gnome_ego.rs
+msgid ""
+"The GNOME extensions site sent an answer Rexon can't read. Try again later."
+msgstr ""
+"Сайт расширений GNOME прислал ответ, который Rexon не может прочитать. "
+"Попробуйте позже."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Update — after you log in again"
+msgstr "Обновление — после перезахода"
+
+#. TRANSLATORS: a GNOME extension installed for the whole system.
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "System"
+msgstr "Системное"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Starts after you log in again"
+msgstr "Заработает после перезахода"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Doesn't support this GNOME version"
+msgstr "Не поддерживает эту версию GNOME"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "GNOME Shell extension"
+msgstr "Расширение GNOME Shell"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "✅ Installed and turned on: %1"
+msgstr "✅ Установлено и включено: %1"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Installation of “%1” was cancelled."
+msgstr "Установка «%1» отменена."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid ""
+"extensions.gnome.org has no release of this extension for your GNOME version"
+msgstr ""
+"на extensions.gnome.org нет выпуска этого расширения для вашей версии GNOME"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "couldn't download the extension from extensions.gnome.org"
+msgstr "не удалось скачать расширение с extensions.gnome.org"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "The GNOME extension %1 was not installed: %2"
+msgstr "Расширение GNOME %1 не установлено: %2"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Without it, this part won't work fully: %1."
+msgstr "Без него не заработает полностью: %1."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "The GNOME extension %1 was installed and turned on."
+msgstr "Расширение GNOME %1 установлено и включено."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "The GNOME extension %1 was installed."
+msgstr "Расширение GNOME %1 установлено."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "you cancelled it in the GNOME Shell window."
+msgstr "установка отменена в окне GNOME Shell."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "takes effect the next time you log in to GNOME"
+msgstr "заработает при следующем входе в GNOME"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+#: rust/rexon-core/src/qt_extensions.rs
+#: rust/rexon-gui/src/appearance_actions.rs
+msgid "🗑️ Removed: %1"
+msgstr "🗑️ Удалено: %1"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Path copied: %1"
+msgstr "Путь скопирован: %1"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "GNOME Shell reported no errors for this extension."
+msgstr "GNOME Shell не сообщала об ошибках этого расширения."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Remove the extension?"
+msgstr "Удалить расширение?"
+
+#. TRANSLATORS: %1 is the name of a GNOME Shell extension.
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid ""
+"“%1” will be removed from your home folder. You can install it again from "
+"extensions.gnome.org."
+msgstr ""
+"«%1» будет удалено из вашей домашней папки. Поставить его снова можно с "
+"extensions.gnome.org."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid ""
+"This extension can't be changed: it is locked by the administrator or the "
+"session."
+msgstr ""
+"Это расширение нельзя изменить: его закрепил администратор или текущий сеанс."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "GNOME Shell will ask you to confirm the installation in its own window"
+msgstr "GNOME Shell сама спросит подтверждение установки в своём окне"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Open the extension's own settings window"
+msgstr "Открыть окно настроек самого расширения"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Open the extension's folder in the file manager"
+msgstr "Открыть папку расширения в файловом менеджере"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "📋 Copy path"
+msgstr "📋 Скопировать путь"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "A system extension can't be changed here — copy the path to its folder"
+msgstr "Системное расширение здесь не изменить — скопируйте путь к его папке"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "⚠️ Error details"
+msgstr "⚠️ Подробнее об ошибке"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "What GNOME Shell reported when the extension failed"
+msgstr "Что сообщила GNOME Shell, когда расширение упало"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Remove the extension from your home folder"
+msgstr "Удалить расширение из домашней папки"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid ""
+"Off — every extension is shown, and the ones that don't support your GNOME "
+"are marked"
+msgstr ""
+"Выключено — показаны все расширения, а те, что не поддерживают ваш GNOME, "
+"помечены"
+
+#. TRANSLATORS: %1 is the name of a GNOME Shell extension.
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Errors of “%1”"
+msgstr "Ошибки «%1»"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "📋 Copy"
+msgstr "📋 Скопировать"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "✉️ Write to the author"
+msgstr "✉️ Написать автору"
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid ""
+"Open the extension's home page: there you can report the error to its author"
+msgstr ""
+"Открыть домашнюю страницу расширения: там можно сообщить автору об ошибке"
+
+#. TRANSLATORS: %1 is a number of GNOME extension updates.
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Updates downloaded: %1. They will apply after you log out."
+msgstr "Скачано обновлений: %1. Применятся после выхода из сеанса."
+
+#: rust/rexon-core/src/gnome_ext_section.rs
+msgid "Log Out"
+msgstr "Выйти из сеанса"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "GNOME Shell isn't running, so extensions can't be managed right now."
+msgstr "GNOME Shell не запущена, поэтому управлять расширениями сейчас нельзя."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "Installing extensions is forbidden in the system settings."
+msgstr "Установка расширений запрещена в настройках системы."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "User extensions are turned off."
+msgstr "Расширения пользователя выключены."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "This extension is part of the system and can't be removed from Rexon."
+msgstr "Это расширение входит в систему, удалить его из Rexon нельзя."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "This extension isn't installed."
+msgstr "Это расширение не установлено."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "This extension has no settings."
+msgstr "У этого расширения нет настроек."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "'%1' is not a GNOME extension id."
+msgstr "'%1' — не идентификатор расширения GNOME."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid ""
+"GNOME Shell didn't answer in time. If its confirmation window is still open, "
+"it may be hidden behind other windows."
+msgstr ""
+"GNOME Shell не ответила вовремя. Если её окно подтверждения ещё открыто, оно "
+"может прятаться за другими окнами."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "GNOME Shell refused to do this."
+msgstr "GNOME Shell отказалась это выполнить."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "GNOME Shell reported an error: %1"
+msgstr "GNOME Shell сообщила об ошибке: %1"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "The extension archive was rejected: %1"
+msgstr "Архив расширения отклонён: %1"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "The extension couldn't be installed: %1"
+msgstr "Не удалось установить расширение: %1"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "The extension will start the next time you log in to GNOME."
+msgstr "Расширение заработает при следующем входе в GNOME."
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "too many files"
+msgstr "слишком много файлов"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs rust/rexon-core/src/rxn_manifest.rs
+msgid "path '%1' must stay inside the package"
+msgstr "путь '%1' не должен выходить за пределы пакета"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "the archive is too large"
+msgstr "архив слишком большой"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "metadata.json is missing"
+msgstr "нет файла metadata.json"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "metadata.json is not valid JSON"
+msgstr "в metadata.json некорректный JSON"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "the archive belongs to another extension (%1)"
+msgstr "архив относится к другому расширению (%1)"
+
+#: rust/rexon-core/src/gnome_shell_ext.rs
+msgid "the archive contains a program file: %1"
+msgstr "в архиве есть исполняемый файл: %1"
 
 #: rust/rexon-core/src/gtk4_theme.rs
 msgid " Only light or dark mode follows the theme."
@@ -11759,10 +12491,6 @@ msgstr "%1 МБ"
 msgid "🔄 Switch"
 msgstr "🔄 Переключиться"
 
-#: rust/rexon-core/src/qt_compare.rs rust/rexon-core/src/qt_desktops.rs
-msgid "📦 Install"
-msgstr "📦 Установить"
-
 #: rust/rexon-core/src/qt_compare.rs
 msgid "<b>Customization:</b>  %1"
 msgstr "<b>Настройка:</b>  %1"
@@ -12031,6 +12759,14 @@ msgid ""
 "password."
 msgstr ""
 "Rexon поставит нужные для него программы: %1. Система спросит ваш пароль."
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"Rexon will install the GNOME extensions it needs: %1. If GNOME Shell is "
+"running, it will ask you to confirm."
+msgstr ""
+"Rexon установит нужные расширения GNOME: %1. Если GNOME Shell запущен, он "
+"попросит подтверждение."
 
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "Won't be applied: %1 — %2"
@@ -13069,10 +13805,6 @@ msgid "⏳ Removing “%1”…"
 msgstr "⏳ Удаляю «%1»…"
 
 #: rust/rexon-core/src/qt_extensions.rs
-msgid "🗑️ Removed: %1"
-msgstr "🗑️ Удалено: %1"
-
-#: rust/rexon-core/src/qt_extensions.rs
 msgid "⚠️ Couldn't remove: %1"
 msgstr "⚠️ Ошибка удаления: %1"
 
@@ -13466,6 +14198,109 @@ msgstr "Настройки шрифта заголовков у Deepin нет."
 #: rust/rexon-core/src/qt_settings.rs
 msgid "Rexon doesn't know where this desktop keeps its title bar font."
 msgstr "Rexon не знает, где это окружение хранит шрифт заголовков."
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"The document font is used by GNOME and GTK apps that show documents: "
+"document viewers, mail, the GNOME web browser. KDE and Qt apps don't use it."
+msgstr ""
+"Шрифт документов берут программы GNOME и GTK, которые показывают документы: "
+"просмотрщики документов, почта, браузер GNOME. Программы KDE и Qt его не "
+"используют."
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"In XFCE only the size of desktop icon labels can be set: the typeface comes "
+"from the interface font."
+msgstr ""
+"В XFCE у подписей значков рабочего стола задаётся только кегль: сам шрифт "
+"берётся от шрифта интерфейса."
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"KDE Plasma has no separate font for desktop icon labels: they use the "
+"interface font."
+msgstr ""
+"Отдельного шрифта подписей значков рабочего стола в KDE Plasma нет: они "
+"пишутся шрифтом интерфейса."
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"The font of desktop icon labels can't be set in this desktop: it has no such "
+"setting."
+msgstr ""
+"Шрифт подписей значков рабочего стола в этом окружении не настраивается: "
+"такой настройки у него нет."
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"PCManFM-Qt, which draws the LXQt desktop, didn't close, so its settings file "
+"wasn't changed: on exit it would have overwritten the change."
+msgstr ""
+"PCManFM-Qt, который рисует рабочий стол LXQt, не закрылся, поэтому файл его "
+"настроек не изменён: при выходе он затёр бы правку."
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"The font of desktop icon labels in LXQt can't be set: there is no PCManFM-Qt "
+"desktop settings file (pcmanfm-qt/lxqt/settings.conf), neither yours nor a "
+"system one."
+msgstr ""
+"Шрифт подписей значков рабочего стола в LXQt задать нельзя: нет файла "
+"настроек рабочего стола PCManFM-Qt (pcmanfm-qt/lxqt/settings.conf) — ни "
+"вашего, ни системного."
+
+#
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"Couldn't save a backup copy of the LXQt desktop settings, so nothing was "
+"changed: %1"
+msgstr ""
+"Не удалось сохранить резервную копию настроек рабочего стола LXQt, поэтому "
+"ничего не изменено: %1"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"To apply it, Rexon restarted the LXQt desktop (PCManFM-Qt); its open windows "
+"were closed."
+msgstr ""
+"Чтобы применить его, Rexon перезапустил рабочий стол LXQt (PCManFM-Qt); его "
+"открытые окна закрылись."
+
+#
+#: rust/rexon-core/src/qt_settings.rs
+msgid "It applies the next time the LXQt desktop starts."
+msgstr "Применится при следующем запуске рабочего стола LXQt."
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "↺ Desktop font as before"
+msgstr "↺ Шрифт стола как был"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"Return the font of LXQt desktop icon labels to what it was before Rexon "
+"changed it. The wallpaper and other desktop settings stay as they are."
+msgstr ""
+"Вернуть шрифт подписей значков рабочего стола LXQt таким, каким он был до "
+"Rexon. Обои и остальные настройки стола останутся как есть."
+
+#
+#: rust/rexon-core/src/qt_settings.rs
+msgid "The font of desktop icon labels is back to what it was."
+msgstr "Шрифт подписей значков рабочего стола снова прежний."
+
+#
+#: rust/rexon-core/src/qt_settings.rs
+msgid ""
+"Rexon didn't change the font of desktop icon labels: there's nothing to "
+"return."
+msgstr ""
+"Rexon не менял шрифт подписей значков рабочего стола — возвращать нечего."
+
+#
+#: rust/rexon-core/src/qt_settings.rs
+msgid "The font of desktop icon labels wasn't returned: %1"
+msgstr "Шрифт подписей значков рабочего стола не возвращён: %1"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgctxt "sub-pixel rendering"
@@ -15213,6 +16048,30 @@ msgid "Window Title Font"
 msgstr "Шрифт заголовков окон"
 
 #: rust/rexon-core/src/qt_settings.rs
+msgid "📄 Documents…"
+msgstr "📄 Документы…"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Font for reading documents in GNOME and GTK apps"
+msgstr "Шрифт для чтения документов в программах GNOME и GTK"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Document Font"
+msgstr "Шрифт документов"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "🖥 Desktop…"
+msgstr "🖥 Рабочий стол…"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Font of icon labels on the desktop"
+msgstr "Шрифт подписей значков на рабочем столе"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Desktop Font"
+msgstr "Шрифт рабочего стола"
+
+#: rust/rexon-core/src/qt_settings.rs
 msgid "🔤 System…"
 msgstr "🔤 Системный…"
 
@@ -15727,6 +16586,15 @@ msgstr "Приглушать, когда звук идёт из другой п�
 #: rust/rexon-core/src/qt_settings.rs
 msgid "Pause the wallpaper when windows hide it"
 msgstr "Останавливать обои, когда их не видно за окном"
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Pause the wallpaper when running on battery"
+msgstr "Ставить обои на паузу при работе от батареи"
+
+#. TRANSLATORS: “game mode” is Feral GameMode or a game started in gamescope.
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Pause the wallpaper while a game is running (game mode)"
+msgstr "Ставить обои на паузу во время игры (игровой режим)"
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
@@ -16947,10 +17815,6 @@ msgid "Genre"
 msgstr "Жанр"
 
 #: rust/rexon-core/src/remote_l10n.rs
-msgid "Resolution"
-msgstr "Разрешение"
-
-#: rust/rexon-core/src/remote_l10n.rs
 msgid "Topics"
 msgstr "Темы"
 
@@ -17304,6 +18168,26 @@ msgstr ""
 "заново не удалось. Примените обои ещё раз на вкладке Wallpaper Engine."
 
 #: rust/rexon-core/src/renderer_watch.rs
+msgid ""
+"Your live wallpaper stopped unexpectedly several times in a row, so Rexon "
+"has put a still picture of it on the desktop instead. To try the live "
+"wallpaper again, apply it once more."
+msgstr ""
+"Живые обои несколько раз подряд неожиданно останавливались, поэтому Rexon "
+"поставил на рабочий стол их неподвижный кадр. Чтобы снова включить живые "
+"обои, примените их ещё раз."
+
+#: rust/rexon-core/src/renderer_watch.rs
+msgid ""
+"Your live wallpaper stopped unexpectedly several times in a row, so Rexon "
+"has put back your previous desktop picture. To try the live wallpaper again, "
+"apply it once more."
+msgstr ""
+"Живые обои несколько раз подряд неожиданно останавливались, поэтому Rexon "
+"вернул прежнюю картинку рабочего стола. Чтобы снова включить живые обои, "
+"примените их ещё раз."
+
+#: rust/rexon-core/src/renderer_watch.rs
 msgid "Open Wallpaper Engine"
 msgstr "Открыть Wallpaper Engine"
 
@@ -17593,10 +18477,6 @@ msgstr "путь '%1' ссылается на источник, которого
 #: rust/rexon-core/src/rxn_manifest.rs
 msgid "'%1' is not a valid consumer name"
 msgstr "'%1' — недопустимое имя потребителя"
-
-#: rust/rexon-core/src/rxn_manifest.rs
-msgid "path '%1' must stay inside the package"
-msgstr "путь '%1' не должен выходить за пределы пакета"
 
 #: rust/rexon-core/src/rxn_manifest.rs
 msgid "property names may only contain Latin letters, digits and '_'"
@@ -18284,10 +19164,6 @@ msgid "Rebuild"
 msgstr "Пересобрать"
 
 #: rust/rexon-core/src/session_guard.rs
-msgid "Details"
-msgstr "Подробнее"
-
-#: rust/rexon-core/src/session_guard.rs
 msgid ""
 "Your AeroThemePlasma effects are back on. The panels come back at the next "
 "login."
@@ -18319,10 +19195,65 @@ msgstr "Панели вернутся при следующем входе."
 msgid "Steam Deck (Default)"
 msgstr "Steam Deck (стандартная)"
 
+#. TRANSLATORS: name of a built-in Steam startup movie: the one Steam plays on a freshly installed (factory) Steam Deck system image.
+#: rust/rexon-core/src/session_splash.rs
+msgid "Steam Deck (Factory Image)"
+msgstr "Steam Deck (заводской образ)"
+
 #. TRANSLATORS: startup movie from the Steam inventory whose name is unknown; %1 is its item id.
 #: rust/rexon-core/src/session_splash.rs
 msgid "Inventory · %1"
 msgstr "Инвентарь · %1"
+
+#. TRANSLATORS: where a startup movie comes from: the user's own movie in Steam's folder for custom startup movies (Steam shows it too).
+#: rust/rexon-core/src/session_splash.rs
+msgid "Your own movie"
+msgstr "Свой ролик"
+
+#. TRANSLATORS: a startup movie the user picked can't be used: ffprobe couldn't read it.
+#: rust/rexon-core/src/session_splash.rs
+msgid "Couldn't read this file — it may be damaged or not a video."
+msgstr "Не удалось прочитать файл — возможно, он повреждён или это не видео."
+
+#. TRANSLATORS: a startup movie the user picked can't be used: the file has no video picture (e.g. it is music).
+#: rust/rexon-core/src/session_splash.rs
+msgid "This file has no picture — choose a video file."
+msgstr "В этом файле нет изображения — выберите видеофайл."
+
+#. TRANSLATORS: a startup movie the user picked can't be used: it is shorter than one second.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"The video is shorter than a second — it would flash by unnoticed. Choose a "
+"longer one."
+msgstr "Ролик короче секунды — он мелькнёт незаметно. Выберите ролик подлиннее."
+
+#. TRANSLATORS: a startup movie the user picked can't be used: it is longer than one minute.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"The video is longer than a minute — a startup movie should be short. Trim it "
+"or choose another one."
+msgstr "Ролик длиннее минуты — заставка должна быть короткой. Обрежьте его или выберите другой."
+
+#. TRANSLATORS: a startup movie the user picked can't be used: its picture is too small; %1 and %2 are its width and height in pixels.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"The picture is too small (%1×%2) — it would look blurry on screen. Choose a "
+"video of at least 640×360."
+msgstr "Картинка слишком маленькая (%1×%2) — на экране она будет мутной. Выберите ролик не меньше 640×360."
+
+#. TRANSLATORS: warning when adding a startup movie longer than 30 seconds; it is still accepted.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"The video is longer than 30 seconds — it's a startup movie, not a film: "
+"you'll wait for it at every login."
+msgstr "Ролик длиннее 30 секунд — это заставка, а не фильм: ждать её придётся при каждом входе."
+
+#. TRANSLATORS: shown when adding a startup movie that Steam can't play as is; the original file stays untouched.
+#: rust/rexon-core/src/session_splash.rs
+msgid ""
+"The video will be converted to WebM so Steam can play it. The original file "
+"stays as it is."
+msgstr "Ролик будет перекодирован в WebM, чтобы его мог показать Steam. Исходный файл останется как есть."
 
 #. TRANSLATORS: where a startup movie comes from: built into the Steam client.
 #: rust/rexon-core/src/session_splash.rs
@@ -22467,42 +23398,48 @@ msgstr ""
 "%1."
 
 #: rust/rexon-core/src/theme_removal.rs
-msgid "You can't remove the active theme. Switch to another theme first."
-msgstr "Нельзя удалить активную тему. Сначала включите другую."
+msgid "You can't remove what is in use now. Switch to something else first."
+msgstr "Нельзя удалить то, что сейчас включено. Сначала включите другое."
 
 #: rust/rexon-core/src/theme_removal.rs
 msgid ""
-"This theme came with the system (it is in /usr/share), so Rexon doesn't "
-"remove it. It goes away together with its package."
+"This came with the system (it is in /usr/share), so Rexon doesn't remove it. "
+"It goes away together with its package."
 msgstr ""
-"Это системная тема (лежит в /usr/share), поэтому Rexon её не удаляет. Она "
+"Это часть системы (лежит в /usr/share), поэтому Rexon это не удаляет: оно "
 "уйдёт вместе со своим пакетом."
 
 #: rust/rexon-core/src/theme_removal.rs
-msgid "This theme is outside your theme folders, so Rexon doesn't remove it."
-msgstr "Тема лежит вне ваших папок тем, поэтому Rexon её не удаляет."
+msgid ""
+"This is outside your personal appearance folders, so Rexon doesn't remove it."
+msgstr "Это лежит вне ваших папок оформления, поэтому Rexon это не удаляет."
+
+#. TRANSLATORS: %1 is the name of a removed theme, icon set, cursor, font,
+#. widget, GNOME extension or wallpaper — keep the sentence noun-free.
+#: rust/rexon-core/src/theme_removal.rs
+msgid "Removed “%1”."
+msgstr "Удалено: «%1»."
 
 #: rust/rexon-core/src/theme_removal.rs
-msgid "Theme “%1” removed."
-msgstr "Тема «%1» удалена."
+msgid "%n item removed."
+msgid_plural "%n items removed."
+msgstr[0] "Удалён %n элемент."
+msgstr[1] "Удалено %n элемента."
+msgstr[2] "Удалено %n элементов."
+
+#. TRANSLATORS: %1 is the name of anything removable on the Appearance
+#. tab (theme, icons, cursor, font, widget, GNOME extension, wallpaper);
+#. the removal is not done yet — a countdown with “Undo” follows.
+#: rust/rexon-core/src/theme_removal.rs
+msgid "Removing “%1”."
+msgstr "Удаляем «%1»."
 
 #: rust/rexon-core/src/theme_removal.rs
-msgid "%n theme removed."
-msgid_plural "%n themes removed."
-msgstr[0] "Удалена %n тема."
-msgstr[1] "Удалено %n темы."
-msgstr[2] "Удалено %n тем."
-
-#: rust/rexon-core/src/theme_removal.rs
-msgid "Theme “%1” will be removed."
-msgstr "Тема «%1» будет удалена."
-
-#: rust/rexon-core/src/theme_removal.rs
-msgid "%n theme will be removed."
-msgid_plural "%n themes will be removed."
-msgstr[0] "%n тема будет удалена."
-msgstr[1] "%n темы будут удалены."
-msgstr[2] "%n тем будут удалены."
+msgid "Removing %n item."
+msgid_plural "Removing %n items."
+msgstr[0] "Удаляем %n элемент."
+msgstr[1] "Удаляем %n элемента."
+msgstr[2] "Удаляем %n элементов."
 
 #: rust/rexon-core/src/theme_removal.rs
 msgid "%n second left — “Undo” cancels the removal."
@@ -22517,7 +23454,7 @@ msgstr "Вернуть"
 
 #: rust/rexon-core/src/theme_removal.rs
 msgid "“%1” is in use now, so it wasn't removed."
-msgstr "Тема «%1» сейчас включена, поэтому не удалена."
+msgstr "«%1» сейчас используется — удаление отменено."
 
 #: rust/rexon-core/src/theme_removal.rs
 msgid "Remove the theme together with its window borders?"
@@ -23063,15 +24000,16 @@ msgstr ""
 msgid "Sections"
 msgstr "Разделы"
 
-#: rust/rexon-core/src/tray.rs
+#: rust/rexon-core/src/tray.rs rust/rexon-core/src/wallpaper_playlist.rs
 msgid "Next Wallpaper"
 msgstr "Следующие обои"
 
-#: rust/rexon-core/src/tray.rs
+#: rust/rexon-core/src/tray.rs rust/rexon-core/src/wallpaper_playlist.rs
 msgid "Previous Wallpaper"
 msgstr "Предыдущие обои"
 
-#: rust/rexon-core/src/tray.rs
+#. TRANSLATORS: wallpaper playlist order: every wallpaper once per round, in random order.
+#: rust/rexon-core/src/tray.rs rust/rexon-core/src/wallpaper_playlist.rs
 msgid "Shuffle"
 msgstr "Вперемешку"
 
@@ -23099,6 +24037,14 @@ msgstr "Включить звук"
 #: rust/rexon-core/src/tray.rs
 msgid "Rescan Wallpapers"
 msgstr "Пересканировать обои"
+
+#: rust/rexon-core/src/tray.rs rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Pause Playlist"
+msgstr "Пауза плейлиста"
+
+#: rust/rexon-core/src/tray.rs rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Resume Playlist"
+msgstr "Продолжить плейлист"
 
 #: rust/rexon-core/src/tray.rs
 msgid "Quit"
@@ -24161,6 +25107,205 @@ msgstr "обои не сохранились в настройках рабоч�
 msgid "This desktop environment does not need the shell extension"
 msgstr "Расширение оболочки для этого окружения не нужно"
 
+#. TRANSLATORS: wallpaper playlist order: play the list from top to bottom.
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "In order"
+msgstr "По порядку"
+
+#. TRANSLATORS: wallpaper playlist order: any wallpaper each time (repeats possible).
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Random"
+msgstr "Случайно"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Wallpapers for a single screen are not supported yet."
+msgstr "Обои для одного экрана пока не поддерживаются."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid ""
+"A playlist of Rexon's own wallpapers: change them by a timer, at login or by "
+"hand."
+msgstr ""
+"Плейлист собственных обоев Rexon: смена по таймеру, при входе или вручную."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Wallpaper playlist"
+msgstr "Плейлист обоев"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid ""
+"The playlist is paused because you set other wallpapers. Choose “Resume "
+"Playlist” in the Rexon tray icon menu to continue."
+msgstr ""
+"Плейлист на паузе: вы поставили другие обои. Чтобы продолжить, выберите "
+"«Продолжить плейлист» в меню значка Rexon в трее."
+
+#. TRANSLATORS: wallpaper playlist interval: change only by hand (tray or buttons).
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Only by hand"
+msgstr "Только вручную"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Every %n hour"
+msgid_plural "Every %n hours"
+msgstr[0] "Каждый %n час"
+msgstr[1] "Каждые %n часа"
+msgstr[2] "Каждые %n часов"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Every %n minute"
+msgid_plural "Every %n minutes"
+msgstr[0] "Каждую %n минуту"
+msgstr[1] "Каждые %n минуты"
+msgstr[2] "Каждые %n минут"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid ""
+"Change Rexon's own wallpapers by themselves: videos, web pages, Flash, "
+"pictures from “HD Wallpapers” and Razer Axon wallpapers — mixed in one list. "
+"Wallpaper Engine wallpapers keep their own playlist in the Wallpaper Engine "
+"tab."
+msgstr ""
+"Собственные обои Rexon меняются сами: видео, веб-страницы, Flash, картинки "
+"из «Обоев HD» и обои Razer Axon — вперемешку в одном списке. У обоев "
+"Wallpaper Engine свой плейлист — во вкладке Wallpaper Engine."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Play the playlist"
+msgstr "Включить плейлист"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Order"
+msgstr "Порядок"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Change"
+msgstr "Менять"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "New wallpaper at every login"
+msgstr "Новые обои при каждом входе"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Add files…"
+msgstr "Добавить файлы…"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Choose wallpapers for the playlist"
+msgstr "Выберите обои для плейлиста"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Add all “HD Wallpapers”"
+msgstr "Добавить все «Обои HD»"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Import the Razer Axon queue"
+msgstr "Взять очередь Razer Axon"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid ""
+"Adds the wallpapers of the Razer Axon queue. Razer Axon's own files are only "
+"read, never changed."
+msgstr ""
+"Добавляет обои из очереди Razer Axon. Файлы самого Razer Axon только "
+"читаются и не меняются."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Remove from the playlist"
+msgstr "Убрать из плейлиста"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Move up"
+msgstr "Выше"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Move down"
+msgstr "Ниже"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Add to the playlist"
+msgstr "Добавить в плейлист"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Clear the list"
+msgstr "Очистить список"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Yes, clear the list"
+msgstr "Да, очистить список"
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid ""
+"The playlist is empty. Add files, all “HD Wallpapers” or the Razer Axon "
+"queue."
+msgstr "Плейлист пуст. Добавьте файлы, все «Обои HD» или очередь Razer Axon."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid ""
+"While the playlist plays, the “Light and dark” schedule does not change the "
+"wallpaper (themes and colours still switch)."
+msgstr ""
+"Пока играет плейлист, расписание «Светлое и тёмное» обои не меняет (темы и "
+"цвета переключаются как обычно)."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "%n wallpaper in the list. The playlist is off."
+msgid_plural "%n wallpapers in the list. The playlist is off."
+msgstr[0] "Обоев в списке: %n. Плейлист выключен."
+msgstr[1] "Обоев в списке: %n. Плейлист выключен."
+msgstr[2] "Обоев в списке: %n. Плейлист выключен."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Paused: other wallpapers were set."
+msgstr "На паузе: поставлены другие обои."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Paused."
+msgstr "На паузе."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Now: %1. Next in about %2 min."
+msgstr "Сейчас — %1. Следующие примерно через %2 мин."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Press “Next Wallpaper” to start."
+msgstr "Нажмите «Следующие обои», чтобы начать."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "The first change in about %1 min."
+msgstr "Первая смена — примерно через %1 мин."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Added to the playlist: %1."
+msgstr "Добавлено в плейлист: %1."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "%n file is not a wallpaper and was skipped."
+msgid_plural "%n files are not wallpapers and were skipped."
+msgstr[0] "%n файл — не обои, пропущен."
+msgstr[1] "%n файла — не обои, пропущены."
+msgstr[2] "%n файлов — не обои, пропущены."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "“%1” added to the playlist."
+msgstr "«%1» — в плейлисте."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "“%1” is already in the playlist."
+msgstr "«%1» уже в плейлисте."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Razer Axon was not found."
+msgstr "Razer Axon не найден."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "The Razer Axon queue is empty."
+msgstr "Очередь Razer Axon пуста."
+
+#: rust/rexon-core/src/wallpaper_playlist.rs
+msgid "Nothing new in the Razer Axon queue."
+msgstr "В очереди Razer Axon нет ничего нового."
+
 #: rust/rexon-core/src/waywallen_kde_plugin.rs
 msgid ""
 "Wallpaper Engine wallpapers are not on the desktop yet. Pick a wallpaper or "
@@ -24314,6 +25459,11 @@ msgstr "Автозапуск включён (systemd user unit)"
 #: rust/rexon-core/src/we_client.rs
 msgid "Autostart enabled (XDG autostart)"
 msgstr "Автозапуск включён (XDG autostart)"
+
+#: rust/rexon-core/src/we_client.rs
+msgid ""
+"The waywallen engine is not installed, so there is nothing to start at login."
+msgstr "Движок waywallen не установлен — запускать при входе нечего."
 
 #: rust/rexon-core/src/we_client.rs
 msgid "Could not set up autostart: %1"
@@ -26358,6 +27508,28 @@ msgstr ""
 msgid "Window border size:"
 msgstr "Размер рамки окна:"
 
+#~ msgid "Razer Axon (test)"
+#~ msgstr "Razer Axon (тест)"
+
+#~ msgid "Razer Axon wallpapers (test)"
+#~ msgstr "Обои Razer Axon (тест)"
+
+#, fuzzy
+#~| msgid ""
+#~| "This extension can't be changed: it is locked by the administrator or "
+#~| "the session."
+#~ msgid ""
+#~ "This extension can't be turned on or off here: it is locked by the "
+#~ "administrator or the session."
+#~ msgstr ""
+#~ "Это расширение нельзя изменить: его закрепил администратор или текущий "
+#~ "сеанс."
+
+#, fuzzy
+#~| msgid "🗑️ Removed: %1"
+#~ msgid "🗑 Removed: %1"
+#~ msgstr "🗑️ Удалено: %1"
+
 #~ msgid ""
 #~ "⚠️ %1 (pid %2) took over “Show in Folder”, but it has open windows — not "
 #~ "closing it so your work isn't lost"
@@ -26805,9 +27977,6 @@ msgstr "Размер рамки окна:"
 
 #~ msgid "%1 (package %2 from the AUR)"
 #~ msgstr "%1 (пакет %2 из AUR)"
-
-#~ msgid "⚠️ The widget needs programs that aren't installed: %1."
-#~ msgstr "⚠️ Виджету нужны программы, которых нет в системе: %1."
 
 #~ msgid ""
 #~ "⚠️ Not installed: %1 — the parts of the widget that use them don't work "

@@ -818,6 +818,45 @@ fn a_removed_vsthemes_choice_falls_back_to_the_kde_store() {
     }
 }
 
+/// Источник «Razer Axon» (14.11.2026): чип «Обоев HD» рядом с KDE Store и
+/// Wallhaven — только если Axon найден; выбран — свой экран библиотеки
+/// вместо сетки магазина, без поиска, сортировки и листалки магазина (они у
+/// библиотеки свои). Без Axon прежний выбор молча становится KDE Store.
+#[test]
+fn razer_axon_is_a_wallpaper_source_only_when_axon_is_found() {
+    let _lang = i18n_pin::ru();
+    let home = Path::new("/home/u");
+    assert!(!ap::source_keys_in("wallpapers", false).contains(&ap::SOURCE_AXON));
+    let keys = ap::source_keys_in("wallpapers", true);
+    assert_eq!(keys.last(), Some(&ap::SOURCE_AXON), "последним чипом");
+    assert_eq!(keys[..keys.len() - 1], ap::source_keys_for("wallpapers")[..]);
+    for other in ["icons", "global", "cursor"] {
+        assert!(!ap::source_keys_in(other, true).contains(&ap::SOURCE_AXON), "{other}");
+    }
+    let chip = ap::source_chips_in("wallpapers", true).into_iter().last().unwrap();
+    assert_eq!((chip.key, chip.label.as_str()), (ap::SOURCE_AXON, "Razer Axon"));
+    assert!(!chip.tooltip.is_empty());
+    assert!(ap::source_chips_for("wallpapers").iter().all(|c| c.key != ap::SOURCE_AXON));
+
+    let mut v = view("wallpapers");
+    v.source = ap::SOURCE_AXON.to_string();
+    // Axon не найден — источника нет: KDE Store и его сетка.
+    assert!(!v.axon_mode());
+    assert_eq!(v.effective_source(), "ocs");
+    assert_eq!(v.screen(home), ap::SCREEN_GRID);
+    v.axon = true;
+    assert!(v.axon_mode());
+    assert_eq!(v.effective_source(), ap::SOURCE_AXON);
+    assert_eq!(v.screen(home), ap::SCREEN_AXON);
+    let c = v.chrome();
+    assert!(c.source_bar, "чипы «Магазин:» остаются — вернуться в KDE Store");
+    assert!(!c.search && !c.sort_combo && !c.pagination && !c.install_file);
+    assert_ne!(v.request_key(), view("wallpapers").request_key());
+    // «⚙️ Настройки» раздела — над источником: экран настроек.
+    v.section_settings = true;
+    assert_eq!(v.screen(home), ap::SCREEN_SETTINGS);
+}
+
 #[test]
 fn catalog_starts_on_new_and_on_the_kde_store() {
     let _lang = i18n_pin::ru();

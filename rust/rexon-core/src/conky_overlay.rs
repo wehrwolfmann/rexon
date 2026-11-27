@@ -752,10 +752,12 @@ pub fn current(cfg: &BTreeMap<String, Value>, ov: &Overrides) -> Current {
             ov.alignment.clone(),
             cfg.get("alignment"),
             |v| v.as_str().and_then(normalize_alignment).map(str::to_string),
-            "top_left".to_string(),
+            // Умолчания — как у самого conky (без поля он ставит окно
+            // в левый нижний угол с отступами 5 и 60).
+            crate::conky_layout::DEFAULT_ALIGNMENT.to_string(),
         ),
-        gap_x: field(ov.gap_x, cfg.get("gap_x"), Value::as_i64, 0),
-        gap_y: field(ov.gap_y, cfg.get("gap_y"), Value::as_i64, 0),
+        gap_x: field(ov.gap_x, cfg.get("gap_x"), Value::as_i64, crate::conky_layout::DEFAULT_GAP_X),
+        gap_y: field(ov.gap_y, cfg.get("gap_y"), Value::as_i64, crate::conky_layout::DEFAULT_GAP_Y),
         min_width: field(ov.min_width, cfg.get("minimum_width"), Value::as_i64, 0),
         min_height: field(ov.min_height, cfg.get("minimum_height"), Value::as_i64, 0),
         bg_none: Field {
@@ -1529,6 +1531,12 @@ fn align_cells() -> Vec<AlignCell> {
     ALIGNMENTS.iter().zip(arrows).zip(labels).map(|((v, a), l)| AlignCell { value: v, arrow: a, label: l }).collect()
 }
 
+/// Подпись угла или края экрана (`top_right` → «Справа вверху»).
+pub fn align_label(value: &str) -> Option<String> {
+    let full = normalize_alignment(value)?;
+    align_cells().into_iter().find(|c| c.value == full).map(|c| c.label)
+}
+
 /// Блок настроек виджета для карточки.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct SettingsView {
@@ -1657,6 +1665,9 @@ pub fn set_value(ov: &mut Overrides, key: &str, value: &serde_json::Value) -> Re
         }
         return Ok(());
     }
+    if key == "position" {
+        return set_position(ov, value);
+    }
     let null = value.is_null();
     match key {
         "alignment" => match value.as_str().and_then(normalize_alignment) {
@@ -1706,6 +1717,25 @@ pub fn set_value(ov: &mut Overrides, key: &str, value: &serde_json::Value) -> Re
         "clock_24h" => ov.clock_24h = if null { None } else { value.as_bool() },
         _ => return bad(),
     }
+    Ok(())
+}
+
+/// Поле `position` (мини-карта экрана, `conky_layout`): выравнивание,
+/// отступы и экран разом — `{alignment, gap_x, gap_y, xinerama_head}`,
+/// `null` — как у автора, нет ключа — не трогать. Одна запись накладки —
+/// conky перечитывает её один раз.
+fn set_position(ov: &mut Overrides, value: &serde_json::Value) -> Result<(), String> {
+    let Some(obj) = value.as_object() else {
+        return Err(tr("This value can't be used here."));
+    };
+    let mut next = ov.clone();
+    for key in ["alignment", "gap_x", "gap_y", "xinerama_head"] {
+        if let Some(v) = obj.get(key) {
+            let v = if key == "xinerama_head" && v.is_null() { &serde_json::json!(-1) } else { v };
+            set_value(&mut next, key, v)?;
+        }
+    }
+    *ov = next;
     Ok(())
 }
 

@@ -500,17 +500,42 @@ fn defect_bundle_copy_stays() {
     );
 }
 
-/// Д3. Conky (`theme-conky`): кроме `~/.config/conky/<id>` установка кладёт
-/// каждую подпапку `data/` ещё и в `~/.config/conky/<подпапка>` (у Python
-/// так ложились `fonts/`), а удаление снимает только `<id>` и автозапуск.
-/// Общие имена (`fonts`) к тому же могут принадлежать другому виджету —
-/// при починке снимать только то, что положил этот пакет.
+/// Д3. Conky (`theme-conky`): прежняя установка клала каждую подпапку
+/// `data/` ещё и в `~/.config/conky/<подпапка>` — второй виджет с тем же
+/// файлом настроек, он показывался и запускался дважды (дефект 14.11.2026).
+/// Теперь обычный виджет — ОДИН каталог `~/.config/conky/<id>`; копия,
+/// оставшаяся от прежней установки (с меткой этого пакета), снимается
+/// удалением пакета.
 #[test]
-fn defect_conky_subfolder_copy_stays() {
-    let (_, uninstall, _) = install_then_uninstall("theme-conky", "KDE", true);
+fn conky_widget_is_one_folder() {
+    let (install, _, again) = install_then_uninstall("theme-conky", "KDE", true);
+    for plan in [&install, &again] {
+        let copies: Vec<&String> = plan
+            .iter()
+            .filter_map(|s| match s {
+                ExtStep::CopyTree { dest, .. } if dest.starts_with("/home/t/.config/conky/") => Some(dest),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(copies, vec!["/home/t/.config/conky/my-theme"], "{plan:?}");
+        assert!(
+            !plan.iter().any(|s| matches!(s, ExtStep::WriteFile { path, .. } if path.starts_with("/home/t/.config/conky/MyTheme"))),
+            "метка второй копии: {plan:?}"
+        );
+    }
+    let old = with_foreign_dir("/home/t/.config/conky/MyTheme", ".rexon-owner", "my-theme\n");
+    let after = FsSnap::from_json(&old);
+    let m = manifest("theme-conky");
+    let ext = ExtInfo { dir: "/ext", manifest: &m };
+    let uninstall = with_env(&after, "KDE", true, |env| safe_uninstall_plan(env, &ext));
     assert!(
         covered("/home/t/.config/conky/MyTheme", &removed_by(&uninstall)),
-        "conky/MyTheme не снимается: {uninstall:?}"
+        "прежняя вторая копия не снимается: {uninstall:?}"
+    );
+    let reinstall = with_env(&after, "KDE", true, |env| safe_install_plan(env, &ext));
+    assert!(
+        !reinstall.iter().any(|s| matches!(s, ExtStep::CopyTree { dest, .. } if dest == "/home/t/.config/conky/MyTheme")),
+        "повтор кладёт вторую копию: {reinstall:?}"
     );
 }
 

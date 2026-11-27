@@ -1,4 +1,4 @@
-[English](README.md) | [Русский](README.ru.md) | [Deutsch](README.de.md) | 简体中文 | [Français](README.fr.md)
+[English](README.md) | [Русский](README.ru.md) | [Deutsch](README.de.md) | 简体中文 | [Français](README.fr.md) | [Español](README.es.md)
 
 # Rexon
 
@@ -22,7 +22,7 @@ Rexon 使用 Rust 编写，界面基于 Qt 6 / QML（通过 [cxx-qt](https://git
 
 ## 使用指南
 
-所有标签页（“桌面环境”、“外观”、“扩展”、Wallpaper Engine、Steam 和“设置”）的分步指南，提供中文、英文、俄文、德文和法文版本：[guide/](guide/README.md)。中文版：[桌面环境](guide/zh-CN/desktops.md) · [外观](guide/zh-CN/appearance.md) · [扩展](guide/zh-CN/extensions.md) · [Wallpaper Engine](guide/zh-CN/wallpaper-engine.md) · [Steam](guide/zh-CN/steam.md) · [设置](guide/zh-CN/settings.md)。
+所有标签页（“桌面环境”、“外观”、“扩展”、Wallpaper Engine、Steam 和“设置”）的分步指南，提供中文、英文、俄文、德文、法文和西班牙文版本：[guide/](guide/README.md)。中文版：[桌面环境](guide/zh-CN/desktops.md) · [外观](guide/zh-CN/appearance.md) · [扩展](guide/zh-CN/extensions.md) · [Wallpaper Engine](guide/zh-CN/wallpaper-engine.md) · [Steam](guide/zh-CN/steam.md) · [设置](guide/zh-CN/settings.md)。
 
 ## 功能
 
@@ -225,7 +225,7 @@ Rexon 从不以 root 身份运行第三方安装脚本。有些主题作者附�
 
 ## 翻译
 
-界面使用 GNU gettext 翻译：Rust 代码和 QML 页面共用一个翻译目录。模板是 [`po/rexon.pot`](po/rexon.pot)，每种语言对应 [`po/`](po/) 中的一个文件。基础语言是英语，目前已有俄语、德语、简体中文和法语翻译。要添加新语言，请参阅 [`po/README.md`](po/README.md)，无需修改代码。
+界面使用 GNU gettext 翻译：Rust 代码和 QML 页面共用一个翻译目录。模板是 [`po/rexon.pot`](po/rexon.pot)，每种语言对应 [`po/`](po/) 中的一个文件。基础语言是英语，目前已有俄语、德语、简体中文、法语和西班牙语翻译。要添加新语言，请参阅 [`po/README.md`](po/README.md)，无需修改代码。
 
 ## 致谢
 

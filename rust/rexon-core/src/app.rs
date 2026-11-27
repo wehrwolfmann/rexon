@@ -584,6 +584,15 @@ pub fn kde_font_reset_argv(kwriteconfig: &str) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// argv снятия шрифта документов, который страница «Шрифты» пишет в KDE в
+/// ключ GNOME (`qt_settings::DOCUMENT_FONT_GNOME`: своего у Plasma нет).
+/// `gsettings` — найденный путь программы. Шрифта подписей значков рабочего
+/// стола в KDE Rexon не пишет — снимать там нечего.
+pub fn document_font_reset_argv(gsettings: &str) -> Vec<String> {
+    let (schema, key) = crate::qt_settings::DOCUMENT_FONT_GNOME;
+    vec![gsettings.to_string(), "reset".into(), schema.to_string(), key.to_string()]
+}
+
 /// argv снятия эффектов KWin от форк-тем (по вызову на эффект).
 pub fn kwin_effect_reset_argv(kwriteconfig: &str) -> Vec<Vec<String>> {
     KWIN_FORK_EFFECTS

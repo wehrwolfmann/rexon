@@ -424,6 +424,36 @@ def _patches() -> list[str]:
     return sorted(f for f in os.listdir(PATCH_DIR) if f.endswith(".patch"))
 
 
+#: Строка заголовка патча: «Удалить-при: <текст>». Своя правка, которую
+#: апстрим сделал НЕНУЖНОЙ иначе, чем вобрав её дословно (обратное
+#: наложение такое не узнаёт): когда текст-признак появился в файле, который
+#: патч правит, патч не лёг — значит, устарел, а не конфликтует.
+OBSOLETE_MARKER = "Удалить-при:"
+
+
+def _obsolete_marker_hit(path: str, root: str) -> str | None:
+    """Признак из «Удалить-при:» найден в целевом файле патча → сам признак."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    head = text.split("\n---\n", 1)[0]
+    markers = [ln.split(OBSOLETE_MARKER, 1)[1].strip()
+               for ln in head.splitlines() if ln.startswith(OBSOLETE_MARKER)]
+    if not markers:
+        return None
+    targets = [ln[len("+++ b/"):].strip() for ln in text.splitlines()
+               if ln.startswith("+++ b/")]
+    for target in targets:
+        try:
+            with open(os.path.join(root, target), encoding="utf-8") as f:
+                body = f.read()
+        except OSError:
+            continue
+        for marker in markers:
+            if marker and marker in body:
+                return marker
+    return None
+
+
 def _apply_patches(root: str) -> list[str]:
     """Наложить серию на выложенное дерево. Не лёг патч — RuntimeError.
 
@@ -461,6 +491,12 @@ def _apply_patches(root: str) -> list[str]:
             obsolete.append(name)
             print(f"[patch] УЖЕ У АПСТРИМА, пропущен: {name}")
             continue
+        marker = _obsolete_marker_hit(path, root)
+        if marker is not None:
+            obsolete.append(name)
+            print(f"[patch] УСТАРЕЛ, пропущен: {name} — в апстриме уже есть "
+                  f"«{marker}» (строка «{OBSOLETE_MARKER}» в заголовке патча)")
+            continue
         raise RuntimeError(
             f"патч {name} НЕ НАЛОЖИЛСЯ на апстрим:\n"
             + (res.stderr or res.stdout).strip()
@@ -470,7 +506,7 @@ def _apply_patches(root: str) -> list[str]:
               "и пересоберите патч (`git diff` по вендорному файлу → "
             + f"{os.path.relpath(path, _REPO)}).")
     if obsolete:
-        print("[patch] ⚠️ апстрим вобрал наши правки — эти файлы серии "
+        print("[patch] ⚠️ апстрим вобрал наши правки или сделал их ненужными — эти файлы серии "
               "больше не нужны, удалите их вместе с бумпом вендора:")
         for name in obsolete:
             print(f"[patch]   patches/{name}")

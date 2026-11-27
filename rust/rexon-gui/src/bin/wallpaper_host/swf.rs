@@ -564,9 +564,18 @@ mod imp {
             );
         }
         let started = Instant::now();
+        // Сердцебиение для сторожа живых обоев (`rexon-core::renderer_watch`):
+        // отмечаемся между кадрами, не чаще срока ядра. Встал цикл кадров —
+        // встала и метка.
+        let beat_every = Duration::from_millis(rexon_core::renderer_watch::HEARTBEAT_INTERVAL_MS);
+        let mut last_beat: Option<Instant> = None;
         let between = move |wp: &mut Wallpaper| {
             if let Some(live) = audio.as_mut() {
                 live.apply(wp);
+            }
+            if last_beat.is_none_or(|at| at.elapsed() >= beat_every) {
+                rexon_core::renderer_watch::write_heartbeat_live();
+                last_beat = Some(Instant::now());
             }
             between(wp)
         };

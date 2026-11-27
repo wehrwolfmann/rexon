@@ -50,6 +50,12 @@ const QML_FILES: &[&str] = &[
     "qml/WindowButtonsSection.qml",
     // «Отклик при запуске» (как в модуле «Курсоры» KDE) — там же.
     "qml/LaunchFeedbackSection.qml",
+    // Источник «Razer Axon» раздела «Обои HD» (библиотека Axon) и блок его
+    // настроек в «⚙️ Настройках» того же раздела.
+    "qml/AxonLibraryView.qml",
+    "qml/AxonSettingsSection.qml",
+    // Плейлист обоев Rexon в «⚙️ Настройках» раздела «Обои HD».
+    "qml/WallpaperPlaylistSection.qml",
     // «Цвет акцента» над сеткой «Цветовых схем» «Оформления».
     "qml/AccentSection.qml",
     // «Светлое и тёмное» (по расписанию) над «Глобальными темами» и «Цветовыми схемами».
@@ -89,8 +95,13 @@ const QML_FILES: &[&str] = &[
     // Настройки виджета Conky в карточке раздела — отдельным компонентом:
     // положение, фон, окно, экран, часы и сеть (`conky_overlay`).
     "qml/ConkySettings.qml",
+    // Палитра найденных цветов виджета Conky в той же карточке
+    // (`conky_colors`).
+    "qml/ConkyColours.qml",
     // Наборы виджетов Conky над сеткой раздела (`conky_sets`).
     "qml/ConkySets.qml",
+    // Мини-карта экрана с перетаскиванием виджетов Conky (`conky_layout`).
+    "qml/ConkyScreenMap.qml",
     // Вкладка «Wallpaper Engine» — шелл вокруг вендорного QML
     // waywallen: рейл и место страницы. Страницы вендорные и
     // приезжают отдельным модулем `waywallen.ui`, поэтому в
@@ -178,6 +189,10 @@ const BRIDGE_FILES: &[&str] = &[
     "src/window_buttons_actions.rs",
     // «Отклик при запуске»: снимок и запись — ядро (`launch_feedback`).
     "src/launch_feedback_actions.rs",
+    // Источник «Razer Axon»: библиотека, запрос, «Применить», наши настройки.
+    "src/axon_actions.rs",
+    // Плейлист обоев Rexon: модель, правки, смена — ядро (`wallpaper_playlist`).
+    "src/wallpaper_playlist_actions.rs",
     // «Цвет акцента»: снимок и запись — ядро (`accent`).
     "src/accent_actions.rs",
     // «Светлое и тёмное»: снимок, запись, таймер — ядро (`day_night`).

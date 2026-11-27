@@ -914,10 +914,28 @@ fn safe_install_into(
         // удаление снимало ровно своё (дефекты Д2/Д3, 25.10.2026).
         if ext_type == "theme-bundle" || ext_type == "theme-conky" {
             installed_names.push(name.clone());
-            // Подпапка с именем самого виджета — это его каталог
+            // Обычный виджет Conky: вся `data/` — ОДИН каталог
+            // `~/.config/conky/<id>` (`install_conky_plan`), подпапки
+            // отдельно не кладутся. Прежняя копия `data/<подпапка>` в
+            // `~/.config/conky/<подпапка>` была вторым виджетом с тем же
+            // файлом настроек — он показывался и запускался дважды (дефект
+            // 14.11.2026; уже лежащие копии убирает
+            // `ext_exec::heal_conky_duplicates`). Несколько виджетов в
+            // одном пакете — по-прежнему отдельные плитки `<id>/<подпапка>`
+            // (`de_apply::conky_nested_widgets`).
+            if ext_type == "theme-conky" && !is_conky_set(ext) {
+                continue;
+            }
+            // Подпапка с именем самого набора — это его каталог
             // `~/.config/conky/<id>`: его кладёт `install_conky_plan`.
-            if !(ext_type == "theme-conky" && *name == ext.ext_id()) {
-                put_owned_copy(env, ext, pfs, &entry, &dest, steps);
+            if !(ext_type == "theme-conky" && *name == ext.ext_id())
+                && !put_owned_copy(env, ext, pfs, &entry, &dest, steps)
+                && is_conky_set(ext)
+            {
+                // Набор виджетов из файла: папку занял чужой виджет с тем же
+                // именем — сказать, что набор возьмёт его.
+                steps.push(taken_by_other_notice(name, &dest));
+                pfs.skipped += 1;
             }
             continue;
         }
@@ -2417,6 +2435,55 @@ pub fn plymouth_fallback_script(theme_name: &str, src: &str) -> String {
         + "\n"
 }
 
+/// Пакет — набор виджетов Conky, сохранённый Rexon в файл
+/// ([`crate::conky_sets::SET_MANIFEST_KEY`]).
+fn is_conky_set(ext: &ExtInfo) -> bool {
+    ext.manifest.get(crate::conky_sets::SET_MANIFEST_KEY).is_some_and(Value::is_object)
+}
+
+/// Каталог шрифтов набора виджетов `id`.
+fn conky_set_fonts_dir(home: &str, id: &str) -> String {
+    format!("{home}/.local/share/fonts/rexon-conky-{id}")
+}
+
+/// Набор виджетов из файла: подпапки `data/` уже легли своими виджетами
+/// (`~/.config/conky/<папка>`, с меткой владельца); здесь — папка самого
+/// набора `data/<id>` (`.cmtheme` и обои) и шрифты из папок виджетов — в
+/// один свой каталог, как у пакета тем. Прежний путь копировал ВЕСЬ
+/// `data/` ещё и в `~/.config/conky/<id>`, и каждый виджет набора
+/// показывался дважды.
+fn install_conky_set_plan(env: &ExtEnv, ext: &ExtInfo, data_dir: &str, pfs: &mut PlanFs, steps: &mut Vec<ExtStep>) {
+    let id = ext.ext_id();
+    let dest_dir = format!("{}/.config/conky/{id}", env.home);
+    let set_src = join(data_dir, &id);
+    if env.fs.is_dir(&set_src) {
+        if pfs.exists(&dest_dir) {
+            steps.push(ExtStep::RemoveTree { path: dest_dir.clone(), safe: true, ignore_errors: true });
+        }
+        steps.push(ExtStep::CopyTree { src: set_src, dest: dest_dir.clone() });
+        pfs.mk_dir(&dest_dir);
+    }
+    let fonts: Vec<String> = env
+        .fs
+        .walk(data_dir)
+        .into_iter()
+        .flat_map(|(root, _, files)| files.into_iter().filter(|f| is_supported_font(f)).map(move |f| join(&root, &f)))
+        .collect();
+    if !fonts.is_empty() {
+        let fonts_dir = conky_set_fonts_dir(&env.home, &id);
+        steps.push(ExtStep::MakeDirs { path: fonts_dir.clone() });
+        pfs.mk_dir(&fonts_dir);
+        for src in fonts {
+            let dst = join(&fonts_dir, src.rsplit('/').next().unwrap_or(&src));
+            if !pfs.exists(&dst) {
+                steps.push(ExtStep::CopyFile { src, dest: dst.clone() });
+                pfs.mk_file(&dst);
+            }
+        }
+        steps.push(run(vec!["fc-cache", "-f"], 30));
+    }
+}
+
 /// Порт `_install_conky` (без запуска — Popen как шаг Spawn).
 fn install_conky_plan(
     env: &ExtEnv,
@@ -2425,6 +2492,9 @@ fn install_conky_plan(
     pfs: &mut PlanFs,
     steps: &mut Vec<ExtStep>,
 ) {
+    if is_conky_set(ext) {
+        return install_conky_set_plan(env, ext, data_dir, pfs, steps);
+    }
     let theme_id = ext.ext_id();
     let dest_dir = format!("{}/.config/conky/{}", env.home, theme_id);
 
@@ -2992,6 +3062,14 @@ pub fn safe_uninstall_plan(env: &ExtEnv, ext: &ExtInfo) -> Vec<ExtStep> {
         );
         if env.fs.is_file(&autostart) {
             steps.push(ExtStep::RemoveFile { path: autostart });
+        }
+        // Шрифты набора виджетов из файла — свой каталог целиком.
+        // (снимок плана общий каталог шрифтов не раскрывает — шаг идёт
+        // всегда, отсутствующий каталог исполнитель пропускает).
+        if is_conky_set(ext) {
+            let set_fonts = conky_set_fonts_dir(&env.home, &ext.ext_id());
+            steps.push(ExtStep::RemoveTree { path: set_fonts, safe: true, ignore_errors: true });
+            steps.push(run(vec!["fc-cache", "-f"], 30));
         }
         // Копии подпапок `data/` в `~/.config/conky/<подпапка>` — только
         // свои, по метке (общая `fonts` бывает у другого виджета).

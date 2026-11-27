@@ -969,16 +969,27 @@ fn font_plan_table_per_desktop() {
 /// общий слой Rexon).
 #[test]
 fn font_title_offered_only_where_a_wm_reads_it() {
-    for de in ["kde", "xfce", "gnome", "budgie", "cinnamon-mint", "mate"] {
+    for de in ["kde", "gnome", "budgie"] {
         assert_eq!(
             qs::font_targets_for(de),
-            vec!["system", "mono", "small", "toolbar", "menu", "title"],
+            vec!["system", "mono", "small", "toolbar", "menu", "title", "document"],
             "{de}"
         );
     }
-    for de in ["cosmic", "lxqt", "sway", "hyprland", "niri", "deepin", ""] {
-        assert_eq!(qs::font_targets_for(de), vec!["system", "mono", "small", "toolbar", "menu"], "{de}");
+    // Подписи значков рабочего стола — только там, где у стола есть ключ.
+    for de in ["xfce", "cinnamon-mint", "cinnamon", "mate"] {
+        assert_eq!(
+            qs::font_targets_for(de),
+            vec!["system", "mono", "small", "toolbar", "menu", "title", "document", "desktop"],
+            "{de}"
+        );
     }
+    for de in ["cosmic", "sway", "hyprland", "niri", "deepin", ""] {
+        assert_eq!(qs::font_targets_for(de), vec!["system", "mono", "small", "toolbar", "menu", "document"], "{de}");
+    }
+    // LXQt: заголовок — только с опознанным менеджером окон, подписи значков
+    // — у pcmanfm-qt.
+    assert_eq!(qs::font_targets_for("lxqt"), vec!["system", "mono", "small", "toolbar", "menu", "document", "desktop"]);
 }
 
 /// «Маленький», «панели инструментов», «меню»: в KDE — родные ключи
@@ -1018,11 +1029,22 @@ fn extra_fonts_reach_every_desktop() {
     }
     assert_eq!(
         qs::font_targets_shown("gnome"),
-        vec![("system", true), ("mono", true), ("small", true), ("toolbar", true), ("menu", true), ("title", true)]
+        vec![
+            ("system", true),
+            ("mono", true),
+            ("small", true),
+            ("toolbar", true),
+            ("menu", true),
+            ("title", true),
+            ("document", true),
+            ("desktop", false),
+        ]
     );
-    // Заголовок там, где писать некуда, по-прежнему не показывается.
-    assert!(qs::font_targets_shown("sway").iter().all(|(t, ok)| *t != "title" && *ok));
-    assert!(qs::font_targets_shown("kde").iter().all(|(_, ok)| *ok));
+    // Заголовок там, где писать некуда, по-прежнему не показывается;
+    // подписи значков рабочего стола видны, но выключены.
+    assert!(qs::font_targets_shown("sway").iter().all(|(t, ok)| *t != "title" && (*ok || *t == "desktop")));
+    assert!(qs::font_targets_shown("kde").iter().all(|(t, ok)| *ok != (*t == "desktop")));
+    assert!(qs::font_targets_shown("mate").iter().all(|(_, ok)| *ok));
 }
 
 /// Подпись «на что действует» — честная по окружению.
@@ -1443,10 +1465,12 @@ fn font_target_texts_match_python() {
         .iter()
         .map(|c| c[0].as_str().unwrap())
         .collect();
+    // Шрифт документов и подписей значков рабочего стола добавлены позже,
+    // по страницам GNOME, Cinnamon и MATE.
     let kept: Vec<&str> = qs::FONT_TARGETS
         .iter()
         .copied()
-        .filter(|t| !qs::EXTRA_FONT_TARGETS.contains(t))
+        .filter(|t| !qs::EXTRA_FONT_TARGETS.contains(t) && !["document", "desktop"].contains(t))
         .collect();
     assert_eq!(listed, kept);
 }
@@ -1833,6 +1857,10 @@ const TEXT_ADDITIONS: &[&str] = &[
     "wp.audio_mute_other",
     "wp.audio_mute_covered",
     "wp.audio_hint",
+    // Батарея и игра в общей модели паузы обоев (15.11.2026): у оригинала
+    // вкладки таких условий не было вовсе.
+    "wp.pause_battery",
+    "wp.pause_game",
     // Раздел «Значок в системном лотке»: у оригинала вкладки значка не было
     // вовсе, поэтому и подписей к нему быть не могло.
     "tray.autostart",
@@ -1890,6 +1918,10 @@ const TEXT_ADDITIONS: &[&str] = &[
 /// (`golden/qt_settings_ru_before.json`): «как было» у них нет, их русский
 /// сверяется отдельно ([`language_section_russian`]).
 const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
+    // Батарея и игра в общей модели паузы обоев (15.11.2026) — русский
+    // сверяется в `wallpaper_pause_texts_russian`.
+    "wp.pause_battery",
+    "wp.pause_game",
     "prot.terminal_colors",
     "prot.terminal_colors_tip",
     "snd.theme_missing",
@@ -3013,6 +3045,16 @@ fn ambient_stopped_status_tells_the_truth() {
 // ============================================================================
 // Перевод: русский как было, английский — без единой русской буквы
 // ============================================================================
+
+/// Галочки батареи и игры раздела «Обои» — по-русски и по-человечески.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn wallpaper_pause_texts_russian() {
+    let _lang = i18n_pin::ru();
+    let get = |k: &str| qs::text(k, &[]).unwrap();
+    assert_eq!(get("wp.pause_battery"), "Ставить обои на паузу при работе от батареи");
+    assert_eq!(get("wp.pause_game"), "Ставить обои на паузу во время игры (игровой режим)");
+}
 
 /// Снимок русских текстов вкладки до переноса строк в каталог.
 fn ru_before() -> Value {
@@ -4466,10 +4508,7 @@ fn title_font_plan_follows_session_wm() {
     assert_eq!(qs::font_plan_wm("lxqt", "system", Some(W::Openbox)), qs::font_plan("lxqt", "system"));
     // Свои окружения менеджером сеанса не подменяются.
     assert_eq!(qs::font_plan_wm("mate", "title", Some(W::Openbox)), qs::font_plan("mate", "title"));
-    assert_eq!(
-        qs::font_targets_shown_wm("lxqt", Some(W::Openbox)).last(),
-        Some(&("title", true))
-    );
+    assert!(qs::font_targets_shown_wm("lxqt", Some(W::Openbox)).contains(&("title", true)));
     assert!(qs::font_plan("kde", "title").notify.is_empty());
 }
 
@@ -4479,7 +4518,7 @@ fn title_font_plan_follows_session_wm() {
 fn sway_title_font_plan_and_pango() {
     use qs::{FontFace, FontFile, FontStore, TitleWm as W};
     assert!(qs::font_target_available_wm("sway", "title", Some(W::Sway)));
-    assert_eq!(qs::font_targets_shown_wm("sway", Some(W::Sway)).last(), Some(&("title", true)));
+    assert!(qs::font_targets_shown_wm("sway", Some(W::Sway)).contains(&("title", true)));
     let plan = qs::font_plan_wm("sway", "title", Some(W::Sway));
     assert_eq!(plan.primary, FontStore::File(FontFile::SwayConf));
     assert!(plan.also.is_empty() && plan.extra.is_empty() && plan.notify.is_empty() && !plan.gtk_ini);
@@ -4754,4 +4793,439 @@ fn font_face_round_trip_every_store() {
     // Подпись во вкладке показывает начертание и из записи QFont.
     assert!(qs::font_value_text("Sans,10,-1,5,700,1,0,0,0,0,0,0,0,0,0,1").contains("Sans Bold Italic 10"));
     assert!(qs::font_value_text("'Sans Semi-Bold 10'").contains("Sans Semi-Bold 10"));
+}
+
+/// Шрифт документов: родной ключ MATE (`org.mate.interface`) с ключом GNOME
+/// рядом; во всех остальных окружениях — ключ GNOME
+/// (`org.gnome.desktop.interface document-font-name`), в том числе в KDE,
+/// XFCE, LXQt и COSMIC, где своего ключа нет. Без qt6ct и settings.ini: Qt и
+/// сам GTK этот шрифт не читают.
+#[test]
+fn document_font_goes_to_gsettings_everywhere() {
+    use qs::{FontStore, SoundBackend};
+    let gs = |schema: &str, key: &str| FontStore::Cmd(SoundBackend::GSettings { schema: schema.into(), key: key.into() });
+    let gnome = gs("org.gnome.desktop.interface", "document-font-name");
+    let plan = qs::font_plan("mate", "document");
+    assert_eq!(plan.primary, gs("org.mate.interface", "document-font-name"));
+    assert_eq!(plan.also, vec![gnome.clone()]);
+    assert!(plan.extra.is_empty() && plan.notify.is_empty() && !plan.gtk_ini);
+    for de in ["gnome", "cinnamon", "cinnamon-mint", "budgie", "pantheon", "kde", "xfce", "lxqt", "cosmic", "sway", "hyprland", ""] {
+        assert!(qs::font_target_available(de, "document"), "{de}");
+        let plan = qs::font_plan(de, "document");
+        assert_eq!(plan.primary, gnome, "{de}");
+        assert!(plan.also.is_empty() && plan.extra.is_empty() && !plan.gtk_ini, "{de}");
+    }
+    assert_eq!(
+        qs::font_write_argv_face("kde", "document", "Noto Serif", 12, qs::FontFace { weight: 700, italic: false }, "kwriteconfig6")
+            .unwrap(),
+        ["gsettings", "set", "org.gnome.desktop.interface", "document-font-name", "Noto Serif Bold 12"]
+    );
+    // Пояснение говорит, кто его не читает.
+    let _lang = i18n_pin::en();
+    assert!(qs::document_font_note().contains("Qt"));
+    let (label, _tip, title) = qs::font_target_texts("document");
+    assert!(label.contains("Documents") && title == "Document Font", "{label} / {title}");
+    // Сброс шрифтов KDE снимает и его.
+    assert_eq!(
+        rexon_core::app::document_font_reset_argv("/usr/bin/gsettings"),
+        ["/usr/bin/gsettings", "reset", "org.gnome.desktop.interface", "document-font-name"]
+    );
+}
+
+/// Подписи значков рабочего стола: Cinnamon — Nemo, MATE — Caja (описание
+/// Pango), XFCE — только кегль xfdesktop с включателем своего кегля; в
+/// остальных окружениях пункт выключен и честно назван.
+#[test]
+fn desktop_icon_font_per_desktop() {
+    use qs::{FontStore, SoundBackend};
+    let gs = |schema: &str, key: &str| FontStore::Cmd(SoundBackend::GSettings { schema: schema.into(), key: key.into() });
+    for de in ["cinnamon", "cinnamon-mint"] {
+        let plan = qs::font_plan(de, "desktop");
+        assert_eq!(plan.primary, gs("org.nemo.desktop", "font"), "{de}");
+        assert!(plan.also.is_empty() && plan.extra.is_empty() && !plan.gtk_ini, "{de}");
+    }
+    let plan = qs::font_plan("mate", "desktop");
+    assert_eq!(plan.primary, gs("org.mate.caja.desktop", "font"));
+    assert!(plan.also.is_empty() && plan.extra.is_empty() && !plan.gtk_ini);
+    assert_eq!(
+        qs::font_write_argv_face("mate", "desktop", "Ubuntu", 11, qs::FontFace { weight: 0, italic: true }, "").unwrap(),
+        ["gsettings", "set", "org.mate.caja.desktop", "font", "Ubuntu Italic 11"]
+    );
+
+    // XFCE: кегль числом в /desktop-icons/font-size (double), включатель —
+    // до записи кегля.
+    assert!(qs::font_target_size_only("xfce", "desktop"));
+    assert!(!qs::font_target_size_only("mate", "desktop") && !qs::font_target_size_only("xfce", "system"));
+    let plan = qs::font_plan("xfce", "desktop");
+    let store = FontStore::Cmd(SoundBackend::Xfconf { channel: "xfce4-desktop".into(), prop: "/desktop-icons/font-size".into() });
+    assert_eq!(plan.primary, store);
+    assert!(plan.also.is_empty() && !plan.gtk_ini);
+    assert_eq!(
+        plan.extra,
+        vec![vec![
+            "xfconf-query", "-c", "xfce4-desktop", "-p", "/desktop-icons/use-custom-font-size", "-n", "-t", "bool", "-s",
+            "true",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect::<Vec<_>>()]
+    );
+    assert_eq!(
+        qs::font_store_write_argv_face(&store, "Ignored Family", 9, qs::FontFace::default(), "").unwrap(),
+        ["xfconf-query", "-c", "xfce4-desktop", "-p", "/desktop-icons/font-size", "-n", "-t", "double", "-s", "9"]
+    );
+    // Чтение: свой кегль включён — шрифт интерфейса с этим кеглем; выключен
+    // или не задан — шрифт интерфейса целиком.
+    assert_eq!(qs::xfdesktop_font_spec("true", "12.000000", "Sans Bold 10"), "Sans Bold 12");
+    assert_eq!(qs::xfdesktop_font_spec("false", "12.000000", "Sans 10"), "Sans 10");
+    assert_eq!(qs::xfdesktop_font_spec("", "", "'Sans 10'"), "Sans 10");
+    assert_eq!(qs::xfdesktop_font_spec("true", "oops", "Sans 10"), "Sans 10");
+    assert_eq!(
+        qs::xfdesktop_use_size_read_argv(),
+        ["xfconf-query", "-c", "xfce4-desktop", "-p", "/desktop-icons/use-custom-font-size"]
+    );
+
+    // Где ключа нет — выключено, с честной причиной.
+    for de in ["kde", "gnome", "budgie", "pantheon", "cosmic", "sway", "hyprland", "deepin", ""] {
+        assert!(!qs::font_target_available(de, "desktop"), "{de}");
+        assert!(qs::desktop_font_note(de).is_some(), "{de}");
+    }
+    for de in ["cinnamon", "cinnamon-mint", "mate", "lxqt"] {
+        assert!(qs::font_target_available(de, "desktop"), "{de}");
+        assert_eq!(qs::desktop_font_note(de), None, "{de}");
+    }
+    let _lang = i18n_pin::en();
+    assert!(qs::desktop_font_note("xfce").unwrap().contains("only the size"));
+    assert!(qs::desktop_font_note("kde").unwrap().contains("interface font"));
+    let (label, _tip, title) = qs::font_target_texts("desktop");
+    assert!(label.contains("Desktop") && title == "Desktop Font", "{label} / {title}");
+}
+
+// ── Подписи значков рабочего стола LXQt (pcmanfm-qt) ──────────────────────
+
+/// Подделка живого стола: работает ли, выходит ли по просьбе, сколько раз
+/// его закрывали и запускали. «Выход» сохраняет файл, как делает сам
+/// pcmanfm-qt (`Settings::save` в `aboutToQuit`).
+struct FakeDesktop {
+    running: std::cell::Cell<bool>,
+    obeys_quit: bool,
+    on_quit: Box<dyn Fn()>,
+    quits: std::cell::Cell<usize>,
+    starts: std::cell::Cell<usize>,
+}
+
+impl FakeDesktop {
+    fn new(running: bool) -> Self {
+        FakeDesktop {
+            running: running.into(),
+            obeys_quit: true,
+            on_quit: Box::new(|| {}),
+            quits: 0.into(),
+            starts: 0.into(),
+        }
+    }
+}
+
+impl qs::PcmanfmBus for FakeDesktop {
+    fn running(&self) -> bool {
+        self.running.get()
+    }
+    fn quit(&self) -> bool {
+        self.quits.set(self.quits.get() + 1);
+        if self.obeys_quit {
+            (self.on_quit)();
+            self.running.set(false);
+        }
+        true
+    }
+    fn start(&self) -> bool {
+        self.starts.set(self.starts.get() + 1);
+        self.running.set(true);
+        true
+    }
+    fn pause(&self) {}
+}
+
+/// Временные каталоги: свой `$XDG_CONFIG_HOME`, системный каталог вместо
+/// `$XDG_CONFIG_DIRS` (настоящие `/etc/xdg` и `/usr/share` не смотрятся) и
+/// каталог резервной копии.
+struct LxqtStand {
+    root: std::path::PathBuf,
+    paths: qs::PcmanfmPaths,
+}
+
+impl LxqtStand {
+    fn new(name: &str) -> Self {
+        let root = std::env::temp_dir().join(format!("rexon-lxqt-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("cfg")).unwrap();
+        let s = |p: &str| root.join(p).to_string_lossy().into_owned();
+        let paths = qs::PcmanfmPaths {
+            config_home: s("cfg"),
+            config_dirs: vec![s("empty-dir"), s("sys")],
+            backup_dir: qs::pcmanfm_backup_dir(&s("data")),
+        };
+        LxqtStand { root, paths }
+    }
+    fn put_system(&self, text: &str) {
+        let dir = self.root.join("sys/pcmanfm-qt/lxqt");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("settings.conf"), text).unwrap();
+    }
+    fn put_own(&self, text: &str) {
+        std::fs::create_dir_all(self.paths.own_dir()).unwrap();
+        std::fs::write(self.paths.own_file(), text).unwrap();
+    }
+    fn own(&self) -> Option<String> {
+        std::fs::read_to_string(self.paths.own_file()).ok()
+    }
+}
+
+impl Drop for LxqtStand {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+/// Системный файл как у пакета pcmanfm-qt (сокращённо): обои, ярлыки, цвета.
+const PCMANFM_SYSTEM: &str = "[System]\nIconThemeName=elementary\nTerminal=qterminal\n\n[Desktop]\n\
+DesktopShortcuts=Home, Trash, Computer, Network\nWallpaperMode=stretch\n\
+Wallpaper=/usr/share/lxqt/wallpapers/waves-logo.png\nBgColor=#000000\n\
+Font=\"Sans Serif,12,-1,5,50,0,0,0,0,0\"\n\n[Volume]\nMountOnStartup=true\n";
+
+/// Все строки, кроме `Font`, — те же, в том же порядке.
+fn same_except_font(a: &str, b: &str) {
+    let keep =
+        |t: &str| t.split_inclusive('\n').filter(|l| !l.starts_with("Font=")).map(str::to_string).collect::<Vec<_>>();
+    assert_eq!(keep(a), keep(b));
+}
+
+/// Правка одной строки `Font` оставляет остальные байты как были: `\r\n`,
+/// отсутствие `\n` в конце, порядок; ключа нет — встаёт за `[Desktop]`;
+/// секции нет — дописывается. Значение — QFont в кавычках.
+#[test]
+fn pcmanfm_font_line_edit_keeps_other_bytes() {
+    let v = qs::pcmanfm_font_value("Noto Sans", 9, qs::FontFace { weight: 700, italic: true });
+    assert_eq!(v, "\"Noto Sans,9,-1,5,700,1,0,0,0,0,0,0,0,0,0,1\"");
+    let out = qs::pcmanfm_with_desktop_font(Some(PCMANFM_SYSTEM), &v);
+    assert_eq!(out, PCMANFM_SYSTEM.replace("Font=\"Sans Serif,12,-1,5,50,0,0,0,0,0\"", &format!("Font={v}")));
+    assert_eq!(qs::pcmanfm_desktop_font_raw(&out).as_deref(), Some(v.as_str()));
+
+    let crlf = "[Desktop]\r\nWallpaper=/a.png\r\nFont=\"A,1\"\r\n[X]\r\nFont=keep";
+    assert_eq!(
+        qs::pcmanfm_with_desktop_font(Some(crlf), "\"B,2\""),
+        "[Desktop]\r\nWallpaper=/a.png\r\nFont=\"B,2\"\r\n[X]\r\nFont=keep"
+    );
+    // `Font` чужой секции не трогается и не читается.
+    assert_eq!(qs::pcmanfm_desktop_font_raw("[X]\nFont=a\n"), None);
+    assert_eq!(qs::pcmanfm_with_desktop_font(Some("[X]\nFont=a"), "b"), "[X]\nFont=a\n\n[Desktop]\nFont=b\n");
+    assert_eq!(
+        qs::pcmanfm_with_desktop_font(Some("[Desktop]\nWallpaper=/a.png\n"), "b"),
+        "[Desktop]\nFont=b\nWallpaper=/a.png\n"
+    );
+    assert_eq!(qs::pcmanfm_with_desktop_font(None, "b"), "[Desktop]\nFont=b\n");
+    assert_eq!(
+        qs::pcmanfm_without_desktop_font(&out),
+        PCMANFM_SYSTEM.replace("Font=\"Sans Serif,12,-1,5,50,0,0,0,0,0\"\n", "")
+    );
+
+    // Чтение — запись QFont без кавычек, её понимает общий разбор.
+    let file = qs::FontFile::PcmanfmDesktop;
+    assert_eq!(file.rel_path(), "pcmanfm-qt/lxqt/settings.conf");
+    assert_eq!(file.read_spec(PCMANFM_SYSTEM), "Sans Serif,12,-1,5,50,0,0,0,0,0");
+    assert!(!file.may_create());
+    let (family, size, _) = qs::parse_font_spec_face(&file.read_spec(PCMANFM_SYSTEM));
+    assert_eq!((family.as_str(), size), ("Sans Serif", 12));
+    let plan = qs::font_plan("lxqt", "desktop");
+    assert_eq!(plan.primary, qs::FontStore::File(file));
+    assert!(plan.also.is_empty() && plan.extra.is_empty() && plan.notify.is_empty() && !plan.gtk_ini);
+}
+
+/// Порядок поиска — как `Settings::profileDir`: свой КАТАЛОГ заслоняет
+/// системный, даже пустой; системный — первый существующий.
+#[test]
+fn pcmanfm_seed_follows_profile_dir() {
+    let st = LxqtStand::new("seed");
+    assert_eq!(qs::pcmanfm_seed(&st.paths).source, qs::PcmanfmSource::Builtin);
+    st.put_system(PCMANFM_SYSTEM);
+    let seed = qs::pcmanfm_seed(&st.paths);
+    assert!(matches!(seed.source, qs::PcmanfmSource::System(ref p) if p.ends_with("sys/pcmanfm-qt/lxqt/settings.conf")));
+    assert_eq!(seed.text.as_deref(), Some(PCMANFM_SYSTEM));
+    std::fs::create_dir_all(st.paths.own_dir()).unwrap();
+    assert_eq!(qs::pcmanfm_seed(&st.paths), qs::PcmanfmSeed { source: qs::PcmanfmSource::Own, text: None });
+    assert_eq!(qs::pcmanfm_config_dirs("/a:/b/:/a"), vec!["/a", "/b", "/etc/xdg", "/usr/share"]);
+    assert_eq!(qs::pcmanfm_config_dirs(""), vec!["/etc/xdg", "/usr/share"]);
+}
+
+/// Своего файла нет: заводится КОПИЕЙ системного с одной другой строкой
+/// (обои и прочее на месте), до правки — запись «как было»; возврат снимает
+/// заведённый файл вместе с каталогами — состояние как до Rexon.
+#[test]
+fn pcmanfm_no_own_file_seeds_from_system_and_restores() {
+    let st = LxqtStand::new("seedcopy");
+    st.put_system(PCMANFM_SYSTEM);
+    let bus = FakeDesktop::new(false);
+    let applied =
+        qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "DejaVu Serif", 15, qs::FontFace::default()).unwrap();
+    assert_eq!(applied, qs::PcmanfmApplied { restarted: false });
+    assert_eq!((bus.quits.get(), bus.starts.get()), (0, 0), "стол не работал — не трогаем");
+    let own = st.own().expect("свой файл заведён");
+    same_except_font(&own, PCMANFM_SYSTEM);
+    assert!(own.contains("Wallpaper=/usr/share/lxqt/wallpapers/waves-logo.png\n"));
+    assert_eq!(qs::pcmanfm_desktop_font_spec(&st.paths), "DejaVu Serif,15,-1,5,400,0,0,0,0,0,0,0,0,0,0,1");
+    let record = qs::pcmanfm_font_record(&st.paths).expect("запись «как было»");
+    assert!(!record.had_file);
+    assert_eq!(record.font.as_deref(), Some("\"Sans Serif,12,-1,5,50,0,0,0,0,0\""));
+    assert_eq!(record.created_dirs.len(), 2);
+    // Системный файл не тронут.
+    assert_eq!(std::fs::read_to_string(st.root.join("sys/pcmanfm-qt/lxqt/settings.conf")).unwrap(), PCMANFM_SYSTEM);
+
+    // Вторая правка: запись «как было» прежняя.
+    qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Noto Sans", 10, qs::FontFace::default()).unwrap();
+    assert_eq!(qs::pcmanfm_font_record(&st.paths).unwrap().font, record.font);
+
+    assert_eq!(qs::pcmanfm_desktop_font_restore(&st.paths, &bus), Ok(true));
+    assert_eq!(st.own(), None);
+    assert!(!std::path::Path::new(&format!("{}/pcmanfm-qt", st.paths.config_home)).exists(), "каталоги сняты");
+    assert!(qs::pcmanfm_font_record(&st.paths).is_none());
+    assert!(matches!(qs::pcmanfm_seed(&st.paths).source, qs::PcmanfmSource::System(_)));
+    assert_eq!(qs::pcmanfm_desktop_font_restore(&st.paths, &bus), Ok(false), "второй раз — нечего");
+}
+
+/// Свой файл есть: меняется одна строка, копия файла — в резервной;
+/// возврат кладёт прежнюю строку, а то, что человек поменял после нас
+/// (обои), остаётся.
+#[test]
+fn pcmanfm_own_file_one_line_and_restore_keeps_later_changes() {
+    let st = LxqtStand::new("own");
+    st.put_system("[Desktop]\nWallpaper=/system.png\n");
+    let mine = PCMANFM_SYSTEM.replace("waves-logo.png", "my-cat.jpg");
+    st.put_own(&mine);
+    let bus = FakeDesktop::new(false);
+    qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Ubuntu", 11, qs::FontFace::default()).unwrap();
+    let own = st.own().unwrap();
+    same_except_font(&own, &mine);
+    assert_ne!(own, mine);
+    assert_eq!(std::fs::read_to_string(format!("{}/settings.conf", st.paths.backup_dir)).unwrap(), mine, "копия");
+    assert!(qs::pcmanfm_font_record(&st.paths).unwrap().had_file);
+
+    // Человек сменил обои уже после нас.
+    std::fs::write(st.paths.own_file(), own.replace("my-cat.jpg", "my-dog.jpg")).unwrap();
+    assert_eq!(qs::pcmanfm_desktop_font_restore(&st.paths, &bus), Ok(true));
+    assert_eq!(st.own().unwrap(), mine.replace("my-cat.jpg", "my-dog.jpg"));
+
+    // Своего `Font` не было — при возврате строка снимается.
+    let st = LxqtStand::new("own-nofont");
+    st.put_own("[Desktop]\nWallpaper=/w.png\n");
+    qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Ubuntu", 11, qs::FontFace::default()).unwrap();
+    assert_eq!(st.own().unwrap(), "[Desktop]\nFont=\"Ubuntu,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\"\nWallpaper=/w.png\n");
+    qs::pcmanfm_desktop_font_restore(&st.paths, &bus).unwrap();
+    assert_eq!(st.own().unwrap(), "[Desktop]\nWallpaper=/w.png\n");
+
+    // Свой каталог без файла: pcmanfm-qt читает встроенные умолчания —
+    // файл с одной строкой равносилен им, системный не подмешивается.
+    let st = LxqtStand::new("own-emptydir");
+    st.put_system(PCMANFM_SYSTEM);
+    std::fs::create_dir_all(st.paths.own_dir()).unwrap();
+    qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Ubuntu", 11, qs::FontFace::default()).unwrap();
+    assert_eq!(st.own().unwrap(), "[Desktop]\nFont=\"Ubuntu,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1\"\n");
+    assert!(qs::pcmanfm_font_record(&st.paths).unwrap().created_dirs.is_empty());
+    qs::pcmanfm_desktop_font_restore(&st.paths, &bus).unwrap();
+    assert_eq!(st.own(), None);
+    assert!(std::path::Path::new(&st.paths.own_dir()).is_dir(), "чужой каталог остаётся");
+}
+
+/// Ни своих, ни системных настроек: не трогаем ничего и говорим почему.
+#[test]
+fn pcmanfm_without_any_settings_refuses() {
+    let _lang = i18n_pin::en();
+    let st = LxqtStand::new("none");
+    let bus = FakeDesktop::new(false);
+    let why = qs::pcmanfm_refusal(&st.paths, &bus).expect("отказ");
+    assert!(why.contains("settings.conf"), "{why}");
+    let err = qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Ubuntu", 11, qs::FontFace::default()).unwrap_err();
+    assert_eq!(err, why);
+    assert_eq!(st.own(), None);
+    assert!(!std::path::Path::new(&format!("{}/pcmanfm-qt", st.paths.config_home)).exists());
+    assert!(!std::path::Path::new(&st.paths.backup_dir).exists());
+    st.put_system(PCMANFM_SYSTEM);
+    assert_eq!(qs::pcmanfm_refusal(&st.paths, &bus), None);
+}
+
+/// Живой стол: сначала закрывается (и сам сохраняет свои настройки целиком
+/// — копия делается с ЭТОГО файла), потом правка, потом запуск. Не
+/// закрылся — файл не трогается (при выходе он бы его затёр).
+#[test]
+fn pcmanfm_live_desktop_closed_first_and_restarted() {
+    let _lang = i18n_pin::en();
+    let st = LxqtStand::new("live");
+    st.put_system(PCMANFM_SYSTEM);
+    let own_file = st.paths.own_file();
+    let own_dir = st.paths.own_dir();
+    let saved = PCMANFM_SYSTEM.replace("waves-logo.png", "live.png");
+    let saved_on_quit = saved.clone();
+    let mut bus = FakeDesktop::new(true);
+    bus.on_quit = Box::new(move || {
+        std::fs::create_dir_all(&own_dir).unwrap();
+        std::fs::write(&own_file, &saved_on_quit).unwrap();
+    });
+    let applied = qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Ubuntu", 11, qs::FontFace::default()).unwrap();
+    assert_eq!(applied, qs::PcmanfmApplied { restarted: true });
+    assert_eq!((bus.quits.get(), bus.starts.get()), (1, 1));
+    same_except_font(&st.own().unwrap(), &saved);
+    assert_eq!(std::fs::read_to_string(format!("{}/settings.conf", st.paths.backup_dir)).unwrap(), saved);
+    assert!(qs::pcmanfm_applied_note(applied).contains("restarted"));
+    assert!(qs::pcmanfm_applied_note(qs::PcmanfmApplied { restarted: false }).contains("next time"));
+
+    // Не закрылся: ни копии, ни правки, и второй не запускаем.
+    let st = LxqtStand::new("stuck");
+    st.put_own(PCMANFM_SYSTEM);
+    let mut bus = FakeDesktop::new(true);
+    bus.obeys_quit = false;
+    let err = qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Ubuntu", 11, qs::FontFace::default()).unwrap_err();
+    assert!(err.contains("didn't close"), "{err}");
+    assert_eq!(st.own().unwrap(), PCMANFM_SYSTEM);
+    assert!(qs::pcmanfm_font_record(&st.paths).is_none());
+    assert_eq!(bus.starts.get(), 0);
+}
+
+/// Команды живого стола: выход pcmanfm-qt и запуск модуля `lxqt-session`
+/// (без ожидания ответа — `startModule` его не шлёт).
+#[test]
+fn pcmanfm_bus_commands() {
+    assert_eq!(
+        qs::pcmanfm_quit_argv(),
+        [
+            "dbus-send",
+            "--session",
+            "--print-reply",
+            "--reply-timeout=5000",
+            "--dest=org.pcmanfm.PCManFM",
+            "/Application",
+            "org.pcmanfm.Application.quit"
+        ]
+    );
+    let start = qs::lxqt_start_desktop_argv();
+    assert!(!start.iter().any(|a| a == "--print-reply"));
+    assert_eq!(start.last().map(String::as_str), Some("string:lxqt-desktop.desktop"));
+    assert!(start.contains(&"org.lxqt.session.startModule".to_string()));
+    assert_eq!(qs::pcmanfm_desktop_spawn_argv(), ["setsid", "-f", "pcmanfm-qt", "--desktop", "--profile=lxqt"]);
+    assert_eq!(qs::dbus_name_has_owner_argv("x").last().map(String::as_str), Some("string:x"));
+    let _lang = i18n_pin::en();
+    assert!(qs::pcmanfm_restore_texts().1.contains("wallpaper"));
+    assert!(qs::pcmanfm_restore_status(&Ok(false)).contains("nothing"));
+}
+
+/// Заведённый нами каталог pcmanfm-qt уже занял своим (`recent-files.conf`):
+/// снять его нельзя, а пустой он заслонил бы системный и оставил стол без
+/// обоев — в нём остаётся текст, который pcmanfm-qt читал до нас.
+#[test]
+fn pcmanfm_restore_keeps_wallpaper_when_dir_stays() {
+    let st = LxqtStand::new("dirstays");
+    st.put_system(PCMANFM_SYSTEM);
+    let bus = FakeDesktop::new(false);
+    qs::pcmanfm_desktop_font_apply(&st.paths, &bus, "Ubuntu", 11, qs::FontFace::default()).unwrap();
+    std::fs::write(format!("{}/recent-files.conf", st.paths.own_dir()), "[Recent]\n").unwrap();
+    assert_eq!(qs::pcmanfm_desktop_font_restore(&st.paths, &bus), Ok(true));
+    assert_eq!(st.own().as_deref(), Some(PCMANFM_SYSTEM));
 }

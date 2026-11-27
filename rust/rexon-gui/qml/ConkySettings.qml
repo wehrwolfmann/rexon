@@ -187,6 +187,18 @@ ColumnLayout {
             }
         }
 
+        // Мини-карта экрана: тот же виджет перетаскиванием (conky_layout).
+        ConkyScreenMap {
+            objectName: "conkyCardScreenMap"
+            Layout.fillWidth: true
+            pal: box.pal
+            actions: box.actions
+            itemId: box.itemId
+            conf: box.conf
+            busy: box.busy
+            onMoved: box.reload()
+        }
+
         // ── Фон ───────────────────────────────────────────────────────
         RexonText { text: box.t.background || ""; color: box.colText; font.bold: true; Layout.topMargin: 4 }
 

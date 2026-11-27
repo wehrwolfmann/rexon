@@ -255,6 +255,24 @@ fn gnome_по_времени_таймер_и_применение() {
     assert_eq!(memo["phase"], "dark");
 }
 
+/// Один хозяин обоев: пока играет плейлист обоев Rexon, пара картинок
+/// расписания обои не меняет, а темы — меняет.
+#[test]
+fn пара_обоев_уступает_плейлисту() {
+    let io = Fake::default();
+    io.files.borrow_mut().insert(
+        "/h/.config/rexon/settings.json".into(),
+        serde_json::json!({"wallpaper_playlist": {"playlists": [{"enabled": true, "items": [
+            {"source": {"kind": "file", "path": "/w/a.mp4", "format": "video"}}
+        ]}]}})
+        .to_string(),
+    );
+    let cfg = full_config(Mode::Auto, Schedule::Times);
+    let (ok, msg) = save(&env(&io, "gnome", at(2026, 11, 1, 19, 0)), &cfg);
+    assert!(ok, "{msg}");
+    assert_eq!(*io.applied.borrow(), ["gnome:colors:BreezeDark", "gnome:icons:Papirus-Dark", "gnome:gtk:Adwaita-dark"]);
+}
+
 #[test]
 fn таймер_без_окружения_в_переменных_берёт_окружение_входа_и_переписывается_по_солнцу() {
     let io = Fake::default();

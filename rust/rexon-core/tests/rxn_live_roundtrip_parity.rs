@@ -253,12 +253,13 @@ fn live_roundtrip_child() {
     std::fs::create_dir_all(&work).unwrap();
 
     // ── 1. Установка → повтор → удаление по ходовым типам ──────────────
-    // Рамки окон на XFCE кладут ещё и копию в ~/.themes, Conky и комплект —
-    // копии подпапок под общими именами: удаление снимает их по метке
-    // владельца (дефекты Д1–Д3, починены 25.10.2026).
+    // Рамки окон на XFCE кладут ещё и копию в ~/.themes, комплект — копии
+    // подпапок под общими именами: удаление снимает их по метке владельца
+    // (дефекты Д1–Д3, починены 25.10.2026). Обычный виджет Conky — один
+    // каталог `<id>` (вторая копия подпапки — дефект 14.11.2026).
     let types: &[(&str, &str)] = &[
         ("theme-window-decoration", ".themes/GoldenTheme/xfwm4/themerc"),
-        ("theme-conky", ".config/conky/GoldenTheme/index.theme"),
+        ("theme-conky", ".config/conky/golden-theme-conky/GoldenTheme/index.theme"),
         ("theme-bundle", ".local/share/rexon/bundles/GoldenTheme/index.theme"),
         ("theme-icons", ".local/share/icons/GoldenTheme/index.theme"),
         ("theme-cursors", ".local/share/icons/GoldenTheme"),

@@ -23,6 +23,7 @@ use std::sync::Mutex;
 
 use rexon_core::tray as core_tray;
 use rexon_core::privilege::revoke::Reason;
+use rexon_core::wallpaper_playlist::Command as PlaylistCommand;
 
 // ── шим ────────────────────────────────────────────────────────────────────
 
@@ -254,8 +255,11 @@ fn rebuild_menu() {
     }
     rt.daemon_was = daemon;
 
+    let (playlist, playlist_paused) = rexon_core::wallpaper_playlist::tray_state();
     let state = core_tray::TrayState {
         daemon,
+        playlist,
+        playlist_paused,
         shuffle: daemon_prop("QueueMode").as_deref() == Some("shuffle"),
         rotation_secs: daemon_prop("RotationSecs")
             .and_then(|v| v.parse::<i64>().ok())
@@ -322,11 +326,20 @@ extern "C" fn on_click(id: i32) {
         core_tray::ID_OPEN => {
             unsafe { rexon_tray_raise_window() };
         }
+        // Один вход на оба плейлиста: играет плейлист Rexon — ведёт он,
+        // иначе — демон Wallpaper Engine.
         core_tray::ID_NEXT => {
-            daemon_call("Next");
+            if !playlist_command(PlaylistCommand::Next) {
+                daemon_call("Next");
+            }
         }
         core_tray::ID_PREV => {
-            daemon_call("Previous");
+            if !playlist_command(PlaylistCommand::Prev) {
+                daemon_call("Previous");
+            }
+        }
+        core_tray::ID_PLAYLIST_PAUSE => {
+            playlist_command(PlaylistCommand::TogglePause);
         }
         core_tray::ID_SHUFFLE => {
             let on = daemon_prop("QueueMode").as_deref() != Some("shuffle");
@@ -378,6 +391,49 @@ extern "C" fn on_click(id: i32) {
         }
         _ => {}
     }
+}
+
+/// Команда плейлисту обоев Rexon, если он играет. Применение — секунды
+/// команд оболочки, поэтому вне потока GUI. `false` — плейлист не играет.
+fn playlist_command(cmd: PlaylistCommand) -> bool {
+    if !rexon_core::wallpaper_playlist::tray_state().0 {
+        return false;
+    }
+    std::thread::spawn(move || {
+        rexon_core::wallpaper_playlist::live_command(cmd);
+    });
+    true
+}
+
+/// Таймер плейлиста обоев Rexon и его опрос автопаузы — общий наблюдатель
+/// `wallpaper_audio` (те же условия и то же решение, что у хоста обоев).
+/// Наблюдатель живёт, только пока таймеру нужен ответ.
+fn spawn_playlist_runner() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    let mut watch: Option<(crate::wallpaper_audio::AudioWatch, Arc<AtomicBool>)> = None;
+    rexon_core::wallpaper_playlist::set_hold_probe(Box::new(move |active| {
+        if !active {
+            watch = None;
+            return false;
+        }
+        if watch.is_none() {
+            let env = |k: &str| std::env::var(k).unwrap_or_default();
+            let session = rexon_core::wallpaper_engine::detect_session_type(&env("XDG_SESSION_TYPE"), &env("WAYLAND_DISPLAY"), &env("DISPLAY"));
+            let outputs = rexon_core::wallpaper_exec::live_screen_outputs(&session);
+            let (w, h) = rexon_core::wallpaper_exec::smallest_output(&outputs)
+                .and_then(|o| o.size())
+                .unwrap_or((0, 0));
+            let flag = Arc::new(AtomicBool::new(false));
+            let sink = flag.clone();
+            match crate::wallpaper_audio::watch(w as i64, h as i64, move |d, _| sink.store(d.paused, Ordering::SeqCst)) {
+                Ok(handle) => watch = Some((handle, flag)),
+                Err(e) => rexon_core::log_warn!("wallpaper", "плейлист: наблюдатель автопаузы не запущен: {e}"),
+            }
+        }
+        watch.as_ref().is_some_and(|(_, f)| f.load(Ordering::SeqCst))
+    }));
+    rexon_core::wallpaper_playlist::spawn_runner();
 }
 
 /// Крестик главного окна при живом значке. `true` — закрытие проглотить.
@@ -476,17 +532,11 @@ pub fn install(tab_ids: &[String], repo_root: &str, start_hidden: bool) -> bool 
         repair_autostart_entries();
         rexon_core::compositor_autostart::resync_rexon_live();
     });
-    // Сторож рисовальщика живых обоев: упал — поднять обои заново. Живёт,
-    // пока жив значок, то есть всё время, пока Rexon запущен.
-    static RENDERER_WATCH: std::sync::Once = std::sync::Once::new();
-    RENDERER_WATCH.call_once(|| {
-        let spawned = std::thread::Builder::new()
-            .name("renderer-watch".into())
-            .spawn(rexon_core::renderer_watch::run_forever);
-        if let Err(e) = spawned {
-            rexon_core::log_warn!("wallpaper", "сторож рисовальщика не запущен: {e}");
-        }
-    });
+    // Сторож живых обоев (рисовальщики waywallen и свой хост): упал —
+    // поднять обои заново. Живёт, пока жив значок, то есть всё время, пока
+    // Rexon запущен. Поток один на процесс: его же поднимает и применение
+    // живых обоев, если значка нет.
+    rexon_core::renderer_watch::ensure_running();
     // Сторож пакета движка: обновление Rexon положило плагин новее того,
     // что держит живой демон, — сверить и перезапустить демона сразу, а не
     // при следующем открытии вкладки обоев (`we_socket::spawn_package_watch`).
@@ -550,6 +600,9 @@ pub fn install_for_main_window(args: &[String]) -> bool {
     // Сторож «Rexon обновлён» — тоже со значком и без: уведомление с кнопкой
     // живёт в службе уведомлений, лоток ему не нужен.
     spawn_self_update_watch();
+    // Таймер плейлиста обоев — тоже со значком и без: ему нужен лишь
+    // процесс, живущий весь сеанс.
+    spawn_playlist_runner();
     install(&tabs, &root, core_tray::starts_hidden(args))
 }
 

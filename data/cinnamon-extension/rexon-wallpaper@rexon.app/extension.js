@@ -256,6 +256,19 @@ function earlyExitText(argv, status) {
         '). Запускали: ' + argv.join(' ') + '. Причину называет сама ' +
         'программа показа — её видно в журнале сеанса.';
 }
+
+// Хост проработал дольше этого и лёг — это уже не отказ запуска, а падение
+// на ходу (сон, сброс видеокарты, ошибка драйвера). Такие Rexon поднимает
+// сам: его сторож видит пропажу хоста по метке сердцебиения и перезапускает
+// обои через настройки расширения, а если падения пойдут подряд — ставит
+// неподвижный кадр и говорит об этом ОДНИМ уведомлением. Сообщение оболочки
+// здесь было бы вторым, и на каждое падение.
+const EARLY_EXIT_MS = 10000;
+
+// Считать ли выход хоста отказом запуска (показать сообщение).
+function isLaunchFailure(livedMs) {
+    return livedMs < EARLY_EXIT_MS;
+}
 // [rexon-wp:launch-diagnostics:end]
 
 
@@ -566,10 +579,15 @@ function _spawnDaemon(cfg) {
             return;
         }
         _daemon_pid = pid;
+        const startedUs = GLib.get_monotonic_time();
         GLib.child_watch_add(GLib.PRIORITY_DEFAULT, pid, function(_p, status) {
             global.log('[rexon-wp] daemon exited, status=' + status);
-            _daemon_pid = null;
             GLib.spawn_close_pid(_p);
+            // Выход ПРЕЖНЕГО хоста (сняли сами либо перезапуск): текущий уже
+            // другой — его актёров и номер не трогаем. Прежде такой
+            // запоздалый выход снимал актёры только что поднятого хоста.
+            if (_daemon_pid !== _p) return;
+            _daemon_pid = null;
             // Сами сняли демона (смена обоев, выключение) — это не отказ.
             const stopping = _daemon_stopping;
             _daemon_stopping = false;
@@ -578,7 +596,12 @@ function _spawnDaemon(cfg) {
             // и останется чёрным прямоугольником без обоев.
             _stopTick();
             _removeActors();
-            _reportFailure(earlyExitText(argv, status), cfg);
+            const livedMs = (GLib.get_monotonic_time() - startedUs) / 1000;
+            if (isLaunchFailure(livedMs))
+                _reportFailure(earlyExitText(argv, status), cfg);
+            else
+                global.log('[rexon-wp] показ обоев завершился на ходу (код ' +
+                    status + ') — поднимет сторож Rexon');
         });
     } catch (e) {
         _reportFailure(spawnFailureText(argv, e), cfg);

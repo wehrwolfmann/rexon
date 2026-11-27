@@ -102,41 +102,53 @@ impl Verdict {
 
 // ── Подписи ────────────────────────────────────────────────────────────
 
-/// Подсказка на «Удалить» у включённой сейчас темы.
+// Подписи этого потока — без существительного «тема»: через ту же плашку и
+// те же подсказки идут значки, курсоры, шрифты, виджеты Conky и KDE,
+// расширения GNOME и обои (все плитки «Удалить» раздела «Оформление»), и
+// «Тема «Caffeine» будет удалена» про расширение GNOME сбивала с толку
+// (живая проверка 15.11). Своей карты «вид → существительное» в ядре нет,
+// заводить её ради одной строки — плодить второй список видов (правило #12).
+
+/// Подсказка на «Удалить» у включённого сейчас.
 pub fn removal_active_reason() -> String {
-    tr("You can't remove the active theme. Switch to another theme first.")
+    tr("You can't remove what is in use now. Switch to something else first.")
 }
 
-/// Подсказка на «Удалить» у системной темы.
+/// Подсказка на «Удалить» у системного (из пакета).
 pub fn removal_system_reason() -> String {
-    tr("This theme came with the system (it is in /usr/share), so Rexon doesn't remove it. \
+    tr("This came with the system (it is in /usr/share), so Rexon doesn't remove it. \
         It goes away together with its package.")
 }
 
-/// Подсказка на «Удалить» у темы вне каталогов тем пользователя.
+/// Подсказка на «Удалить» у лежащего вне каталогов пользователя.
 pub fn removal_outside_reason() -> String {
-    tr("This theme is outside your theme folders, so Rexon doesn't remove it.")
+    tr("This is outside your personal appearance folders, so Rexon doesn't remove it.")
 }
 
-/// Текст всплывающей строки: что помечено к удалению. `names` — имена тем в
-/// порядке пометки.
+/// Итог снятия для строки состояния. `names` — имена снятого в порядке
+/// пометки.
 pub fn removal_toast_text(names: &[String]) -> String {
     match names {
         [] => String::new(),
-        [one] => trf("Theme “%1” removed.", &[one]),
-        many => ntr("%n theme removed.", "%n themes removed.", many.len() as u64),
+        // TRANSLATORS: %1 is the name of a removed theme, icon set, cursor, font,
+        // widget, GNOME extension or wallpaper — keep the sentence noun-free.
+        [one] => trf("Removed “%1”.", &[one]),
+        many => ntr("%n item removed.", "%n items removed.", many.len() as u64),
     }
 }
 
-/// Текст строки «Вернуть», пока помеченное ещё на диске: тема БУДЕТ
-/// удалена. Прошедшее время («удалена») здесь обманывало: человек решал, что
-/// тема уже пропала, и «Вернуть» не искал. Срок — отдельной строкой
+/// Текст строки «Вернуть», пока помеченное ещё на диске: удаление ИДЁТ, а
+/// не прошло. Прошедшее время («удалена») здесь обманывало: человек решал,
+/// что всё уже пропало, и «Вернуть» не искал. Срок — отдельной строкой
 /// обратного отсчёта ([`removal_countdown_text`]).
 pub fn removal_pending_text(names: &[String]) -> String {
     match names {
         [] => String::new(),
-        [one] => trf("Theme “%1” will be removed.", &[one]),
-        many => ntr("%n theme will be removed.", "%n themes will be removed.", many.len() as u64),
+        // TRANSLATORS: %1 is the name of anything removable on the Appearance
+        // tab (theme, icons, cursor, font, widget, GNOME extension, wallpaper);
+        // the removal is not done yet — a countdown with “Undo” follows.
+        [one] => trf("Removing “%1”.", &[one]),
+        many => ntr("Removing %n item.", "Removing %n items.", many.len() as u64),
     }
 }
 
@@ -144,8 +156,8 @@ pub fn removal_pending_text(names: &[String]) -> String {
 /// помеченное (страница считает от [`UNDO_TIMEOUT_MS`] и держит паузу, пока
 /// над строкой курсор).
 pub fn removal_countdown_text(seconds: u64) -> String {
-    // Самостоятельное предложение: строка встаёт сразу за «Тема … будет
-    // удалена.», и прежнее «Через 6 секунд, если…» читалось обрывком.
+    // Самостоятельное предложение: строка встаёт сразу за «Удаляем «…».»,
+    // и прежнее «Через 6 секунд, если…» читалось обрывком.
     ntr(
         "%n second left — “Undo” cancels the removal.",
         "%n seconds left — “Undo” cancels the removal.",
@@ -158,7 +170,7 @@ pub fn removal_undo_btn() -> String {
     tr("Undo")
 }
 
-/// Тема оказалась включённой к моменту снятия.
+/// Помеченное оказалось включённым к моменту снятия.
 fn removal_now_active(name: &str) -> String {
     trf("“%1” is in use now, so it wasn't removed.", &[&name])
 }
@@ -176,6 +188,8 @@ pub struct RemovalRoots {
     system: Vec<String>,
     /// Каталоги тем экрана входа и заставки загрузки (снимает помощник).
     helper: Vec<String>,
+    /// Домашний каталог (вложенные виджеты Conky, `conky_nested_widgets`).
+    home: String,
 }
 
 impl RemovalRoots {
@@ -219,7 +233,7 @@ impl RemovalRoots {
         for kind in ["splash", "lockscreen"] {
             push(&mut user, &format!("{home}/.local/share/plasma/look-and-feel"), kind);
         }
-        RemovalRoots { user, system, helper }
+        RemovalRoots { user, system, helper, home: home.to_string() }
     }
 
     /// Виды тем, которые ищут в каталоге `dir` (пусто — не каталог тем
@@ -260,6 +274,11 @@ impl RemovalRoots {
                 Verdict::Hidden // темы уже нет — нечего удалять
             };
         }
+        // Вложенный виджет пакета Conky (`<корень>/<id>/<подпапка>`) — своя
+        // плитка, снимается сам по себе.
+        if self.is_nested_conky(&target) {
+            return if present(&target) { Verdict::Local { path: target } } else { Verdict::Hidden };
+        }
         if self.helper.iter().any(|d| d == parent) {
             if let Some(content_id) = journal_owner(journal, &target) {
                 return Verdict::Journal { content_id };
@@ -272,6 +291,12 @@ impl RemovalRoots {
             return Verdict::Blocked { reason: removal_system_reason() };
         }
         Verdict::Blocked { reason: removal_outside_reason() }
+    }
+
+    /// Папка ли `path` вложенного виджета пакета Conky.
+    fn is_nested_conky(&self, path: &str) -> bool {
+        let ctx = crate::de_apply::Ctx::for_home(&self.home);
+        crate::de_apply::conky_widget_of_dir(&crate::animations::SystemIo, &ctx, path).is_some_and(|w| w.contains('/'))
     }
 
     /// Виды, чья часть темы — `path` вида `<каталог тем>/<имя>/<подпапка>`
@@ -1104,6 +1129,40 @@ mod tests {
         );
         // Включённую — не трогаем и через журнал.
         assert!(!roots.verdict(&ply, true, &journal, &HashSet::new()).enabled());
+    }
+
+    /// Подписи плашки и подсказок «Удалить» не называют удаляемое темой:
+    /// через них идут и расширения GNOME, и виджеты, и значки, и шрифты
+    /// (живая проверка 15.11: «Тема «Caffeine» будет удалена»).
+    #[test]
+    fn removal_texts_name_no_kind() {
+        let one = vec!["Caffeine".to_string()];
+        let two = vec!["Caffeine".to_string(), "Papirus".to_string()];
+        assert_eq!(removal_pending_text(&one), "Removing “Caffeine”.");
+        assert_eq!(removal_pending_text(&two), "Removing 2 items.");
+        assert_eq!(removal_toast_text(&one), "Removed “Caffeine”.");
+        assert_eq!(removal_toast_text(&two), "2 items removed.");
+        assert_eq!(removal_pending_text(&[]), "");
+        assert_eq!(removal_toast_text(&[]), "");
+        // Плашку видят все виды плиток — у очереди нет развилки по виду.
+        for id in ["local:gnomeext:caffeine@patapon.info", "local:conky:Clock", "local:icons:Papirus", "local:cursor:Bibata"] {
+            let mut q = RemovalQueue::default();
+            assert_eq!(q.mark("/h/x", "Caffeine", id), removal_pending_text(&one), "{id}");
+        }
+        let texts = [
+            removal_pending_text(&one),
+            removal_pending_text(&two),
+            removal_toast_text(&one),
+            removal_toast_text(&two),
+            removal_now_active("Caffeine"),
+            removal_active_reason(),
+            removal_system_reason(),
+            removal_outside_reason(),
+            removal_countdown_text(4),
+        ];
+        for t in texts {
+            assert!(!t.to_lowercase().contains("theme"), "{t}");
+        }
     }
 
     #[test]

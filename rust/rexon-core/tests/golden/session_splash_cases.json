@@ -8,7 +8,11 @@
   "builtin_names": {
     "deck_startup": "Steam Deck (стандартная)",
     "oled_startup": "Steam Deck OLED",
-    "bigpicture_startup": "Big Picture"
+    "bigpicture_startup": "Big Picture",
+    "steam_os_startup": "SteamOS",
+    "startup_machine": "Steam Machine",
+    "steamframe_startup_450x450": "Steam Frame",
+    "steam_os_family_startup": "Steam Deck (заводской образ)"
   },
   "kwin_app_id": "rexon-session-splash",
   "kwin_rule_desc": "Description=Rexon: заставка входа поверх всего\n",

@@ -1,4 +1,4 @@
-[English](../en/steam.md) | [Русский](../ru/steam.md) | [Deutsch](../de/steam.md) | [简体中文](../zh-CN/steam.md) | Français
+[English](../en/steam.md) | [Русский](../ru/steam.md) | [Deutsch](../de/steam.md) | [简体中文](../zh-CN/steam.md) | Français | [Español](../es/steam.md)
 
 # Steam
 

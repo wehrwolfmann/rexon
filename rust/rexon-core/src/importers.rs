@@ -424,7 +424,7 @@ fn b64encode(data: &[u8]) -> String {
 }
 
 /// `json.dumps(..., indent=2, ensure_ascii=False)` (как в `_write_manifest`).
-fn dumps_indent2(v: &Value) -> String {
+pub(crate) fn dumps_indent2(v: &Value) -> String {
     serde_json::to_string_pretty(v).expect("Value сериализуется")
 }
 
@@ -2202,6 +2202,87 @@ pub struct CursorSource {
 /// Версия переводчика курсоров в manifest: выросла — старые `.rxn` можно
 /// перевести заново из их же оригиналов.
 pub const CURSOR_CONVERTER_VERSION: u32 = 2;
+
+/// Кого касается повышение версии переводчика (решение Wehrwolfmann
+/// 14.11.2026: перевод заново — автоматический, но только по делу: тема,
+/// которой исправление не касается, не трогается).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorFixScope {
+    /// Все курсоры.
+    All,
+    /// Только анимированные `.ani`.
+    Animated,
+    /// Только с горячей точкой не в центре картинки.
+    HotspotOffCenter,
+    /// Только с картинками на палитре (1/4/8 бит).
+    Paletted,
+}
+
+impl CursorFixScope {
+    /// Касается ли исправление набора с такими приметами.
+    pub fn touches(self, traits: &wincursor::CursorTraits) -> bool {
+        match self {
+            CursorFixScope::All => true,
+            CursorFixScope::Animated => traits.animated,
+            CursorFixScope::HotspotOffCenter => traits.hotspot_off_center,
+            CursorFixScope::Paletted => traits.paletted,
+        }
+    }
+}
+
+/// Таблица «версия переводчика → кого касается её исправление». Подняли
+/// [`CURSOR_CONVERTER_VERSION`] — добавь строку (сторож в тестах).
+/// Версия 2 — переводчик на Rust вместо `convert`/`xcursorgen`: все курсоры.
+pub const CURSOR_CONVERTER_CHANGES: &[(u32, CursorFixScope)] = &[(2, CursorFixScope::All)];
+
+/// Переводить ли заново набор, переведённый версией `from`, если текущая —
+/// `current`: да, когда хотя бы одно исправление между ними касается его
+/// примет.
+pub fn cursor_retranslate_due(
+    from: u32,
+    current: u32,
+    changes: &[(u32, CursorFixScope)],
+    traits: &wincursor::CursorTraits,
+) -> bool {
+    from < current
+        && changes
+            .iter()
+            .any(|(v, scope)| *v > from && *v <= current && scope.touches(traits))
+}
+
+/// Приметы набора по байтам его оригиналов; нечитаемые файлы не в счёт.
+pub fn cursor_set_traits(files: &[Vec<u8>]) -> wincursor::CursorTraits {
+    files
+        .iter()
+        .filter_map(|b| wincursor::cursor_file_traits(b))
+        .fold(wincursor::CursorTraits::default(), wincursor::CursorTraits::merge)
+}
+
+/// Версия переводчика темы курсоров «из Windows» по её manifest; `None` —
+/// тема не из Windows. Нет поля — 1 (переведено до версий).
+pub fn cursor_manifest_converter(m: &Value) -> Option<u32> {
+    if m.get("type").and_then(Value::as_str) != Some("theme-cursors")
+        || m.get("source").and_then(Value::as_str) != Some("windows")
+    {
+        return None;
+    }
+    Some(
+        m.get("windows_cursors")
+            .and_then(|w| w.get("converter"))
+            .and_then(Value::as_u64)
+            .map_or(1, |v| v as u32),
+    )
+}
+
+/// Записать в manifest версию переводчика (прочие поля — как были).
+pub fn set_cursor_manifest_converter(m: &mut Value, version: u32) {
+    if let Some(obj) = m.as_object_mut() {
+        let wc = obj.entry("windows_cursors").or_insert_with(|| json!({}));
+        if let Some(wc) = wc.as_object_mut() {
+            wc.insert("converter".to_string(), json!(version));
+        }
+    }
+}
 
 /// Ключ `index.theme` темы курсоров, переведённой из Windows (значение
 /// `windows`); его читает плитка установленного.
@@ -4276,6 +4357,60 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
             assert!(r.is_ok() && io.io_err.is_none());
         }
     }
+
+    // ── Область действия исправлений переводчика ──
+
+    #[test]
+    fn every_converter_bump_names_whom_it_touches() {
+        // Подняли версию — строка в таблице обязательна, версии по возрастанию.
+        let versions: Vec<u32> = CURSOR_CONVERTER_CHANGES.iter().map(|(v, _)| *v).collect();
+        assert!(versions.windows(2).all(|w| w[0] < w[1]), "{versions:?}");
+        assert_eq!(versions.last().copied(), Some(CURSOR_CONVERTER_VERSION));
+        // Текущие темы (версия 2) переводить заново не за что.
+        let any = wincursor::CursorTraits { animated: true, hotspot_off_center: true, paletted: true };
+        assert!(!cursor_retranslate_due(CURSOR_CONVERTER_VERSION, CURSOR_CONVERTER_VERSION, CURSOR_CONVERTER_CHANGES, &any));
+    }
+
+    #[test]
+    fn retranslate_only_where_a_fix_applies() {
+        use wincursor::CursorTraits as T;
+        // Подделка: версия 3 исправляет только анимированные.
+        let changes = [(2, CursorFixScope::All), (3, CursorFixScope::Animated)];
+        let animated = T { animated: true, ..T::default() };
+        let still = T { hotspot_off_center: true, paletted: true, ..T::default() };
+        assert!(cursor_retranslate_due(2, 3, &changes, &animated));
+        assert!(!cursor_retranslate_due(2, 3, &changes, &still));
+        // С версии 1 — через «все курсоры» версии 2.
+        assert!(cursor_retranslate_due(1, 3, &changes, &still));
+        // Уже текущая или новее — нет.
+        assert!(!cursor_retranslate_due(3, 3, &changes, &animated));
+        assert!(!cursor_retranslate_due(4, 3, &changes, &animated));
+        // Исправление новее текущей версии не в счёт.
+        assert!(!cursor_retranslate_due(2, 2, &changes, &animated));
+        // Прочие области.
+        assert!(CursorFixScope::HotspotOffCenter.touches(&still));
+        assert!(CursorFixScope::Paletted.touches(&still));
+        assert!(!CursorFixScope::Animated.touches(&still));
+        // Приметы набора — по байтам оригиналов, мусор не в счёт.
+        let set = cursor_set_traits(&[cur32(32, 16, 16, 0), ani3(), b"junk".to_vec()]);
+        assert!(set.animated && set.hotspot_off_center && !set.paletted);
+    }
+
+    #[test]
+    fn converter_version_is_read_and_written_in_the_manifest() {
+        let mut m = json!({"type": "theme-cursors", "source": "windows",
+                           "windows_cursors": {"converter": 2, "roles": {"Arrow": "a.cur"}}});
+        assert_eq!(cursor_manifest_converter(&m), Some(2));
+        set_cursor_manifest_converter(&mut m, 3);
+        assert_eq!(cursor_manifest_converter(&m), Some(3));
+        assert_eq!(m["windows_cursors"]["roles"], json!({"Arrow": "a.cur"}));
+        // Без поля — переведено до версий.
+        assert_eq!(cursor_manifest_converter(&json!({"type": "theme-cursors", "source": "windows"})), Some(1));
+        // Не из Windows — не наше дело.
+        assert_eq!(cursor_manifest_converter(&json!({"type": "theme-cursors"})), None);
+        assert_eq!(cursor_manifest_converter(&json!({"type": "theme-icons", "source": "windows"})), None);
+    }
+
 }
 
 #[cfg(test)]

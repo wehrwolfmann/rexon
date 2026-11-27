@@ -680,6 +680,8 @@ const PHYSICAL_ZONES: &[(&str, &str, &str)] = &[
     ("ScreenEffectsSection.qml", "sample", "картинка экрана"),
     // Сетка углов и краёв экрана, куда встаёт виджет Conky.
     ("ConkySettings.qml", "alignmentGrid", "углы экрана"),
+    // Мини-карта экрана: мониторы и окна виджетов Conky на своих местах.
+    ("ConkyScreenMap.qml", "canvas", "схема экрана"),
     // Снимок профиля Steam: части витрины по координатам картинки.
     ("SteamShowcaseSection.qml", "preview", "профиль Steam"),
     // Сверка «как в профиле / расчётная»: части витрины — куски одной

@@ -340,6 +340,43 @@ fn we_ticker_fires_once_with_full_spectrum() {
 }
 
 #[test]
+fn web_pause_js_uses_page_visibility_and_keeps_the_frame() {
+    let js = wp::WEB_PAUSE_JS;
+    // Пауза — так, как её понимает сама страница (Page Visibility), плюс
+    // главный двигатель холстов и медиа.
+    for needle in [
+        "'hidden'",
+        "visibilityState",
+        "visibilitychange",
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+        "animation-play-state:paused",
+        "AudioContext",
+        "suspend()",
+        "video,audio",
+        "__rexonWasPlaying",
+    ] {
+        assert!(js.contains(needle), "нет {needle}");
+    }
+    // Повторное внедрение безвредно.
+    assert!(js.contains("if (window.__rexonWallpaperState) return;"));
+    // Окно не прячется: иначе на паузе по батарее вместо обоев был бы
+    // чёрный экран.
+    assert!(!js.contains("display:none") && !js.contains("lifecycleState"));
+}
+
+#[test]
+fn web_state_js_carries_the_decision() {
+    assert_eq!(
+        wp::web_state_js(true, 0.5),
+        "window.__rexonWallpaperState&&window.__rexonWallpaperState(true,0.5);"
+    );
+    assert!(wp::web_state_js(false, 7.0).contains("(false,1)"), "громкость зажимается");
+    assert!(wp::web_state_js(false, -1.0).contains("(false,0)"));
+    assert!(wp::web_state_js(false, f64::NAN).contains("(false,1)"), "мусор — не тишина");
+}
+
+#[test]
 fn web_apply_defaults_js_survives_wallpaper_without_listener() {
     let js = wp::web_apply_defaults_js("{\"a\":{\"value\":1}}");
     // Без try исключение в подмешанном сценарии оборвало бы и тик звука.

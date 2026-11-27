@@ -312,6 +312,8 @@ pub mod qobject {
             volume: i32,
             mute_other: bool,
             hide_covered: bool,
+            pause_on_battery: bool,
+            pause_in_game: bool,
         ) -> QString;
 
         /// Выбрать файл обоев и применить. `kind` — `static` либо `video`.
@@ -448,6 +450,12 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "changeAllFonts"]
         fn change_all_fonts(self: &SettingsActions, mode: &QString) -> QString;
+
+        /// Вернуть шрифт подписей значков стола LXQt, как было до Rexon
+        /// (`qt_settings::pcmanfm_desktop_font_restore`) → итог.
+        #[qinvokable]
+        #[cxx_name = "restoreDesktopFont"]
+        fn restore_desktop_font(self: &SettingsActions) -> QString;
 
         /// Принудительное DPI шрифтов: `enabled = false` — вернуть «по
         /// экрану».
@@ -785,6 +793,8 @@ fn wallpaper_section(view: &WallpaperView) -> Value {
             "volume": view.audio.volume_pct,
             "muteOther": view.audio.mute_when_other_audio,
             "hideCovered": wallpaper_audio::hide_when_covered(&view.audio.actions),
+            "pauseBattery": wallpaper_audio::choices_of(&view.audio.actions).pause_on_battery,
+            "pauseGame": wallpaper_audio::choices_of(&view.audio.actions).pause_in_game,
         },
         "ytAudio": view.youtube_audio,
         "ytdlpLabel": ytdlp_label,
@@ -1471,14 +1481,29 @@ impl qobject::SettingsActions {
             scope.push(' ');
             scope.push_str(&why);
         }
+        scope.push(' ');
+        scope.push_str(&qs::document_font_note());
+        if let Some(why) = qs::desktop_font_note(de) {
+            scope.push(' ');
+            scope.push_str(&why);
+        }
         let (label, tip, _title) = qs::change_all_texts();
         let modes: Vec<Value> = qs::change_all_mode_choices()
             .into_iter()
             .map(|(id, label)| json!({ "id": id, "label": label }))
             .collect();
+        // Возврат шрифта подписей значков стола LXQt — только если Rexon его
+        // менял (есть запись «как было»).
+        let (restore_label, restore_tip) = qs::pcmanfm_restore_texts();
+        let desktop_restore = json!({
+            "visible": de == "lxqt" && qs::pcmanfm_font_record(&qs::PcmanfmPaths::from_env()).is_some(),
+            "label": restore_label,
+            "tip": restore_tip,
+        });
         json!({
             "values": values,
             "scope": scope,
+            "desktop_restore": desktop_restore,
             "render": rendering_state(&rendering),
             "all": { "label": label, "tip": tip, "modes": modes },
             "dpi": {
@@ -2140,6 +2165,15 @@ fn read_font(de: &str, target: &str) -> String {
         // sway: наш блок в его конфиге, иначе строка `font` конфига или
         // шрифт sway по умолчанию.
         qs::FontStore::File(qs::FontFile::SwayConf) => qs::sway_title_font_spec_live(),
+        // Стол LXQt: то, что pcmanfm-qt читает (свой каталог либо
+        // системный); `Font` не задан — у подписей шрифт интерфейса.
+        qs::FontStore::File(qs::FontFile::PcmanfmDesktop) => {
+            let spec = qs::pcmanfm_desktop_font_spec(&qs::PcmanfmPaths::from_env());
+            if spec.is_empty() {
+                return read_font(de, "system");
+            }
+            spec
+        }
         qs::FontStore::Cmd(backend) => read_cmd(
             &qs::sound_read_argv(&backend, &kde_tool("kreadconfig6")).unwrap_or_default(),
         ),
@@ -2149,6 +2183,11 @@ fn read_font(de: &str, target: &str) -> String {
             .map(|text| file.read_spec(&text))
             .unwrap_or_default(),
     };
+    // xfdesktop хранит только кегль: действующий шрифт подписей значков —
+    // шрифт интерфейса с этим кеглем (если свой кегль включён).
+    if qs::font_target_size_only(de, target) {
+        return qs::xfdesktop_font_spec(&read_cmd(&qs::xfdesktop_use_size_read_argv()), &raw, &read_font(de, "system"));
+    }
     raw.trim().trim_matches(['\'', '"']).to_string()
 }
 
@@ -2170,6 +2209,9 @@ fn write_font_store(store: &qs::FontStore, family: &str, size: i32, face: qs::Fo
         // sway: наш файл, блок `include` в конфиге с проверкой самим sway и
         // `swaymsg font …` — ядро, тем же механизмом, что акцент.
         qs::FontStore::File(qs::FontFile::SwayConf) => qs::sway_title_font_apply_live(family, size, face),
+        // Стол LXQt: закрыть живой pcmanfm-qt, резервная копия, правка одной
+        // строки, запуск стола — ядро.
+        qs::FontStore::File(qs::FontFile::PcmanfmDesktop) => apply_lxqt_desktop_font(family, size, face).is_ok(),
         qs::FontStore::Cmd(_) => {
             // Начертание — словами Pango в gsettings/xfconf, полями QFont в
             // kdeglobals (`font_store_write_argv_face`).
@@ -2186,6 +2228,17 @@ fn write_font_store(store: &qs::FontStore, family: &str, size: i32, face: qs::Fo
             writes.iter().all(|w| write_config_file(&base, w))
         }
     }
+}
+
+/// Шрифт подписей значков стола LXQt с защитой настроек стола
+/// (`qt_settings::pcmanfm_desktop_font_apply`).
+fn apply_lxqt_desktop_font(family: &str, size: i32, face: qs::FontFace) -> Result<qs::PcmanfmApplied, String> {
+    let applied =
+        qs::pcmanfm_desktop_font_apply(&qs::PcmanfmPaths::from_env(), &qs::LivePcmanfmBus, family, size, face);
+    if let Err(e) = &applied {
+        rexon_core::log_warn!("fonts", "шрифт стола LXQt не записан — {e}");
+    }
+    applied
 }
 
 /// Файлы настроек под `$XDG_CONFIG_HOME` — для планов ядра
@@ -3052,6 +3105,8 @@ impl qobject::SettingsActions {
         volume: i32,
         mute_other: bool,
         hide_covered: bool,
+        pause_on_battery: bool,
+        pause_in_game: bool,
     ) -> QString {
         // Что и какими ключами записать — решает ядро; обои не
         // перезапускаются, хост следит за файлом настроек сам.
@@ -3060,7 +3115,13 @@ impl qobject::SettingsActions {
             volume_pct: rexon_core::wallpaper_audio::clamp_volume_pct(volume as i64),
             mute_when_other_audio: mute_other,
             fade_ms: rexon_core::wallpaper_audio::DEFAULT_FADE_MS,
-            actions: rexon_core::wallpaper_audio::actions_for_hide_when_covered(hide_covered),
+            actions: rexon_core::wallpaper_audio::actions_for_choices(
+                rexon_core::wallpaper_audio::SimpleChoices {
+                    hide_when_covered: hide_covered,
+                    pause_on_battery,
+                    pause_in_game,
+                },
+            ),
         }
         .to_map();
 
@@ -3519,6 +3580,16 @@ impl qobject::SettingsActions {
         if let Some(why) = qs::font_refusal_live(&de) {
             return QString::from(&format!("{title} — {why}"));
         }
+        let lxqt_desktop = matches!(
+            qs::font_plan_wm(&de, &target, None).primary,
+            qs::FontStore::File(qs::FontFile::PcmanfmDesktop)
+        );
+        // Стол LXQt без единого файла настроек — заводить их с нуля нельзя.
+        if lxqt_desktop {
+            if let Some(why) = qs::pcmanfm_refusal(&qs::PcmanfmPaths::from_env(), &qs::LivePcmanfmBus) {
+                return QString::from(&format!("{title} — {why}"));
+            }
+        }
         // Что показать выбранным при открытии — нынешний шрифт окружения
         // вместе с начертанием.
         let (current_family, current_size, current_face) = read_font_face(&de, &target);
@@ -3545,12 +3616,33 @@ impl qobject::SettingsActions {
         // Жирность и наклон из окна выбора уходят во все хранилища, где
         // они есть (`apply_font`).
         let face = qs::parse_font_face(&chosen);
+        // Стол LXQt: итог говорит, перезапущен ли стол или шрифт применится
+        // при его запуске; отказ — словами ядра.
+        if lxqt_desktop {
+            let result = apply_lxqt_desktop_font(&family, size, face);
+            self.rust().session().fonts = None;
+            let shown = qs::font_face_spec(&family, 0, face);
+            return QString::from(&match result {
+                Ok(applied) => format!(
+                    "{} {}",
+                    qs::font_apply_status(true, &title, &shown, size),
+                    qs::pcmanfm_applied_note(applied)
+                ),
+                Err(why) => format!("{} {why}", qs::font_apply_status(false, &title, "", 0)),
+            });
+        }
         let applied = apply_font(&de, &target, &family, size, face);
         // Снимок шрифтов устарел ровно здесь — иначе список показывал бы
         // старое значение до закрытия вкладки.
         self.rust().session().fonts = None;
         // В итоге — семейство с начертанием («Sans Bold»), кегль отдельно.
-        let shown = qs::font_face_spec(&family, 0, face);
+        // У xfdesktop записан только кегль: семейство — от шрифта интерфейса.
+        let shown = if qs::font_target_size_only(&de, &target) {
+            let (family, _, face) = read_font_face(&de, "system");
+            qs::font_face_spec(&family, 0, face)
+        } else {
+            qs::font_face_spec(&family, 0, face)
+        };
         QString::from(&qs::font_apply_status(applied, &title, &shown, size))
     }
 
@@ -3573,6 +3665,15 @@ impl qobject::SettingsActions {
         let outcome = apply_rendering(&current_de(), &r);
         self.rust().session().rendering = None;
         QString::from(&qs::rendering_status(&outcome))
+    }
+
+    fn restore_desktop_font(&self) -> QString {
+        let result = qs::pcmanfm_desktop_font_restore(&qs::PcmanfmPaths::from_env(), &qs::LivePcmanfmBus);
+        if let Err(e) = &result {
+            rexon_core::log_warn!("fonts", "шрифт стола LXQt не возвращён — {e}");
+        }
+        self.rust().session().fonts = None;
+        QString::from(&qs::pcmanfm_restore_status(&result))
     }
 
     fn change_all_fonts(&self, mode: &QString) -> QString {
@@ -5250,7 +5351,7 @@ mod tests {
         ] {
             assert!(section.get(key).is_some(), "в разделе обоев нет ключа «{key}»");
         }
-        for key in ["enabled", "volume", "muteOther", "hideCovered"] {
+        for key in ["enabled", "volume", "muteOther", "hideCovered", "pauseBattery", "pauseGame"] {
             assert!(section["audio"].get(key).is_some(), "в звуке обоев нет ключа «{key}»");
         }
         // Раздел есть: без этого страница прячет обе перенесённые кнопки.

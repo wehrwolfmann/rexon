@@ -122,6 +122,25 @@ QtObject {
     // переданное окно».
     property WallpaperPlacement placer: WallpaperPlacement {}
 
+    // Сердцебиение для сторожа живых обоев Rexon: попросить кадр у каждого
+    // окна и отметиться. Зависни отрисовка — встанет и этот поток, метка
+    // перестанет обновляться, и сторож поднимет обои заново (после сна —
+    // сразу). Решение и сроки — ядро (`rexon-core::renderer_watch`).
+    property Timer heartbeat: Timer {
+        interval: root.placer.heartbeatIntervalMs()
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            for (var i = 0; i < surfaces.count; ++i) {
+                var w = surfaces.objectAt(i);
+                if (w && w.visible)
+                    w.update();
+            }
+            root.placer.heartbeat();
+        }
+    }
+
     // Живое состояние звука: настройки, приглушение при полноэкранном окне
     // и при чужом звуке. Решение целиком считает Rust (см.
     // src/wallpaper_audio.rs и rexon-core::wallpaper_audio), здесь только

@@ -1202,6 +1202,29 @@ pub fn enable_plan_with(
     }
 }
 
+/// Может ли Rexon поставить автозапуск движка на этой машине →
+/// `(supported, unavailable_reason)`.
+///
+/// Ответ для свойств `supported`/`unavailableReason` запроса
+/// `W.AutostartGetQuery`: вендорная страница настроек (waywallen с #380)
+/// держит переключатель серым, пока `supported` ложно, а причину
+/// показывает подсказкой у подписи. У Rexon автозапуск локальный: systemd
+/// user unit, а без systemd — XDG autostart, писать который можно всегда.
+/// Значит, помешать может только одно — отсутствие самого движка: тогда
+/// [`enable_plan_with`] ответит `NoBinary`, и включать нечего. Причина
+/// пустая, когда `supported` истинно — как у апстрима.
+pub fn autostart_availability(binary: Option<&str>) -> (bool, String) {
+    match binary {
+        Some(_) => (true, String::new()),
+        None => (
+            false,
+            crate::i18n::tr(
+                "The waywallen engine is not installed, so there is nothing to start at login.",
+            ),
+        ),
+    }
+}
+
 /// Сообщение о неудаче `systemctl enable` — `stderr`, а если он пуст, `stdout`
 /// (оба обрезаются по краям, порт `r.stderr.strip() or r.stdout.strip()`).
 pub fn enable_failed_message(stderr: &str, stdout: &str) -> String {

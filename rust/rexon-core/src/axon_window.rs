@@ -1,6 +1,11 @@
-//! Вкладка «Razer Axon»: что показывает библиотека и что в ней называется.
+//! Источник «Razer Axon» раздела «Оформление → Обои HD»: что показывает
+//! библиотека и что в ней называется.
 //!
-//! Модель вкладки (Qt-сторона) ничего не решает сама: какие обои попадают в
+//! Своей вкладки у Axon нет (решение Wehrwolfmann 14.11.2026): это чип
+//! «Razer Axon» рядом с KDE Store и Wallhaven ([`SOURCE_KEY`], [`SECTIONS`]),
+//! а наши настройки — блок «Razer Axon» в виде «⚙️ Настройки» раздела обоев.
+//!
+//! Модель источника (Qt-сторона, `AxonActions`) ничего не решает сама: какие обои попадают в
 //! сетку, в каком порядке, сколько фильтров включено, какой экран показать,
 //! когда показывать нечего, и все подписи — здесь. Читает библиотеку
 //! [`crate::axon_library`]; файлы Axon этот модуль не трогает вовсе.
@@ -37,26 +42,51 @@
 //!      пустую строку в списке выбранных типов и пропускал их при любом
 //!      выборе. Без типа обои под фильтр типа не подходят.
 
-use crate::axon_library::{display_title, find_roots, AxonEnv, AxonWallpaper};
-use crate::i18n::trc;
+use crate::axon_library::{self as ax, display_title, find_roots, AxonEnv, AxonLibrary, AxonWallpaper};
+use crate::i18n::{tr, trc, trf};
+use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
 
 // ============================================================================
-// Есть ли вкладка
+// Есть ли источник
 // ============================================================================
 
-/// Показывать ли вкладку «Razer Axon»: да, если в известных местах найден
-/// Razer Axon с библиотекой либо человек сам указал папку с его обоями
-/// (`env.source_dirs` — из настроек Rexon). Иначе вкладки нет: тому, у кого
-/// Axon не стоит, она ни к чему. Указанная папка держит вкладку, даже если
-/// пропала, — тогда вкладка говорит, что папка недоступна, а не исчезает
-/// молча.
-pub fn show_tab(env: &AxonEnv) -> bool {
+/// Ключ источника в «Оформлении» (`appearance_page::SOURCE_AXON`).
+pub const SOURCE_KEY: &str = "axon";
+
+/// Разделы «Оформления», где есть источник «Razer Axon»: только обои.
+pub const SECTIONS: &[&str] = &["wallpapers"];
+
+/// Есть ли источник в разделе `section` (если Axon найден — [`show_source`]).
+pub fn has_section(section: &str) -> bool {
+    SECTIONS.contains(&section)
+}
+
+/// Показывать ли источник «Razer Axon» (чип раздела обоев и блок в его
+/// «⚙️ Настройках»): да, если в известных местах найден Razer Axon с
+/// библиотекой либо человек сам указал папку с его обоями
+/// (`env.source_dirs` — из настроек Rexon). Иначе источника нет вовсе: тому,
+/// у кого Axon не стоит, он ни к чему. Указанная папка держит источник,
+/// даже если пропала, — тогда он говорит, что папка недоступна, а не
+/// исчезает молча.
+pub fn show_source(env: &AxonEnv) -> bool {
     !env.source_dirs.is_empty() || !find_roots(env).is_empty()
 }
 
-/// [`show_tab`] для живого процесса: окружение и папки из настроек Rexon.
-pub fn show_tab_live() -> bool {
-    show_tab(&crate::axon_prepare::live_env().0)
+/// [`show_source`] для живого процесса: окружение и папки из настроек Rexon.
+pub fn show_source_live() -> bool {
+    show_source(&crate::axon_prepare::live_env().0)
+}
+
+/// Подпись чипа «Магазин:» — имя программы, не переводится.
+pub fn chip_label() -> String {
+    "Razer Axon".to_string()
+}
+
+/// Подсказка чипа.
+pub fn chip_tooltip() -> String {
+    tr("Wallpapers you downloaded in Razer Axon on this computer. Rexon shows them \
+        itself: Razer Axon doesn't have to be running.")
 }
 
 // Подписи переводятся в контексте «Razer Axon»: строки дословно как у Axon,
@@ -152,6 +182,11 @@ impl EffectKind {
         }
     }
 
+    /// Ключ для модели — значение Axon.
+    pub fn key(self) -> &'static str {
+        self.axon_value()
+    }
+
     pub fn from_axon(value: &str) -> Option<EffectKind> {
         EffectKind::ALL.into_iter().find(|k| k.axon_value().eq_ignore_ascii_case(value.trim()))
     }
@@ -189,6 +224,21 @@ impl FilterFlag {
         FilterFlag::AudioEnabled,
         FilterFlag::AiWallpaper,
     ];
+
+    /// Ключ для модели.
+    pub fn key(self) -> &'static str {
+        match self {
+            FilterFlag::Favorites => "favorites",
+            FilterFlag::Premiums => "premiums",
+            FilterFlag::Rewards => "rewards",
+            FilterFlag::AudioEnabled => "audio",
+            FilterFlag::AiWallpaper => "ai",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<FilterFlag> {
+        FilterFlag::ALL.into_iter().find(|f| f.key() == key)
+    }
 
     pub fn label(self) -> String {
         match self {
@@ -425,6 +475,239 @@ pub fn clear_filter_text() -> String {
     trc("Razer Axon", "Clear filter")
 }
 
+/// Кнопка панели фильтров: «ФИЛЬТР», с числом включённых — «ФИЛЬТР (2)» (у
+/// Axon — заглавными).
+pub fn filter_button_text(active: usize) -> String {
+    let label = trc("Razer Axon", "FILTER");
+    if active == 0 {
+        label
+    } else {
+        format!("{label} ({active})")
+    }
+}
+
+/// Пункт меню плитки «Применить» (у Axon — Apply).
+pub fn apply_text() -> String {
+    trc("Razer Axon", "Apply")
+}
+
+/// Пункт меню плитки «Перейти к расположению файла» (у Axon — Open file
+/// location).
+pub fn open_location_text() -> String {
+    trc("Razer Axon", "Open file location")
+}
+
+/// Пункт меню плитки и заголовок окна подробностей. У Axon подробности
+/// открываются щелчком по плитке; пункт меню — наш, ради клавиатуры.
+pub fn details_text() -> String {
+    tr("Details")
+}
+
+/// Подсказка плитки: что делают щелчки.
+pub fn tile_tooltip() -> String {
+    tr("Double-click — details; right click — menu")
+}
+
+/// Подсказка пункта «Применить», пока выбора монитора нет.
+pub fn apply_tooltip() -> String {
+    tr("On all screens")
+}
+
+/// Заголовок блока «Razer Axon» в «⚙️ Настройках» раздела обоев.
+pub fn settings_title() -> String {
+    chip_label()
+}
+
+/// Пояснение блока: это настройки Rexon, не самого Axon.
+pub fn settings_description() -> String {
+    tr("How Rexon shows wallpapers from Razer Axon. The settings of Razer Axon itself \
+        are not changed here.")
+}
+
+// ============================================================================
+// Ответ модели: экран, сетка, подробности
+// ============================================================================
+
+/// Откуда плитке взять обложку.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CoverPlan {
+    /// Картинка уже на диске.
+    Ready(PathBuf),
+    /// Скачать по адресу в общий кэш превью «Оформления».
+    Download(String),
+    /// Взять неоткуда — заглушка.
+    Missing,
+}
+
+/// Адрес в сети (`http(s)://`).
+pub fn is_web_url(s: &str) -> bool {
+    let s = s.trim().to_ascii_lowercase();
+    s.starts_with("https://") || s.starts_with("http://")
+}
+
+/// Файл — обычная картинка, которую читает `Image` (JPEG, PNG, GIF, WebP,
+/// BMP). Контейнер Axon (ZIP, `PK…`) и ролик (`ftyp`) — нет: из них кадр
+/// без подготовки не взять.
+pub fn is_plain_image(path: &Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 16];
+    let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut head)).unwrap_or(0);
+    let h = &head[..n];
+    h.starts_with(&[0xFF, 0xD8, 0xFF])
+        || h.starts_with(b"\x89PNG\r\n\x1a\n")
+        || h.starts_with(b"GIF87a")
+        || h.starts_with(b"GIF89a")
+        || h.starts_with(b"BM")
+        || (h.starts_with(b"RIFF") && h.get(8..12) == Some(b"WEBP"))
+}
+
+/// Откуда взять обложку обоев.
+///
+/// Свою обложку Axon на диск не кладёт (`WallpaperCovers` пуст): в записи
+/// библиотеки она — адрес CDN (`ThumbnailSource`, JPEG 500×280, иначе
+/// `PreviewSource`, WebP 960×540). Порядок:
+/// 1. обложка на диске ([`AxonWallpaper::cover_local`]);
+/// 2. адрес в сети — уже скачанная копия из кэша (`cached`), иначе скачать.
+///    Тот же кэш и та же загрузка, что у плиток KDE Store и Wallhaven;
+/// 3. без адреса (обои только из папки) — сам файл обоев, если это обычная
+///    картинка, а не контейнер Axon.
+pub fn cover_plan(w: &AxonWallpaper, cached: &dyn Fn(&str) -> Option<PathBuf>) -> CoverPlan {
+    if let Some(p) = w.cover_local.as_ref().filter(|p| p.is_file()) {
+        return CoverPlan::Ready(p.clone());
+    }
+    let url = w.cover_url.trim();
+    if is_web_url(url) {
+        return match cached(url) {
+            Some(p) => CoverPlan::Ready(p),
+            None => CoverPlan::Download(url.to_string()),
+        };
+    }
+    match w.container.as_ref().filter(|c| c.is_file() && is_plain_image(c)) {
+        Some(c) => CoverPlan::Ready(c.clone()),
+        None => CoverPlan::Missing,
+    }
+}
+
+/// `file://` для пути: байты вне «безопасных» — процентами, иначе пробел,
+/// `#` или `%` в пути ломают адрес для `Image`.
+pub fn file_url(path: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut out = String::from("file://");
+    for &b in path.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || b"/-._~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// Адрес обложки для QML: `file://` картинки на диске, иначе пусто
+/// (заглушка). Что положить в [`AxonWallpaper::cover_local`], решает
+/// [`cover_plan`] на стороне модели.
+fn cover_url(w: &AxonWallpaper) -> String {
+    w.cover_local.as_ref().filter(|p| p.is_file()).map(|p| file_url(p)).unwrap_or_default()
+}
+
+fn folder_of(w: &AxonWallpaper) -> String {
+    w.resource_dir.as_ref().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// Плитка сетки.
+pub fn tile(w: &AxonWallpaper) -> Value {
+    json!({
+        "id": w.id,
+        "title": display_title(w),
+        "author": w.author.trim(),
+        "line": ax::tile_line(w),
+        "cover": cover_url(w),
+        "downloaded": w.downloaded,
+        "playing": w.playing,
+        "folder": folder_of(w),
+    })
+}
+
+/// Что сказать вместо сетки, когда библиотеку не прочитать: указанная
+/// папка пропала — что её нет; иначе — что Axon не найден и папку можно
+/// указать. `None` — библиотека прочитана.
+pub fn library_note(lib: &AxonLibrary) -> Option<String> {
+    if lib.found {
+        return None;
+    }
+    if !lib.source_dirs.is_empty() && lib.source_dirs.iter().all(|d| !d.is_dir()) {
+        return Some(ax::folder_missing_text());
+    }
+    Some(ax::not_found_text())
+}
+
+/// Ключ экрана для модели.
+pub fn screen_key(screen: Screen) -> &'static str {
+    match screen {
+        Screen::Grid => "grid",
+        Screen::NotFound => "notfound",
+        Screen::NoItems => "noitems",
+    }
+}
+
+/// Ответ модели по запросу: экран (`note` — библиотеки нет, `grid`,
+/// `notfound`, `noitems`), его подпись, разделы сетки с плитками и кнопка
+/// фильтра с числом включённых.
+pub fn view_json(lib: &AxonLibrary, q: &Query) -> Value {
+    let filter = json!({
+        "text": filter_button_text(q.filters.active_count()),
+        "count": q.filters.active_count(),
+        "flags": q.filters.flags.iter().map(|f| f.key()).collect::<Vec<_>>(),
+        "kinds": q.filters.kinds.iter().map(|k| k.key()).collect::<Vec<_>>(),
+    });
+    let base = json!({"sort": q.sort.key(), "mode": q.mode.key(), "text": q.text});
+    if let Some(note) = library_note(lib) {
+        return json!({"screen": "note", "note": note, "sections": [], "filter": filter, "query": base});
+    }
+    let v = query(&lib.wallpapers, q);
+    let scr = screen(&v, q);
+    let tiles = |idx: &[usize]| idx.iter().map(|&i| tile(&lib.wallpapers[i])).collect::<Vec<_>>();
+    let mut sections = Vec::new();
+    if !v.downloaded.is_empty() {
+        sections.push(json!({"title": downloaded_section_title(), "items": tiles(&v.downloaded)}));
+    }
+    if !v.available.is_empty() {
+        sections.push(json!({"title": available_section_title(), "items": tiles(&v.available)}));
+    }
+    let note = match scr {
+        Screen::Grid => String::new(),
+        Screen::NotFound => not_found_text(),
+        Screen::NoItems => no_items_text(),
+    };
+    json!({"screen": screen_key(scr), "note": note, "sections": sections, "filter": filter, "query": base})
+}
+
+/// Подробности обоев: обложка, название, автор, строка плитки и строки
+/// «подпись — значение» (тип и теги — подписями Axon, разрешение).
+pub fn details_json(w: &AxonWallpaper) -> Value {
+    let mut rows: Vec<Value> = Vec::new();
+    let mut row = |label: String, value: String| {
+        if !value.trim().is_empty() {
+            rows.push(json!({"label": label, "value": value}));
+        }
+    };
+    row(type_label(), EffectKind::from_axon(&w.effect).map(EffectKind::label).unwrap_or_default());
+    row(SearchMode::Tags.label(), ax::tag_list(&w.tags).join(", "));
+    row(tr("Resolution"), w.resolution.map(|(x, y)| format!("{x} × {y}")).unwrap_or_default());
+    let author = w.author.trim();
+    json!({
+        "id": w.id,
+        "title": display_title(w),
+        "author": if author.is_empty() { String::new() } else { trf("Author: %1", &[&author]) },
+        "line": ax::tile_line(w),
+        "cover": cover_url(w),
+        "description": w.description.trim(),
+        "rows": rows,
+        "folder": folder_of(w),
+        "downloaded": w.downloaded,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -567,6 +850,49 @@ mod tests {
     }
 
     #[test]
+    fn view_answer_has_sections_screens_and_filter_button() {
+        english();
+        let lib = AxonLibrary { wallpapers: library(), found: true, ..AxonLibrary::default() };
+        let mut q = Query::default();
+        let v = view_json(&lib, &q);
+        assert_eq!(v["screen"], "grid");
+        assert_eq!(v["sections"][0]["title"], "RECENTLY ADDED");
+        assert_eq!(v["sections"][0]["items"].as_array().unwrap().len(), 3);
+        assert_eq!(v["sections"][1]["title"], "AVAILABLE FOR SYNC");
+        assert_eq!(v["sections"][1]["items"][0]["id"], "3");
+        assert_eq!(v["filter"]["text"], "FILTER");
+        q.filters.set(FilterFlag::Favorites, true);
+        q.filters.set_kind(EffectKind::Static, true);
+        let v = view_json(&lib, &q);
+        assert_eq!((v["screen"].as_str(), v["note"].as_str()), (Some("notfound"), Some("No wallpapers found.")));
+        assert_eq!(v["filter"]["text"], "FILTER (2)");
+        assert_eq!(v["filter"]["flags"][0], "favorites");
+        assert_eq!(v["filter"]["kinds"][0], "Static");
+        let empty = AxonLibrary { found: true, ..AxonLibrary::default() };
+        assert_eq!(view_json(&empty, &Query::default())["screen"], "noitems");
+        // Библиотеки нет — экран с подсказкой указать папку; указанная
+        // папка пропала — что её нет.
+        let none = AxonLibrary::default();
+        assert_eq!(view_json(&none, &Query::default())["screen"], "note");
+        assert_eq!(library_note(&none), Some(ax::not_found_text()));
+        let gone = AxonLibrary { source_dirs: vec![PathBuf::from("/нет/такой/папки")], ..AxonLibrary::default() };
+        assert_eq!(library_note(&gone), Some(ax::folder_missing_text()));
+        // Ключи фильтров туда и обратно.
+        for f in FilterFlag::ALL {
+            assert_eq!(FilterFlag::from_key(f.key()), Some(f));
+        }
+        for k in EffectKind::ALL {
+            assert_eq!(EffectKind::from_axon(k.key()), Some(k));
+        }
+        let d = details_json(&lib.wallpapers[0]);
+        assert_eq!(d["title"], "skyline");
+        assert_eq!(d["rows"][0]["value"], "Dynamic");
+        assert_eq!(d["rows"][1]["value"], "City, Night");
+        assert_eq!(d["rows"][2]["value"], "3840 × 2160");
+        assert!(has_section("wallpapers") && !has_section("icons"));
+    }
+
+    #[test]
     fn labels_are_the_originals() {
         english();
         assert_eq!(SortOrder::ALL.map(SortOrder::label), ["Sort by name", "Sort by date added"]);
@@ -583,5 +909,82 @@ mod tests {
             [search_placeholder(), sort_tooltip(), type_label(), no_items_text(), not_found_text(), clear_filter_text()],
             ["Search wallpapers", "Sort", "Type", "No items", "No wallpapers found.", "Clear filter"]
         );
+    }
+
+    /// Временный каталог сверки, удаляется по выходе.
+    struct Tmp(PathBuf);
+    impl Drop for Tmp {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    fn tmp(tag: &str) -> Tmp {
+        let d = std::env::temp_dir().join(format!("rexon-axon-cover-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        Tmp(d)
+    }
+
+    /// Раскладка как у записей Axon на живой машине: `ThumbnailSource` —
+    /// JPEG на CDN, `WallpaperCovers` пуст, `Resource/` — ZIP-контейнер
+    /// (`PK…`) или уже подготовленный ролик (`ftyp`), картинка из папки
+    /// (`FF D8 FF`).
+    #[test]
+    fn cover_plan_follows_axon_data() {
+        let t = tmp("plan");
+        let write = |name: &str, head: &[u8]| {
+            let p = t.0.join(name);
+            std::fs::write(&p, head).unwrap();
+            p
+        };
+        let zip = write("3840x2160.mp4", b"PK\x03\x04\x2d\x00\x09\x08");
+        let mp4 = write("ready.mp4", b"\x00\x00\x00\x18ftypmp42");
+        let jpg = write("3840x2400.jpg", b"\xFF\xD8\xFF\xE1\x00\x18Exif");
+        let webp = write("x.webp", b"RIFF\x10\x00\x00\x00WEBPVP8 ");
+        let cdn = "https://axon-assets-cdn.razerzone.com/thumbnail/x/1.0.0/Sky_Thumb_500x280.jpg";
+        let none = |_: &str| None;
+
+        // Только адрес CDN, контейнер — ZIP: скачать.
+        let mut a = w("1", "a");
+        a.cover_url = cdn.into();
+        a.container = Some(zip.clone());
+        assert_eq!(cover_plan(&a, &none), CoverPlan::Download(cdn.into()));
+        // Уже в кэше превью — готово, без сети.
+        let cached = jpg.clone();
+        let hit = move |u: &str| (u == cdn).then(|| cached.clone());
+        assert_eq!(cover_plan(&a, &hit), CoverPlan::Ready(jpg.clone()));
+        // Своя обложка на диске важнее адреса.
+        a.cover_local = Some(webp.clone());
+        assert_eq!(cover_plan(&a, &none), CoverPlan::Ready(webp.clone()));
+        // Пропавший файл обложки — снова адрес.
+        a.cover_local = Some(t.0.join("нет.jpg"));
+        assert_eq!(cover_plan(&a, &none), CoverPlan::Download(cdn.into()));
+
+        // Без адреса: картинка из папки годится, контейнер и ролик — нет.
+        let mut b = w("2", "b");
+        b.container = Some(jpg.clone());
+        assert_eq!(cover_plan(&b, &none), CoverPlan::Ready(jpg.clone()));
+        b.container = Some(zip);
+        assert_eq!(cover_plan(&b, &none), CoverPlan::Missing);
+        b.container = Some(mp4);
+        assert_eq!(cover_plan(&b, &none), CoverPlan::Missing);
+        // Не сетевой адрес (относительный путь) за адрес не считается.
+        b.cover_url = "Resource\\cover.jpg".into();
+        assert_eq!(cover_plan(&b, &none), CoverPlan::Missing);
+    }
+
+    #[test]
+    fn tile_cover_is_encoded_file_url() {
+        let t = tmp("url");
+        let p = t.0.join("обои #1 50%.jpg");
+        std::fs::write(&p, b"\xFF\xD8\xFF").unwrap();
+        let mut a = w("1", "a");
+        assert_eq!(tile(&a)["cover"], "");
+        a.cover_local = Some(p.clone());
+        let url = tile(&a)["cover"].as_str().unwrap().to_string();
+        assert!(url.starts_with("file:///"), "{url}");
+        assert!(url.ends_with("/%D0%BE%D0%B1%D0%BE%D0%B8%20%231%2050%25.jpg"), "{url}");
+        assert_eq!(details_json(&a)["cover"], url.as_str());
+        assert!(is_web_url("HTTPS://x/y.jpg") && is_web_url("http://x") && !is_web_url("file:///x"));
     }
 }

@@ -123,6 +123,53 @@ fn every_look_parses_and_is_v5() {
     }
 }
 
+/// Словари подписей образа (`{"en": …, "ru": …}`) знают каждый язык Rexon
+/// из `po/LINGUAS`: добавили язык окну — образ обязан заговорить на нём же,
+/// иначе карточка «Как в дистрибутиве» молча покажет его по-английски.
+/// Языки берутся из LINGUAS, а не списком в сверке, чтобы новый язык не
+/// забывался здесь (французский в своё время дописывался руками).
+#[test]
+fn text_dictionaries_cover_every_rexon_language() {
+    fn walk(v: &Value, at: &str, langs: &[String], missing: &mut Vec<String>) {
+        match v {
+            Value::Object(m) => {
+                if m.get("en").is_some_and(Value::is_string) && m.get("ru").is_some_and(Value::is_string) {
+                    for lang in langs {
+                        if !m.get(lang).and_then(Value::as_str).is_some_and(|s| !s.trim().is_empty()) {
+                            missing.push(format!("{at}: нет {lang}"));
+                        }
+                    }
+                }
+                for (k, x) in m {
+                    walk(x, &format!("{at}/{k}"), langs, missing);
+                }
+            }
+            Value::Array(a) => {
+                for (i, x) in a.iter().enumerate() {
+                    walk(x, &format!("{at}[{i}]"), langs, missing);
+                }
+            }
+            _ => {}
+        }
+    }
+    let langs = rexon_core::i18n::parse_linguas(rexon_core::i18n::LINGUAS);
+    assert!(langs.iter().any(|l| l == "ru"), "LINGUAS без русского: {langs:?}");
+    let mut missing = Vec::new();
+    let mut seen = 0;
+    for id in LOOKS {
+        for rel in ["manifest.json", "native/plasma-settings.json"] {
+            let path = look_dir(id).join(rel);
+            if !path.is_file() {
+                continue;
+            }
+            seen += 1;
+            walk(&read_json(&path), &format!("{id}/{rel}"), &langs, &mut missing);
+        }
+    }
+    assert!(seen >= LOOKS.len(), "манифесты образов не найдены");
+    assert!(missing.is_empty(), "словари образов без языков из po/LINGUAS:\n  {}", missing.join("\n  "));
+}
+
 #[test]
 fn texts_in_en_ru_de() {
     for id in LOOKS {
@@ -527,6 +574,8 @@ mod apply {
     use super::*;
     use rexon_core::distro_looks::{self as dl, FetchJob, Machine, Prepared, Probes, Request, Target};
     use rexon_core::install_plan::{no_sync_env, Ctx};
+    use rexon_core::gnome_ext_section as gext;
+    use rexon_core::gnome_shell_ext as gse;
     use rexon_core::utils::RunReport;
     use std::cell::RefCell;
     use std::collections::BTreeSet;
@@ -751,6 +800,10 @@ OpenGL renderer string: AMD Radeon 780M
         have: RefCell<BTreeMap<String, String>>,
         installed: RefCell<Vec<String>>,
         removed: RefCell<Vec<String>>,
+        /// Ответ установки расширения GNOME (по умолчанию — поставлено).
+        ext_reply: RefCell<Option<Result<gext::DepOutcome, gse::ShellExtError>>>,
+        /// Какие расширения просили поставить.
+        ext_calls: RefCell<Vec<String>>,
     }
 
     impl Pkgs {
@@ -759,6 +812,8 @@ OpenGL renderer string: AMD Radeon 780M
                 have: RefCell::new(have.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect()),
                 installed: RefCell::new(Vec::new()),
                 removed: RefCell::new(Vec::new()),
+                ext_reply: RefCell::new(None),
+                ext_calls: RefCell::new(Vec::new()),
             }
         }
         fn owner(&self, n: &str) -> Option<String> {
@@ -803,6 +858,25 @@ OpenGL renderer string: AMD Radeon 780M
         install_fails: bool,
         extra: &[(&str, &str)],
     ) -> (Result<dl::AppliedLook, String>, Vec<String>) {
+        run_apply_lk(b, de, &look(id), req, pkgs, in_repos, install_fails, extra)
+    }
+
+    /// Применить готовый (в том числе синтетический) образ по умолчанию.
+    fn run_apply_look(b: &Bench, de: &str, lk: &dl::Look, pkgs: &Pkgs) -> Result<dl::AppliedLook, String> {
+        run_apply_lk(b, de, lk, &Request::default(), pkgs, &|_| true, false, &[]).0
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_apply_lk(
+        b: &Bench,
+        de: &str,
+        lk: &dl::Look,
+        req: &Request,
+        pkgs: &Pkgs,
+        in_repos: &dyn Fn(&str) -> bool,
+        install_fails: bool,
+        extra: &[(&str, &str)],
+    ) -> (Result<dl::AppliedLook, String>, Vec<String>) {
         let t = b.target(de);
         let missing = RefCell::new(Vec::new());
         let run = |argv: &[String], _: Option<u64>| b.run(argv, &missing);
@@ -812,8 +886,7 @@ OpenGL renderer string: AMD Radeon 780M
         let owner = |n: &str| pkgs.owner(n);
         let no_ext = |_: &str| false;
         let probes = Probes { owner_of: &owner, in_repos, extension_installed: &no_ext };
-        let lk = look(id);
-        let plan = ready(dl::plan(&lk, &t, req, &probes));
+        let plan = ready(dl::plan(lk, &t, req, &probes));
         let install = |names: &[String]| -> Result<(), String> {
             if install_fails {
                 return Err("окно пароля закрыто".into());
@@ -840,6 +913,10 @@ OpenGL renderer string: AMD Radeon 780M
             }
             Ok(())
         };
+        let install_extension = |uuid: &str| {
+            pkgs.ext_calls.borrow_mut().push(uuid.to_string());
+            pkgs.ext_reply.borrow().clone().unwrap_or(Ok(gext::DepOutcome::Done(gse::InstallOutcome::Installed)))
+        };
         let kpkg = |_: &str, _: &str| false;
         let desktop = |_: &str| false;
         let desktop_path = |n: &str| DESKTOPS.contains(&n).then(|| format!("/usr/share/applications/{n}"));
@@ -853,8 +930,9 @@ OpenGL renderer string: AMD Radeon 780M
             desktop_installed: &desktop,
             desktop_path: &desktop_path,
             install_aur: &install_aur,
+            install_extension: &install_extension,
         };
-        let r = dl::apply(&lk, &plan, &t, &m);
+        let r = dl::apply(lk, &plan, &t, &m);
         let miss = missing.borrow().clone();
         (r, miss)
     }
@@ -875,6 +953,106 @@ OpenGL renderer string: AMD Radeon 780M
         b.put(".config/kdeglobals", "[General]\nColorScheme=BreezeDark\n");
         b.put(".config/kwinrc", "[Plugins]\nblurEnabled=true\n");
         b.put(".config/gtk-3.0/settings.ini", "[Settings]\ngtk-theme-name=Breeze\n");
+    }
+
+    const USER_THEME: &str = "user-theme@gnome-shell-extensions.gcampax.github.com";
+
+    /// Расширение-зависимость образа на GNOME ставится само: в плане — uuid
+    /// и для чего, а не «пропущено, расширение не стоит»; уже стоящее —
+    /// не в плане; на столе без GNOME Shell зависимости нет вовсе.
+    #[test]
+    fn gnome_extension_dependency_goes_to_the_plan_not_to_skipped() {
+        rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+        let b = Bench::new("ext-plan");
+        let owner = |_: &str| None;
+        let yes = |_: &str| true;
+        let no = |_: &str| false;
+        let lk = look("garuda-dr460nized");
+        let plan = ready(dl::plan(&lk, &b.target("gnome"), &Request::default(), &Probes { owner_of: &owner, in_repos: &yes, extension_installed: &no }));
+        let e = plan.extensions.iter().find(|e| e.uuid == USER_THEME).expect("User Themes в плане");
+        assert_eq!(e.kinds, vec!["shell-theme".to_string()]);
+        assert!(plan.roles.contains(&e.role), "роль будет в системе");
+        assert!(!plan.skipped.iter().any(|s| s.reason.contains(USER_THEME)), "{:?}", plan.skipped);
+        assert!(plan.install.iter().all(|d| d.resolved.names.iter().all(|n| !n.contains('@'))), "uuid — не пакет");
+
+        let have = |u: &str| u == USER_THEME;
+        let plan = ready(dl::plan(&lk, &b.target("gnome"), &Request::default(), &Probes { owner_of: &owner, in_repos: &yes, extension_installed: &have }));
+        assert!(plan.extensions.is_empty(), "уже стоит — пропуск: {:?}", plan.extensions);
+
+        let plan = ready(dl::plan(&lk, &b.target("kde"), &Request::default(), &Probes { owner_of: &owner, in_repos: &yes, extension_installed: &no }));
+        assert!(plan.extensions.is_empty(), "на Plasma расширения GNOME не ставятся");
+    }
+
+    /// Синтетический пакет: образ требует Dash to Panel (обязательно) и
+    /// ArcMenu — раньше обязательное нестоящее расширение отказывало всему
+    /// образу, теперь оба идут в план одним списком, без дублей ролей.
+    #[test]
+    fn synthetic_look_with_dash_to_panel_and_arcmenu() {
+        rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+        let mut lk = look("garuda-dr460nized");
+        for (role, uuid, required) in
+            [("dash-to-panel", "dash-to-panel@jderose9.github.com", true), ("arcmenu", "arcmenu@arcmenu.com", false)]
+        {
+            let dep: rxn_manifest::PackageDep = serde_json::from_value(serde_json::json!({
+                "role": role, "for": ["shell-theme"], "consumers": ["gnome-shell"], "required": required,
+                "source": "gnome-extensions", "uuid": uuid
+            }))
+            .unwrap();
+            lk.pkg.requires.packages.push(dep);
+        }
+        assert!(rxn_manifest::validate(&lk.pkg).is_empty(), "{}", rxn_manifest::errors_text(&rxn_manifest::validate(&lk.pkg)));
+        let b = Bench::new("ext-synthetic");
+        let owner = |_: &str| None;
+        let yes = |_: &str| true;
+        let no = |_: &str| false;
+        let plan = ready(dl::plan(&lk, &b.target("gnome"), &Request::default(), &Probes { owner_of: &owner, in_repos: &yes, extension_installed: &no }));
+        let uuids: Vec<&str> = plan.extensions.iter().map(|e| e.uuid.as_str()).collect();
+        assert_eq!(uuids, [USER_THEME, "dash-to-panel@jderose9.github.com", "arcmenu@arcmenu.com"]);
+        let pkgs = Pkgs::new(&[]);
+        gnome_profile(&b);
+        *pkgs.ext_reply.borrow_mut() = Some(Ok(gext::DepOutcome::Done(gse::InstallOutcome::Cancelled)));
+        let applied = run_apply_look(&b, "gnome", &lk, &pkgs).expect("отказ в окне — не падение");
+        assert_eq!(pkgs.ext_calls.borrow().len(), 3);
+        assert_eq!(applied.message.matches("you cancelled it").count(), 3, "{}", applied.message);
+    }
+
+    /// Применение ставит расширение сразу; отказ человека в окне оболочки
+    /// и «нет выпуска под эту версию GNOME» — честная строка итога, образ
+    /// всё равно применён.
+    #[test]
+    fn gnome_extension_dependency_installs_and_failures_are_honest() {
+        rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+        let cases: Vec<(&str, Option<Result<gext::DepOutcome, gse::ShellExtError>>, &str)> = vec![
+            ("ok", None, "installed and turned on"),
+            ("next", Some(Ok(gext::DepOutcome::Done(gse::InstallOutcome::InstalledNextLogin))), "next time you log in"),
+            ("cancel", Some(Ok(gext::DepOutcome::Done(gse::InstallOutcome::Cancelled))), "you cancelled it in the GNOME Shell window"),
+            (
+                "old-gnome",
+                Some(Err(gse::ShellExtError::Offline("extensions.gnome.org has no release of this extension for your GNOME version".into()))),
+                "no release of this extension for your GNOME version",
+            ),
+        ];
+        for (tag, reply, want) in cases {
+            let b = Bench::new(&format!("ext-apply-{tag}"));
+            gnome_profile(&b);
+            let pkgs = Pkgs::new(&[]);
+            *pkgs.ext_reply.borrow_mut() = reply;
+            let (r, _) = run_apply(&b, "gnome", "garuda-dr460nized", &pkgs, &|_| true, false, &[]);
+            let applied = r.unwrap_or_else(|e| panic!("{tag}: {e}"));
+            assert_eq!(*pkgs.ext_calls.borrow(), vec![USER_THEME.to_string()], "{tag}");
+            assert!(applied.message.contains(USER_THEME) && applied.message.contains(want), "{tag}: {}", applied.message);
+            if tag == "cancel" || tag == "old-gnome" {
+                assert!(applied.message.contains("Without it"), "{tag}: {}", applied.message);
+            }
+            assert!(pkgs.removed.borrow().is_empty(), "{tag}");
+        }
+        // Уже стояло к моменту применения — молчим.
+        let b = Bench::new("ext-apply-present");
+        gnome_profile(&b);
+        let pkgs = Pkgs::new(&[]);
+        *pkgs.ext_reply.borrow_mut() = Some(Ok(gext::DepOutcome::AlreadyInstalled));
+        let (r, _) = run_apply(&b, "gnome", "garuda-dr460nized", &pkgs, &|_| true, false, &[]);
+        assert!(!r.unwrap().message.contains(USER_THEME));
     }
 
     #[test]

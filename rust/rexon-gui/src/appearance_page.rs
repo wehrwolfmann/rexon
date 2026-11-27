@@ -218,6 +218,10 @@ pub mod qobject {
                     READ = install_file_filters, NOTIFY = chrome_changed)]
         #[qproperty(QString, install_file_section, cxx_name = "installFileSection",
                     READ = install_file_section, NOTIFY = chrome_changed)]
+        // Положение «Только для вашей версии GNOME» витрины
+        // extensions.gnome.org — правда модели (`setEgoCompatibleOnly`).
+        #[qproperty(bool, ego_compatible_only, cxx_name = "egoCompatibleOnly",
+                    READ = ego_compatible_only, NOTIFY = chrome_changed)]
         // Раздел вкладки «Настройки» на экране `settings` (ядро:
         // `CatalogView::settings_panel_key`).
         #[qproperty(QString, settings_panel, cxx_name = "settingsPanel",
@@ -393,6 +397,11 @@ pub mod qobject {
         // `themes::StyleConfigButton`, без `argv`).
         #[qproperty(QString, detail_style_config, cxx_name = "detailStyleConfig",
                     READ = detail_style_config, NOTIFY = detail_changed)]
+        // Кнопки расширения GNOME в подробностях (JSON: `visible`, `toggle`
+        // {text, state, enabled}, `tooltip`, `prefs`, `folder`, `remove`,
+        // `error`, `url`, `name`; `GnomeExtra`).
+        #[qproperty(QString, detail_gnome, cxx_name = "detailGnome",
+                    READ = detail_gnome, NOTIFY = detail_changed)]
         // «Применять к программам GTK 4/libadwaita» у темы GTK (JSON
         // `gtk4_theme::Toggle`).
         #[qproperty(QString, detail_gtk4, cxx_name = "detailGtk4",
@@ -885,6 +894,8 @@ pub mod qobject {
         fn install_file_filters(self: &AppearanceModel) -> QList_QVariant;
         #[cxx_name = "installFileSection"]
         fn install_file_section(self: &AppearanceModel) -> QString;
+        #[cxx_name = "egoCompatibleOnly"]
+        fn ego_compatible_only(self: &AppearanceModel) -> bool;
         #[cxx_name = "settingsPanel"]
         fn settings_panel(self: &AppearanceModel) -> QString;
         #[cxx_name = "sectionSettingsVisible"]
@@ -1023,6 +1034,8 @@ pub mod qobject {
         fn detail_apply_local_enabled(self: &AppearanceModel) -> bool;
         #[cxx_name = "detailStyleConfig"]
         fn detail_style_config(self: &AppearanceModel) -> QString;
+        #[cxx_name = "detailGnome"]
+        fn detail_gnome(self: &AppearanceModel) -> QString;
         #[cxx_name = "detailGtk4"]
         fn detail_gtk4(self: &AppearanceModel) -> QString;
         #[cxx_name = "detailDecoConfig"]
@@ -1126,6 +1139,16 @@ pub mod qobject {
     // `QMetaObject.invokeMethod` молча возвращает False (грабля 12 схемы).
     // Там, где нужно число, оно едет строкой.
     extern "RustQt" {
+        /// Столбцы сетки плиток при ширине `usable` (`ap::grid_columns`).
+        #[qinvokable]
+        #[cxx_name = "gridColumns"]
+        fn grid_columns(self: &AppearanceModel, usable: i32) -> i32;
+
+        /// Ширина ячейки сетки при ширине `usable` (`ap::grid_cell_width`).
+        #[qinvokable]
+        #[cxx_name = "gridCellWidth"]
+        fn grid_cell_width(self: &AppearanceModel, usable: i32) -> i32;
+
         /// Факты о машине, которых ядро само не добудет: список Qt-стилей,
         /// действующий стиль виджетов, запомненный выбор рабочего стола.
         /// Зовёт хозяин страницы один раз при старте (JSON-строка).
@@ -1229,6 +1252,13 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "setRunningOnly"]
         fn set_running_only(self: Pin<&mut AppearanceModel>, on: bool);
+
+        /// Переключатель «Только для вашей версии GNOME» витрины
+        /// extensions.gnome.org: выключен — видны все расширения, а
+        /// несовместимые помечены.
+        #[qinvokable]
+        #[cxx_name = "setEgoCompatibleOnly"]
+        fn set_ego_compatible_only(self: Pin<&mut AppearanceModel>, on: bool);
 
         /// После «Установить из файла…»: перечитать установленное мимо кеша.
         #[qinvokable]
@@ -1355,6 +1385,12 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "openDetail"]
         fn open_detail(self: Pin<&mut AppearanceModel>, item_id: &QString);
+
+        /// Открыта карточка виджета Conky — взять его картинку заново
+        /// (пересняли снимок после смены цветов или настроек).
+        #[qinvokable]
+        #[cxx_name = "refreshConkyDetailPicture"]
+        fn refresh_conky_detail_picture(self: Pin<&mut AppearanceModel>);
 
         /// Вернуться к сетке.
         #[qinvokable]
@@ -1690,6 +1726,7 @@ use rexon_core::aur::AurPackage;
 use rexon_core::aur_install;
 use rexon_core::categories;
 use rexon_core::cinnamon_spices as cs;
+use rexon_core::gnome_ext_section as gext;
 use rexon_core::wallhaven as wh;
 use rexon_core::models::{ThemeCategory, ThemeItem};
 use rexon_core::ocs;
@@ -1704,7 +1741,7 @@ const ROLE_BASE: i32 = 256 + 1;
 
 /// Имена ролей в порядке номеров — единственный источник истины и для
 /// roleNames, и для data(), и для roleNumber().
-const ROLE_NAMES: [&str; 28] = [
+const ROLE_NAMES: [&str; 31] = [
     // Откуда плитка: `ocs` (магазин), `aur` (пакет), `local` (диск).
     "kind",
     "itemId",
@@ -1751,6 +1788,12 @@ const ROLE_NAMES: [&str; 28] = [
     // Текущая тема раздела (`local_kind = "active"`): рамка и жирная
     // подпись, как у KDE, — там, где ядро велит выделять (`markCurrent`).
     "current",
+    // Расширение GNOME, которое знает запущенная оболочка: его uuid (пусто —
+    // не оно; тогда кнопки плитки — общие), есть ли у него свои настройки
+    // и ошибка, о которой можно спросить подробности (`gnome_ext_section`).
+    "gnomeUuid",
+    "gnomePrefs",
+    "gnomeErrorInfo",
 ];
 
 const ROLE_PREVIEW: usize = 7;
@@ -1819,6 +1862,67 @@ impl SiteExtra {
         }
         let text = |k: &str| raw.get(k).and_then(Value::as_str).unwrap_or("").to_string();
         Some(SiteExtra { page: page.to_string(), stats: text("siteStats"), stats_tooltip: text("siteStatsTooltip") })
+    }
+}
+
+/// Расширение GNOME со слов оболочки — поля `gnome*` строки ответа
+/// (`gnome_ext_section::shell_fields`, `unseen_fields`): пометки плитки и
+/// что с ним можно сделать.
+#[derive(Debug, Clone, Default)]
+pub struct GnomeExtra {
+    /// Оболочка его знает (иначе — лежит на диске и заработает после
+    /// перезахода: только пометка, кнопки общие).
+    pub shell_known: bool,
+    pub uuid: String,
+    pub enabled: bool,
+    pub active: bool,
+    pub can_change: bool,
+    pub has_prefs: bool,
+    pub can_remove: bool,
+    pub error: bool,
+    pub unsupported: bool,
+    /// Подсказка пометок: текст ошибки или «Не поддерживает GNOME N».
+    pub tooltip: String,
+    /// `open` (своё) | `copy` (системное) | пусто.
+    pub folder: String,
+    pub url: String,
+    /// Подписи пометок по порядку.
+    pub marks: Vec<String>,
+}
+
+impl GnomeExtra {
+    /// Из строки ответа хозяина; `None` — плитка не расширение GNOME.
+    fn from_row(raw: &Value) -> Option<Self> {
+        let uuid = raw.get("gnomeUuid").and_then(Value::as_str)?.to_string();
+        let flag = |k: &str| raw.get(k).and_then(Value::as_bool).unwrap_or(false);
+        let text = |k: &str| raw.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        let marks = raw
+            .get("gnomeMarks")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(|m| m.get("text").and_then(Value::as_str)).map(str::to_string).collect())
+            .unwrap_or_default();
+        let error_text = text("gnomeErrorText");
+        let tooltip = if flag("gnomeError") && !error_text.is_empty() { error_text } else { text("gnomeUnsupportedText") };
+        Some(GnomeExtra {
+            shell_known: flag("gnomeShellKnown"),
+            uuid,
+            enabled: flag("gnomeEnabled"),
+            active: flag("gnomeActive"),
+            can_change: flag("gnomeCanChange"),
+            has_prefs: flag("gnomeHasPrefs"),
+            can_remove: flag("gnomeCanRemove"),
+            error: flag("gnomeError"),
+            unsupported: flag("gnomeUnsupported"),
+            tooltip,
+            folder: text("gnomeFolderAction"),
+            url: text("gnomeUrl"),
+            marks,
+        })
+    }
+
+    /// Строка пометок плитки: «Ошибка · Системное».
+    fn marks_line(&self) -> String {
+        self.marks.join(" · ")
     }
 }
 
@@ -2103,6 +2207,8 @@ pub struct AppearanceModelRust {
     spices: BTreeMap<String, SpiceExtra>,
     /// Плитки сторонних магазинов со своим сайтом (Wallhaven) → [`SiteExtra`].
     site: BTreeMap<String, SiteExtra>,
+    /// Плитки расширений GNOME: номер плитки → сведения оболочки ([`GnomeExtra`]).
+    gnome: BTreeMap<String, GnomeExtra>,
     /// Всего работ у раздела по ответу магазина.
     total: i64,
     /// Есть ли что за страницей — у потока магазина с добором
@@ -2121,6 +2227,9 @@ pub struct AppearanceModelRust {
     detected_de: String,
 
     status: String,
+    /// Итог фонового перевода заново курсоров из Windows: заменит строку
+    /// состояния ответа перечитанного раздела (иначе тот её затёр бы).
+    pending_notice: Option<String>,
     /// Что показано: `grid` | `detail` | `note` | `plasmalogin`.
     screen: String,
     /// Экран входа рисует Plasma Login Manager (ответ фоновой пробы; до
@@ -2258,6 +2367,7 @@ impl Default for AppearanceModelRust {
             removal: BTreeMap::new(),
             spices: BTreeMap::new(),
             site: BTreeMap::new(),
+            gnome: BTreeMap::new(),
             total: 0,
             has_more: None,
             grid_cols: 0,
@@ -2267,6 +2377,7 @@ impl Default for AppearanceModelRust {
             de_choices: Vec::new(),
             detected_de: String::new(),
             status: String::new(),
+            pending_notice: None,
             screen: "grid".to_string(),
             plasma_login: false,
             plm_can_open: false,
@@ -2398,6 +2509,12 @@ impl qobject::AppearanceModel {
     }
     fn grid_margin_v(&self) -> i32 {
         ap::GRID_MARGIN_V
+    }
+    fn grid_columns(&self, usable: i32) -> i32 {
+        ap::grid_columns(usable)
+    }
+    fn grid_cell_width(&self, usable: i32) -> i32 {
+        ap::grid_cell_width(usable)
     }
     fn header_margin_h(&self) -> i32 {
         ap::HEADER_MARGIN_H
@@ -2665,6 +2782,9 @@ impl qobject::AppearanceModel {
     fn install_file_section(&self) -> QString {
         QString::from(&self.rust().view.category.key)
     }
+    fn ego_compatible_only(&self) -> bool {
+        self.rust().view.ego_compatible_only
+    }
     fn settings_panel(&self) -> QString {
         QString::from(&self.rust().view.settings_panel_key())
     }
@@ -2707,7 +2827,7 @@ impl qobject::AppearanceModel {
         // источник, который действует на самом деле.
         let active = view.effective_source().to_string();
         let mut out = QList::<QVariant>::default();
-        for chip in ap::source_chips_for(&view.category.key) {
+        for chip in ap::source_chips_in(&view.category.key, view.axon) {
             out.append(QVariant::from(&vmap(vec![
                 ("key", qstr(chip.key)),
                 ("label", qstr(&chip.label)),
@@ -2925,6 +3045,9 @@ impl qobject::AppearanceModel {
         if let Some(v) = self.spice_role(item, local, name) {
             return v;
         }
+        if let Some(v) = self.gnome_role(item, name) {
+            return v;
+        }
         if !local {
             if let Some(x) = self.rust().site.get(&item.id) {
                 match name {
@@ -2977,6 +3100,8 @@ impl qobject::AppearanceModel {
             "soundTheme" => qstr(&ap::local_sound_theme(&item.id).unwrap_or_default()),
             "splashDemo" => qstr(&ap::local_splash_demo(&item.id).unwrap_or_default()),
             "aurNote" | "aurNoteTooltip" | "aurLog" | "riskLevel" => qstr(""),
+            "gnomeUuid" => qstr(""),
+            "gnomePrefs" | "gnomeErrorInfo" => QVariant::from(&false),
             "metaWarn" => QVariant::from(&false),
             "buttonText" | "buttonState" | "buttonEnabled" => {
                 let btn = if local {
@@ -3041,6 +3166,37 @@ impl qobject::AppearanceModel {
                     _ => QVariant::from(&btn.enabled),
                 }
             }
+            _ => return None,
+        })
+    }
+
+    /// Роли плитки расширения GNOME (и с диска, и с витрины): пометки
+    /// оболочки вместо строки автора, «Включить/Выключить» по её правде,
+    /// «🗑» только у своего, «⚙️» и «⚠️» — у кого есть настройки и ошибка.
+    /// Расширение, которого оболочка не знает, — только пометка «после
+    /// перезахода», кнопки общие. `None` — как у всех.
+    fn gnome_role(&self, item: &ThemeItem, name: &str) -> Option<QVariant> {
+        let x = self.rust().gnome.get(&item.id)?;
+        let known = x.shell_known;
+        Some(match name {
+            "metaLine" if !x.marks.is_empty() => qstr(&x.marks_line()),
+            "metaTooltip" if !x.marks.is_empty() => qstr(&x.tooltip),
+            "metaWarn" if !x.marks.is_empty() => QVariant::from(&(x.error || x.unsupported)),
+            "buttonText" | "buttonState" | "buttonEnabled" if known => {
+                let btn = gext::toggle_button(x.enabled, x.active, x.can_change);
+                match name {
+                    "buttonText" => qstr(&btn.text),
+                    "buttonState" => qstr(btn.state),
+                    _ => QVariant::from(&btn.enabled),
+                }
+            }
+            "buttonTooltip" if known => qstr(&if x.can_change { String::new() } else { gext::locked_tooltip() }),
+            "removeVisible" if known => QVariant::from(&x.can_remove),
+            "removeEnabled" if known => QVariant::from(&true),
+            "removeTooltip" if known => qstr(""),
+            "gnomeUuid" if known => qstr(&x.uuid),
+            "gnomePrefs" => QVariant::from(&(known && x.has_prefs)),
+            "gnomeErrorInfo" => QVariant::from(&(known && x.error)),
             _ => return None,
         })
     }
@@ -3156,7 +3312,8 @@ impl qobject::AppearanceModel {
             "favoriteText" | "favoriteState" => qstr(""),
             "soundTheme" | "splashDemo" => qstr(""),
             "removeVisible" | "removeEnabled" | "current" => QVariant::from(&false),
-            "removeTooltip" => qstr(""),
+            "removeTooltip" | "gnomeUuid" => qstr(""),
+            "gnomePrefs" | "gnomeErrorInfo" => QVariant::from(&false),
             _ => QVariant::default(),
         }
     }
@@ -3240,6 +3397,14 @@ impl qobject::AppearanceModel {
             let wayland = rexon_core::animations::LookCtx::from_env().for_chosen(&de).wayland;
             self.as_mut().rust_mut().view.session = categories::Session::from_wayland(wayland);
         }
+        // Найден ли Razer Axon — для его чипа и блока настроек в разделе
+        // обоев: Axon могли поставить (или указать папку) при открытом окне.
+        // Проба — обход известных префиксов Wine, только в разделе с
+        // источником.
+        if rexon_core::axon_window::has_section(&self.rust().view.category.key) {
+            let axon = rexon_core::axon_window::show_source_live();
+            self.as_mut().rust_mut().view.axon = axon;
+        }
         // Есть ли программа Conky — для подписи её раздела: после установки
         // виджета (и программы вместе с ним) подпись обязана смениться.
         if self.rust().view.category.key == "conky" {
@@ -3274,6 +3439,50 @@ impl qobject::AppearanceModel {
         self.as_mut().page_changed();
         if !blocked {
             self.as_mut().start_request();
+        }
+        if self.rust().view.category.key == "cursor" {
+            self.as_mut().refresh_windows_cursors_once();
+        }
+    }
+
+    /// Раздел «Курсоры» открыт: в фоне перевести заново установленные темы
+    /// «из Windows», которых касается исправление переводчика
+    /// (`ext_exec::refresh_windows_cursors_live`; решение Wehrwolfmann
+    /// 14.11.2026). Один раз за жизнь окна: переведённые получают текущую
+    /// версию, повторный проход ничего бы не нашёл.
+    fn refresh_windows_cursors_once(self: Pin<&mut Self>) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static STARTED: AtomicBool = AtomicBool::new(false);
+        if STARTED.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let handle = self.as_ref().get_ref().qt_thread();
+        let spawned = std::thread::Builder::new().name("rexon-wincur-again".into()).spawn(move || {
+            let lines = rexon_core::ext_exec::refresh_windows_cursors_live();
+            if lines.is_empty() {
+                return;
+            }
+            let text = lines.join("\n");
+            let _ = handle.queue(move |object| object.windows_cursors_refreshed(&text));
+        });
+        if spawned.is_err() {
+            rexon_core::log_warn!("cursors", "поток перевода заново курсоров не завёлся");
+        }
+    }
+
+    /// Итог перевода заново: раздел с установленным перечитать с диска,
+    /// строку итога показать поверх ответа.
+    fn windows_cursors_refreshed(mut self: Pin<&mut Self>, text: &str) {
+        let reload = {
+            let me = self.rust();
+            (me.view.is_local() || me.view.installed_view()) && me.screen == ap::SCREEN_GRID
+        };
+        if reload {
+            self.as_mut().rust_mut().pending_notice = Some(text.to_string());
+            self.as_mut().reload_local_fresh();
+        } else {
+            self.as_mut().rust_mut().status = text.to_string();
+            self.as_mut().status_changed();
         }
     }
 
@@ -3426,6 +3635,11 @@ impl qobject::AppearanceModel {
             me.view.page = 0;
             me.view.total = 0;
             me.total = 0;
+            // «Есть ли следующая страница» — ответ ПРЕЖНЕГО раздела. Без
+            // сброса листалка нового раздела, пока его каталог не пришёл,
+            // считала страницы по чужому ответу: «Страница 1 / 2» над пустой
+            // сеткой (живая проверка 15.11.2026, «GTK-темы» после «Обоев HD»).
+            me.has_more = None;
             // Запрос принадлежит разделу, из которого ушли: тащить его
             // дальше значит открыть соседний раздел уже отфильтрованным по
             // забытому слову. Оригинал на виджетах чистит и поле, и запрос
@@ -3647,6 +3861,20 @@ impl qobject::AppearanceModel {
         self.refresh();
     }
 
+    fn set_ego_compatible_only(mut self: Pin<&mut Self>, on: bool) {
+        if self.rust().view.ego_compatible_only == on {
+            return;
+        }
+        {
+            let mut me = self.as_mut().rust_mut();
+            me.view.ego_compatible_only = on;
+            // Другой фильтр — другая выдача: листать её с начала.
+            me.view.page = 0;
+        }
+        self.as_mut().chrome_changed();
+        self.resync();
+    }
+
     fn set_grid_columns(mut self: Pin<&mut Self>, cols: i32) {
         let cols = cols.max(1) as u32;
         let old = self.rust().page_size();
@@ -3687,6 +3915,18 @@ impl qobject::AppearanceModel {
 
     fn catalog_request(mut self: Pin<&mut Self>) -> QString {
         let outcome = self.as_mut().rust_mut().requests.fire();
+        // Запрос, который НЕ ушёл в сеть, — в журнал: «⏳ Загрузка каталога…»
+        // навсегда при молчащей сети (15.11.2026) иначе не отличить от
+        // запроса, который и не просили.
+        match &outcome {
+            ap::FireOutcome::Deduplicated { key } => {
+                rexon_core::log_info!("appearance", "каталог {key}: уже летит, второй запрос не шлю");
+            }
+            ap::FireOutcome::Stale => {
+                rexon_core::log_info!("appearance", "каталог: запрос устарел до отправки");
+            }
+            _ => {}
+        }
         let ap::FireOutcome::Send { generation, key } = outcome else {
             return QString::default();
         };
@@ -3705,6 +3945,7 @@ impl qobject::AppearanceModel {
             "which": me.view.local_scan_which(),
             "aurKey": me.view.aur_cache_key(),
             "lockMode": me.view.lock_mode_effective(),
+            "egoCompatibleOnly": me.view.ego_compatible_only,
             "de": me.view.de,
             // Обойти кеш сканов диска: тему только что применили.
             "fresh": me.catalog_fresh,
@@ -3725,6 +3966,7 @@ impl qobject::AppearanceModel {
         // а не «принять ли»: с отрицанием сюда не проходил ни один свежий
         // ответ, и витрина оставалась пустой при живом хозяине.
         if self.as_mut().rust_mut().requests.answer(&key) {
+            rexon_core::log_info!("appearance", "каталог {key}: ответ устарел, отброшен");
             return;
         }
         // У раздела без витрины (объяснение, панели экрана входа и MATE,
@@ -3770,9 +4012,26 @@ impl qobject::AppearanceModel {
                             self.as_mut().rust_mut().spices.remove(&item.id);
                         }
                     }
+                    match GnomeExtra::from_row(raw) {
+                        Some(x) => {
+                            self.as_mut().rust_mut().gnome.insert(item.id.clone(), x);
+                        }
+                        None => {
+                            self.as_mut().rust_mut().gnome.remove(&item.id);
+                        }
+                    }
                     cards.push(Card::Theme(Box::new(item)));
                 }
             }
+        }
+        // Открытое расширение GNOME включили, выключили или оно упало:
+        // кнопки подробностей — по свежему слову оболочки.
+        let gnome_detail = {
+            let me = self.rust();
+            me.detail.as_ref().is_some_and(|d| me.gnome.contains_key(&d.id))
+        };
+        if gnome_detail {
+            self.as_mut().detail_changed();
         }
         if let Some(list) = v.get("packages").and_then(Value::as_array) {
             for raw in list {
@@ -3914,6 +4173,7 @@ impl qobject::AppearanceModel {
                 ap::catalog_status(total, shown)
             }
         };
+        let status = self.as_mut().rust_mut().pending_notice.take().unwrap_or(status);
         self.as_mut().rust_mut().status = status;
         self.as_mut().count_changed();
         self.as_mut().status_changed();
@@ -4041,6 +4301,8 @@ fn store_kind(view: &ap::CatalogView) -> &'static str {
         "spices"
     } else if view.wallhaven_mode() {
         "wallhaven"
+    } else if view.ego_mode() {
+        "ego"
     } else {
         "ocs"
     }
@@ -4333,6 +4595,13 @@ impl qobject::AppearanceModel {
         QString::from(&self.detail_button().text)
     }
     fn detail_install_tooltip(&self) -> QString {
+        // Расширение GNOME ставит оболочка, и подтверждение спрашивает она
+        // сама своим окном — чтобы оно не застало врасплох.
+        if let Some(it) = self.rust().detail.as_ref() {
+            if !it.installed && rexon_core::gnome_ego::is_item_id(&it.id) {
+                return QString::from(&gext::install_tooltip());
+            }
+        }
         QString::from(&self.detail_button().tooltip)
     }
     fn detail_install_state(&self) -> QString {
@@ -4433,6 +4702,31 @@ impl qobject::AppearanceModel {
         let b = rexon_core::themes::style_config_button_live(&kind, &name);
         QString::from(&json!({"visible": b.visible, "enabled": b.enabled,
                               "text": b.text, "tooltip": b.tooltip}).to_string())
+    }
+
+    fn detail_gnome(&self) -> QString {
+        let me = self.rust();
+        let Some(it) = me.detail.as_ref() else {
+            return QString::from("{}");
+        };
+        let Some(x) = me.gnome.get(&it.id).filter(|x| x.shell_known) else {
+            return QString::from("{}");
+        };
+        let btn = gext::toggle_button(x.enabled, x.active, x.can_change);
+        QString::from(
+            &json!({
+                "visible": true,
+                "toggle": {"text": btn.text, "state": btn.state, "enabled": btn.enabled},
+                "tooltip": if x.can_change { String::new() } else { gext::locked_tooltip() },
+                "prefs": x.has_prefs,
+                "folder": x.folder,
+                "remove": x.can_remove,
+                "error": x.error,
+                "url": x.url,
+                "name": ap::card_name(&it.name),
+            })
+            .to_string(),
+        )
     }
 
     fn detail_gtk4(&self) -> QString {
@@ -4686,6 +4980,30 @@ impl qobject::AppearanceModel {
         }
     }
 
+    fn refresh_conky_detail_picture(mut self: Pin<&mut Self>) {
+        let Some(name) = self
+            .rust()
+            .detail
+            .as_ref()
+            .and_then(|it| it.id.strip_prefix("local:conky:").map(str::to_string))
+        else {
+            return;
+        };
+        let ctx = rexon_core::de_apply::Ctx::live();
+        let Some(path) = rexon_core::conky_scan::tile_picture(&rexon_core::animations::SystemIo, &ctx, &name) else {
+            return;
+        };
+        if self.rust().detail_frame == path {
+            return;
+        }
+        {
+            let mut me = self.as_mut().rust_mut();
+            me.detail_frame = path;
+            me.detail_frame_text = String::new();
+        }
+        self.as_mut().detail_frame_changed();
+    }
+
     fn close_detail(mut self: Pin<&mut Self>) {
         {
             let mut me = self.as_mut().rust_mut();
@@ -4774,8 +5092,14 @@ impl qobject::AppearanceModel {
         self.as_mut().detail_changed();
         self.as_mut().sync_frame();
         // У Cinnamon Spices комментариев для программ нет, у Wallhaven —
-        // своего API для них.
-        if !local && !id.is_empty() && !id.starts_with(cs::ID_PREFIX) && !wh::is_item_id(&id) {
+        // своего API для них, у extensions.gnome.org — тоже (комментарии
+        // KDE Store спрашивать по номеру `ego:` бессмысленно).
+        if !local
+            && !id.is_empty()
+            && !id.starts_with(cs::ID_PREFIX)
+            && !wh::is_item_id(&id)
+            && !rexon_core::gnome_ego::is_item_id(&id)
+        {
             self.as_mut()
                 .comments_wanted(QString::from(&id), QString::from("0"));
         }
@@ -6706,6 +7030,8 @@ impl qobject::AppearanceModel {
             "spices"
         } else if me.detail.as_ref().is_some_and(|it| wh::is_item_id(&it.id)) {
             "wallhaven"
+        } else if me.detail.as_ref().is_some_and(|it| rexon_core::gnome_ego::is_item_id(&it.id)) {
+            "ego"
         } else {
             "store"
         };

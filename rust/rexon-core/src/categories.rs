@@ -279,6 +279,11 @@ pub fn de_section_store(key: &str) -> CatalogSource {
     if let Some(t) = crate::cinnamon_spices::type_for_section(key) {
         return CatalogSource::Spices(t.json.to_string());
     }
+    // «Расширения GNOME» — сайт extensions.gnome.org (`crate::gnome_ego`):
+    // ставит расширение сама оболочка, KDE Store их не держит.
+    if crate::gnome_ego::has_section(key) {
+        return CatalogSource::GnomeExtensions;
+    }
     match key {
         // Те же категории, что у Discover (`kwinswitcher.knsrc`,
         // `kwinscripts.knsrc`, `kwineffect.knsrc`).
@@ -440,6 +445,15 @@ pub const LAUNCH_FEEDBACK_PANEL: &str = "launchfeedback";
 /// «⚙️ Настройки» раздела «Обои HD» (08.11.2026); во вкладке «Настройки»
 /// её больше нет.
 pub const WALLPAPER_BLUR_PANEL: &str = "wallpaperblur";
+/// Блок «Razer Axon» (`AxonSettingsSection`): наши настройки показа обоев
+/// из библиотеки Razer Axon — вид «⚙️ Настройки» раздела «Обои HD»
+/// (14.11.2026), рядом с источником «Razer Axon». Есть, только если Axon
+/// найден: отбирает `appearance_page::CatalogView::section_settings_panels`.
+pub const AXON_SETTINGS_PANEL: &str = "axonsettings";
+/// Блок «Плейлист обоев» (`WallpaperPlaylistSection`): один плейлист для
+/// всех собственных обоев Rexon (видео, веб, Flash, картинки, Razer Axon) —
+/// вид «⚙️ Настройки» раздела «Обои HD» (15.11.2026), первым.
+pub const WALLPAPER_PLAYLIST_PANEL: &str = "wallpaperplaylist";
 /// Рамки «Фоновые звуки» (`ambientGroup`) и «Звуки событий»
 /// (`soundThemeGroup`) вкладки «Настройки» — вид «⚙️ Настройки» раздела
 /// «Звуки» (08.11.2026); во вкладке «Настройки» их больше нет.
@@ -464,7 +478,9 @@ pub const SECTION_SETTINGS: &[(&str, &str)] = &[
     ("fonts", FONT_SETTINGS_PANEL),
     ("icons", APP_WIDGETS_PANEL),
     ("cursor", LAUNCH_FEEDBACK_PANEL),
+    ("wallpapers", WALLPAPER_PLAYLIST_PANEL),
     ("wallpapers", WALLPAPER_BLUR_PANEL),
+    ("wallpapers", AXON_SETTINGS_PANEL),
     ("sounds", EVENT_SOUNDS_PANEL),
     ("sounds", AMBIENT_SOUNDS_PANEL),
     ("kwineffects", DESKTOP_EFFECTS_PANEL),

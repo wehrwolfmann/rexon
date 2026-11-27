@@ -38,8 +38,9 @@
 //! Снимают только то, что можно запустить без вопроса ([`check_widget`]):
 //! виджет только рисует или уже разрешён в нынешнем виде, и ему ничего не
 //! недостаёт. Пароль при просмотре каталога не спрашивается, пакеты не
-//! ставятся. Нет Xvfb или стенд не поднялся — плитка остаётся заглушкой,
-//! без подсказок.
+//! ставятся. Стенд не поднялся — плитка остаётся заглушкой. Нет Xvfb —
+//! над разделом одна закрываемая подсказка с пакетом этого дистрибутива
+//! и кнопкой «Установить» ([`xvfb_hint`]); пакет ставится только по кнопке.
 //!
 //! Xvfb — обязательная зависимость пакета: Arch и его потомки —
 //! `xorg-server-xvfb`, Debian/Ubuntu — `xvfb`, Fedora/openSUSE —
@@ -482,6 +483,141 @@ pub fn check_widget(io: &dyn LookIo, ctx: &Ctx, id: &str, family: &str) -> Resul
     let healthy = || crate::conky_safety::health(io, ctx, id, family).is_fine();
     eligibility(io.have("Xvfb"), io.have("conky"), own, true, true)?;
     eligibility(true, true, false, allowed(), healthy())
+}
+
+/// Подсказка раздела «Виджеты Conky»: превью плиток не рисуются, потому
+/// что нет Xvfb (решение Wehrwolfmann 14.11.2026). Одна строка на раздел,
+/// закрывается крестиком; кнопка «Установить» — когда Rexon может поставить
+/// пакет сам (общий путь недостающих программ виджетов, pkexec + помощник).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct XvfbHint {
+    pub visible: bool,
+    pub text: String,
+    /// Пакет для кнопки «Установить»; пусто — кнопки нет.
+    pub package: String,
+    pub button: String,
+    pub close_tooltip: String,
+}
+
+/// Что известно о машине для [`xvfb_hint`] — матрица отдельно от машины.
+#[derive(Debug, Clone, Default)]
+pub struct XvfbHintFacts {
+    pub have_xvfb: bool,
+    pub have_conky: bool,
+    /// Запасной путь «живое окно» работает (X11) и снимки в кеше уже есть.
+    pub live_shots: bool,
+    /// Семейство пакетов (`system::PkgFamily`).
+    pub family: String,
+    pub steamos: bool,
+    /// Rexon может ставить пакеты на этой системе (не SteamOS и не
+    /// неизменяемая).
+    pub installable: bool,
+    /// Человек закрыл подсказку.
+    pub closed: bool,
+}
+
+/// Показывать ли подсказку про Xvfb, с каким текстом и пакетом. Без conky
+/// превью не будет и с Xvfb — об этом говорит подпись раздела, не она.
+pub fn xvfb_hint(f: &XvfbHintFacts) -> XvfbHint {
+    if f.have_xvfb || !f.have_conky || f.live_shots || f.closed {
+        return XvfbHint::default();
+    }
+    let close_tooltip = crate::i18n::tr("Don't show this hint again");
+    if f.steamos {
+        return XvfbHint {
+            visible: true,
+            text: crate::i18n::tr(
+                "To see widget previews, Rexon needs the Xvfb program. On SteamOS it comes inside Rexon's \
+                 system extension, which isn't active now — reinstall Rexon to bring it back.",
+            ),
+            close_tooltip,
+            ..XvfbHint::default()
+        };
+    }
+    let exact = crate::conky_safety::program_package("Xvfb", &f.family);
+    let (text, package) = match (exact, f.installable) {
+        (Some(pkg), true) => (
+            // TRANSLATORS: %1 is a package name; an “Install” button follows.
+            crate::i18n::trf("To see widget previews, the %1 package is needed.", &[&pkg]),
+            pkg,
+        ),
+        _ => {
+            let pkg = crate::utils::tool_package_name("Xvfb", &f.family);
+            let text = if pkg.is_empty() {
+                crate::i18n::tr("To see widget previews, install the Xvfb program with your system's tools.")
+            } else {
+                // TRANSLATORS: %1 is a package name.
+                crate::i18n::trf("To see widget previews, install the %1 package with your system's tools.", &[&pkg])
+            };
+            (text, String::new())
+        }
+    };
+    let button = if package.is_empty() { String::new() } else { crate::i18n::tr("📦 Install") };
+    XvfbHint { visible: true, text, package, button, close_tooltip }
+}
+
+/// Есть ли в кеше хоть один снимок виджета (любой — живого окна или
+/// невидимого экрана).
+pub fn has_any_shot(ctx: &Ctx) -> bool {
+    let dir = format!("{}/{CACHE_SUBDIR}", crate::appearance_cache::cache_dir(&ctx.home));
+    std::fs::read_dir(dir)
+        .map(|it| it.flatten().any(|e| e.path().extension().is_some_and(|x| x == "png")))
+        .unwrap_or(false)
+}
+
+/// Ключ `settings.json`: человек закрыл подсказку про Xvfb.
+pub const XVFB_HINT_CLOSED_KEY: &str = "conky_xvfb_hint_closed";
+
+/// [`xvfb_hint`] на этой машине.
+pub fn live_xvfb_hint() -> XvfbHint {
+    let io = crate::animations::SystemIo;
+    let ctx = Ctx::live();
+    let have_xvfb = io.have("Xvfb");
+    let closed = crate::settings::SettingsManager::new()
+        .ok()
+        .and_then(|s| s.get(XVFB_HINT_CLOSED_KEY).and_then(serde_json::Value::as_bool))
+        .unwrap_or(false);
+    if have_xvfb || closed {
+        return XvfbHint::default();
+    }
+    let detector = crate::system::DistroDetector::detect_live();
+    let display = std::env::var("DISPLAY").ok();
+    let facts = XvfbHintFacts {
+        have_xvfb,
+        have_conky: io.have("conky"),
+        live_shots: can_capture(&ctx, display.as_deref()) && has_any_shot(&ctx),
+        family: detector.family_live().as_str().to_string(),
+        steamos: detector.is_steamos(),
+        installable: !detector.is_steamos() && !detector.is_immutable(),
+        closed,
+    };
+    xvfb_hint(&facts)
+}
+
+/// Закрыть подсказку про Xvfb навсегда.
+pub fn close_xvfb_hint() {
+    if let Ok(mut s) = crate::settings::SettingsManager::new() {
+        if let Err(e) = s.set(XVFB_HINT_CLOSED_KEY, serde_json::Value::Bool(true)) {
+            crate::log_warn!("conky", "подсказка про Xvfb не запомнена закрытой: {e}");
+        }
+    }
+}
+
+/// Поставить Xvfb общим путём недостающих программ виджетов Conky
+/// ([`crate::conky_safety::install_packages_live`]: окно пароля, только
+/// репозитории). Итог — строка для человека.
+pub fn install_xvfb_live() -> (bool, String) {
+    let hint = live_xvfb_hint();
+    if hint.package.is_empty() {
+        return (false, crate::i18n::tr("Rexon can't install programs on this system by itself."));
+    }
+    match crate::conky_safety::install_packages_live(std::slice::from_ref(&hint.package)) {
+        Ok(()) => (true, crate::i18n::tr("✅ Xvfb is installed — widget previews will appear on the tiles.")),
+        Err(why) => {
+            crate::log_warn!("conky", "Xvfb для превью не встал ({}): {why}", hint.package);
+            (false, why)
+        }
+    }
 }
 
 /// Отпечаток кода виджета `id` и выбора человека для файла `conf`.
@@ -1505,6 +1641,44 @@ mod tests {
             Meta { source: "x11-live".into(), ..m.clone() },
         ] {
             assert!(!is_fresh(Some(&change), &m), "{change:?}");
+        }
+    }
+
+    #[test]
+    fn xvfb_hint_matrix() {
+        let base = XvfbHintFacts {
+            have_xvfb: false,
+            have_conky: true,
+            family: "arch".into(),
+            installable: true,
+            ..XvfbHintFacts::default()
+        };
+        // Arch: пакет таблицы и кнопка «Установить».
+        let h = xvfb_hint(&base);
+        assert!(h.visible && h.package == "xorg-server-xvfb" && !h.button.is_empty(), "{h:?}");
+        assert!(h.text.contains("xorg-server-xvfb") && !h.close_tooltip.is_empty());
+        // Debian и Fedora — свои имена.
+        assert_eq!(xvfb_hint(&XvfbHintFacts { family: "debian".into(), ..base.clone() }).package, "xvfb");
+        assert_eq!(xvfb_hint(&XvfbHintFacts { family: "fedora".into(), ..base.clone() }).package, "xorg-x11-server-Xvfb");
+        // Неизменяемая система: имя пакета в тексте, кнопки нет.
+        let ro = xvfb_hint(&XvfbHintFacts { installable: false, ..base.clone() });
+        assert!(ro.visible && ro.package.is_empty() && ro.button.is_empty() && ro.text.contains("xorg-server-xvfb"));
+        // Незнакомое семейство: «как в Debian» только словами, без установки.
+        let unknown = xvfb_hint(&XvfbHintFacts { family: "gentoo".into(), ..base.clone() });
+        assert!(unknown.visible && unknown.package.is_empty() && unknown.text.contains("xvfb"), "{unknown:?}");
+        // SteamOS: про sysext Rexon, не про pacman и не кнопкой.
+        let deck = xvfb_hint(&XvfbHintFacts { steamos: true, installable: false, ..base.clone() });
+        assert!(deck.visible && deck.package.is_empty() && deck.button.is_empty(), "{deck:?}");
+        assert!(!deck.text.contains("xorg-server-xvfb") && !deck.text.contains("pacman"));
+        // Не показывается: Xvfb есть, conky нет, живое окно даёт превью,
+        // человек закрыл.
+        for quiet in [
+            XvfbHintFacts { have_xvfb: true, ..base.clone() },
+            XvfbHintFacts { have_conky: false, ..base.clone() },
+            XvfbHintFacts { live_shots: true, ..base.clone() },
+            XvfbHintFacts { closed: true, ..base.clone() },
+        ] {
+            assert_eq!(xvfb_hint(&quiet), XvfbHint::default(), "{quiet:?}");
         }
     }
 

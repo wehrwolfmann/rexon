@@ -459,6 +459,131 @@ pub fn web_apply_defaults_js(defaults_json: &str) -> String {
     )
 }
 
+/// Пауза и громкость веб-обоев изнутри страницы — сценарий точки
+/// `DocumentCreation`, до первого скрипта самой обоины.
+///
+/// Зачем изнутри. Видео-режим паузит проигрыватель, Flash — свой цикл
+/// кадров; у веб-страницы «проигрывателя» нет, а заморозить страницу
+/// снаружи (`lifecycleState = Frozen`) Chromium не даёт, пока её окно
+/// видно, — а окно обоев видно всегда. Спрятать окно тоже нельзя: на паузе
+/// по батарее человек смотрит на рабочий стол, и вместо обоев увидел бы
+/// чёрный экран. Поэтому пауза делается так, как её понимает сама страница
+/// (стандарт Page Visibility):
+///
+///   * `document.hidden` / `visibilityState` отвечают «скрыто», и странице
+///     приходит `visibilitychange` — так её усыпляет браузер, когда вкладку
+///     уводят на задний план, и большинство обоев на это уже умеет;
+///   * колбэки `requestAnimationFrame` придерживаются до возобновления —
+///     это главный двигатель холстов и WebGL;
+///   * CSS-анимации и переходы встают (`animation-play-state: paused`);
+///   * `<video>`/`<audio>` ставятся на паузу (и снова пускаются — только те,
+///     что играли до паузы), `AudioContext` усыпляется.
+///
+/// Кадр при этом остаётся на экране — последний нарисованный. Громкость
+/// доходит до `<video>`/`<audio>` (звук Web Audio громкостью не правится —
+/// он только глушится, свойством окна просмотра `audioMuted`).
+///
+/// Ничего не навязывается странице, пока пауза не включена: без вызова
+/// [`web_state_js`] обёртки пропускают всё как есть.
+pub const WEB_PAUSE_JS: &str = r#"(function() {
+    if (window.__rexonWallpaperState) return;
+    var w = window, d = document;
+    var paused = false, volume = -1;
+    var raf = w.requestAnimationFrame ? w.requestAnimationFrame.bind(w) : null;
+    var caf = w.cancelAnimationFrame ? w.cancelAnimationFrame.bind(w) : null;
+    var held = {}, nextId = -1;
+    if (raf) {
+        w.requestAnimationFrame = function(cb) {
+            if (!paused) return raf(cb);
+            var id = nextId--;
+            held[id] = cb;
+            return id;
+        };
+        w.cancelAnimationFrame = function(id) {
+            if (id < 0) { delete held[id]; return; }
+            if (caf) caf(id);
+        };
+    }
+    try {
+        Object.defineProperty(d, 'hidden', { configurable: true,
+            get: function() { return paused; } });
+        Object.defineProperty(d, 'visibilityState', { configurable: true,
+            get: function() { return paused ? 'hidden' : 'visible'; } });
+    } catch (e) { /* не дали — остаются остальные способы */ }
+    var contexts = [];
+    ['AudioContext', 'webkitAudioContext'].forEach(function(name) {
+        var C = w[name];
+        if (typeof C !== 'function') return;
+        var Wrapped = function() {
+            var ctx = new (Function.prototype.bind.apply(C, [null].concat([].slice.call(arguments))))();
+            contexts.push(ctx);
+            if (paused) { try { ctx.suspend(); } catch (e) {} }
+            return ctx;
+        };
+        Wrapped.prototype = C.prototype;
+        w[name] = Wrapped;
+    });
+    var style = null;
+    function media() { return d.querySelectorAll ? d.querySelectorAll('video,audio') : []; }
+    function tune(m) {
+        if (volume >= 0) { try { m.volume = volume; } catch (e) {} }
+    }
+    d.addEventListener('play', function(ev) {
+        var m = ev.target;
+        if (!m || !('paused' in m)) return;
+        tune(m);
+        if (paused) { m.__rexonWasPlaying = true; try { m.pause(); } catch (e) {} }
+    }, true);
+    w.__rexonWallpaperState = function(p, v) {
+        if (typeof v === 'number' && v >= 0) {
+            volume = Math.min(1, v);
+            [].forEach.call(media(), tune);
+        }
+        p = !!p;
+        if (p === paused) return;
+        paused = p;
+        [].forEach.call(media(), function(m) {
+            if (p) {
+                if (!m.paused) { m.__rexonWasPlaying = true; try { m.pause(); } catch (e) {} }
+            } else if (m.__rexonWasPlaying) {
+                m.__rexonWasPlaying = false;
+                try { var r = m.play(); if (r && r.catch) r.catch(function() {}); } catch (e) {}
+            }
+        });
+        contexts.forEach(function(ctx) {
+            try { if (p) ctx.suspend(); else ctx.resume(); } catch (e) {}
+        });
+        if (p) {
+            if (!style && d.documentElement) {
+                style = d.createElement('style');
+                style.textContent = '*,*::before,*::after{animation-play-state:paused!important;transition:none!important}';
+                d.documentElement.appendChild(style);
+            }
+        } else if (style) {
+            if (style.parentNode) style.parentNode.removeChild(style);
+            style = null;
+        }
+        try { d.dispatchEvent(new Event('visibilitychange')); } catch (e) {}
+        if (!p && raf) {
+            var cbs = held; held = {};
+            Object.keys(cbs).forEach(function(id) { raf(cbs[id]); });
+        }
+    };
+})();"#;
+
+/// Вызов, который доводит решение модели звука до страницы.
+///
+/// `paused` — держать ли страницу на паузе, `volume01` — громкость в долях
+/// единицы для `<video>`/`<audio>`. Глушение — не здесь: им ведает свойство
+/// окна просмотра, оно накрывает и Web Audio. Страница без нашего сценария
+/// (не успел подмешаться) вызов просто пропускает.
+pub fn web_state_js(paused: bool, volume01: f64) -> String {
+    let v = if volume01.is_finite() { volume01.clamp(0.0, 1.0) } else { 1.0 };
+    format!(
+        "window.__rexonWallpaperState&&window.__rexonWallpaperState({paused},{v});"
+    )
+}
+
 /// Флаги Chromium для офскрин-режима.
 ///
 /// `--in-process-gpu` и НИКАКОГО `--disable-gpu`: с выключенным GPU Chromium

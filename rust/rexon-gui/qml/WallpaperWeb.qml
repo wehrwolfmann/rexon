@@ -112,6 +112,32 @@ QtObject {
     // общий файл) — тоже общие с видео-режимом.
     property WallpaperPlacement placer: WallpaperPlacement {}
 
+    // Живое состояние звука и паузы — тот же надзиратель, что у видео и
+    // Flash: настройки «Обоев», окна поверх, батарея, игра, замок и чужой
+    // сеанс. Решение целиком считает Rust (src/wallpaper_audio.rs и
+    // rexon-core::wallpaper_audio); здесь только доставка его в страницу.
+    // ⚠️ Объект ОДИН на процесс, а не на окно: иначе каждый монитор завёл бы
+    // свой поток опроса.
+    property WallpaperAudio audio: WallpaperAudio {}
+    property bool audioStarted: false
+
+    // Сердцебиение для сторожа живых обоев Rexon — то же, что у видео-обоев:
+    // попросить кадр у каждого окна и отметиться (`rexon-core::renderer_watch`).
+    property Timer heartbeat: Timer {
+        interval: root.placer.heartbeatIntervalMs()
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: {
+            for (var i = 0; i < surfaces.count; ++i) {
+                var w = surfaces.objectAt(i);
+                if (w && w.visible)
+                    w.update();
+            }
+            root.placer.heartbeat();
+        }
+    }
+
     // ── Окна обоев ────────────────────────────────────────────────────
     property Instantiator surfaces: Instantiator {
         id: surfaces
@@ -149,6 +175,22 @@ QtObject {
             property int loadStatus: 0
             property string loadError: ""
             property alias view: view
+
+            /// Довести решение надзирателя (пауза, громкость) до страницы.
+            /// Глушение — не здесь, а свойством `audioMuted` ниже: оно
+            /// накрывает и Web Audio, до которого громкость не дотягивается.
+            /// Пока на месте страницы заглушка `about:blank`, звать некого —
+            /// решение уедет, когда страница загрузится.
+            function syncPage() {
+                if (surface.viewportReady)
+                    view.runJavaScript(root.audio.webStateScript());
+            }
+
+            Connections {
+                target: root.audio
+                function onPausedChanged() { surface.syncPage(); }
+                function onVolumeChanged() { surface.syncPage(); }
+            }
 
             // ⚠️ Порядок обязателен: окно создаётся НЕВИДИМЫМ, слой ставится
             // в Component.onCompleted, и только потом visible = true.
@@ -241,6 +283,12 @@ QtObject {
                 // есть прежние обои. Совпадает с `color` окна, поэтому шва не
                 // видно.
                 backgroundColor: "black"
+                // Звучит только окно основного экрана — как у видео: окно на
+                // каждом мониторе держит свою копию страницы, и без этого
+                // обои зазвучали бы столько раз, сколько мониторов. Звук
+                // гасится и по решению надзирателя (настройка «Звук обоев»,
+                // чужой звук, пауза).
+                audioMuted: !(surface.primary && root.audio.audioOn)
 
                 // ⚠️ Заглушки WE ставятся сценарием, а не вызовом
                 // runJavaScript после загрузки, и это не придирка. Обои
@@ -287,6 +335,8 @@ QtObject {
                     if (!surface.viewportReady)
                         return;
                     surface.loadStatus = info.status;
+                    if (info.status === WebEngineView.LoadSucceededStatus)
+                        surface.syncPage();
                     if (info.status === WebEngineView.LoadFailedStatus) {
                         surface.loadError = info.errorString;
                         // Молчаливый чёрный экран человеку ничего не объясняет
@@ -400,6 +450,35 @@ QtObject {
         root.screenList = list;
         console.log("REXON-WEB-SCREENS экранов=" + list.length
                     + " имена=" + root.screenNames());
+
+        // Наблюдение поднимается один раз и только когда есть с чем
+        // сравнивать размер чужого окна.
+        if (!root.audioStarted) {
+            var size = root.audioProbeSize();
+            if (size[0] > 0 && size[1] > 0) {
+                root.audioStarted = true;
+                root.audio.start(size[0], size[1]);
+            }
+        }
+    }
+
+    /// Размер экрана, с которым надзиратель сравнивает чужие окна: САМЫЙ
+    /// МАЛЕНЬКИЙ из экранов — то же правило и та же причина, что у видео
+    /// (`WallpaperVideo.qml`, `audioProbeSize`): приглушиться зря — мелочь,
+    /// играть поверх кино — беда.
+    function audioProbeSize() {
+        if (root.placement === "offscreen")
+            return [root.renderWidth, root.renderHeight];
+        var w = -1;
+        var h = -1;
+        var all = Qt.application.screens;
+        for (var i = 0; i < all.length; ++i) {
+            if (w < 0 || all[i].width < w)
+                w = all[i].width;
+            if (h < 0 || all[i].height < h)
+                h = all[i].height;
+        }
+        return [Math.max(w, 0), Math.max(h, 0)];
     }
 
     /// Имена экранов через запятую — для журнала.
@@ -431,6 +510,12 @@ QtObject {
 
     Component.onCompleted: {
         root.rebuildScreens();
+        // Офскрин-режим экранов не знает, и ждать их появления ему незачем.
+        if (!root.audioStarted) {
+            var size = root.audioProbeSize();
+            root.audioStarted = true;
+            root.audio.start(size[0], size[1]);
+        }
         if (root.selftestMs > 0)
             selftest.start();
     }
@@ -491,6 +576,10 @@ QtObject {
                                 + " loadStatus=" + root.loadStatus
                                 + " loadProgress=" + top.view.loadProgress
                                 + " loadError=" + root.loadError
+                                + " audioOn=" + root.audio.audioOn
+                                + " audioPaused=" + root.audio.paused
+                                + " audioReason=" + root.audio.reason
+                                + " audioMuted=" + top.view.audioMuted
                                 + " probe=" + probe);
                     top.visible = false;
                     // Код 5 — «страница не загрузилась». Приговор по итогу

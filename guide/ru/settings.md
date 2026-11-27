@@ -1,4 +1,4 @@
-[English](../en/settings.md) | Русский | [Deutsch](../de/settings.md) | [简体中文](../zh-CN/settings.md) | [Français](../fr/settings.md)
+[English](../en/settings.md) | Русский | [Deutsch](../de/settings.md) | [简体中文](../zh-CN/settings.md) | [Français](../fr/settings.md) | [Español](../es/settings.md)
 
 # Настройки
 

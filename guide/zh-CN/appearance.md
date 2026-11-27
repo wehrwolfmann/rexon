@@ -1,4 +1,4 @@
-[English](../en/appearance.md) | [Русский](../ru/appearance.md) | [Deutsch](../de/appearance.md) | 简体中文 | [Français](../fr/appearance.md)
+[English](../en/appearance.md) | [Русский](../ru/appearance.md) | [Deutsch](../de/appearance.md) | 简体中文 | [Français](../fr/appearance.md) | [Español](../es/appearance.md)
 
 # 外观
 
@@ -193,7 +193,11 @@ Cinnamon、MATE 和 XFCE 桌面上，旁边还有它们自己的版块：**GNOME
 ### 壁纸和声音
 
 - **高清壁纸**：来自商店的桌面图片。版块顶部的 **⚙️ 设置** 按钮是 **🌫️ 壁纸模糊**：
-  模糊图片壁纸，让上面的图标和窗口更容易看清；原图会保留。
+  模糊图片壁纸，让上面的图标和窗口更容易看清；原图会保留。如果电脑上（通过 Wine）装有
+  Razer Axon，**商店：** 一栏里还有 **Razer Axon**：在其中下载的壁纸，可按标题或标签搜索、
+  排序和筛选，与 Axon 本身一样；右键单击图块可 **应用**（所有屏幕）、**打开文件所在位置** 和
+  **详细信息**。此时 **⚙️ 设置** 里还有 **Razer Axon** 一栏：**提前准备壁纸** 和
+  **恢复原始描述**。
 - **壁纸插件**（仅 KDE）：Plasma 的动态壁纸。
 - **声音**：声音主题。主题的声音可以在安装前试听（**🔊 安装前试听**）：主题会下载到临时
   文件夹，不会安装任何内容。如果系统声音已关闭，Rexon 会提议 **开启** 它们。版块顶部的

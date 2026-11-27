@@ -1,4 +1,4 @@
-[English](../en/appearance.md) | [Русский](../ru/appearance.md) | [Deutsch](../de/appearance.md) | [简体中文](../zh-CN/appearance.md) | Français
+[English](../en/appearance.md) | [Русский](../ru/appearance.md) | [Deutsch](../de/appearance.md) | [简体中文](../zh-CN/appearance.md) | Français | [Español](../es/appearance.md)
 
 # Apparence
 
@@ -286,7 +286,14 @@ l'ordinateur :
   **🌫️ Flou du fond d'écran** : il floute l'image de fond pour que les
   icônes et les fenêtres posées dessus se lisent mieux (curseur
   **Intensité**, **Flouter le fond d'écran**, **Retirer le flou**) ;
-  l'original est conservé.
+  l'original est conservé. Si Razer Axon est sur l'ordinateur (sous Wine),
+  la rangée **Boutique :** propose aussi **Razer Axon** — les fonds d'écran
+  téléchargés dans Axon : recherche par titres ou par tags, tri et filtres
+  comme dans Axon ; clic droit sur une vignette — **Appliquer** (sur tous
+  les écrans), **Ouvrir l’emplacement du fichier** et **Détails**. Les
+  **⚙️ Paramètres** de la section ont alors un bloc **Razer Axon** :
+  **Préparer les fonds d'écran à l'avance** et **Rétablir les descriptions
+  d'origine**.
 - **Fonds d'écran (greffons)** (KDE uniquement) — fonds d'écran animés de
   Plasma.
 - **Sons** — thèmes sonores. Les sons d'un thème peuvent être écoutés avant

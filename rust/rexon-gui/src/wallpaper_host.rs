@@ -225,6 +225,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "mmapNonBlackPermille"]
         unsafe fn mmap_nonblack_permille(self: &WallpaperPlacement, window: *mut QObject) -> f64;
+
+        /// Метка сердцебиения для сторожа живых обоев
+        /// (`rexon_core::renderer_watch`). Звать из таймера QML ПОСЛЕ
+        /// просьбы о кадре у окон: зависни отрисовка — встанет и поток
+        /// интерфейса, и метка перестанет обновляться.
+        #[qinvokable]
+        fn heartbeat(self: &WallpaperPlacement);
+
+        /// Как часто звать [`heartbeat`], миллисекунды — число ядра.
+        #[qinvokable]
+        #[cxx_name = "heartbeatIntervalMs"]
+        fn heartbeat_interval_ms(self: &WallpaperPlacement) -> i32;
     }
 }
 
@@ -334,6 +346,14 @@ impl qobject::WallpaperPlacement {
             return -1.0;
         }
         crate::qvalue::i64_to_qml(unsafe { qobject::rexon_wp_mmap_frames(window) })
+    }
+
+    fn heartbeat(&self) {
+        rexon_core::renderer_watch::write_heartbeat_live();
+    }
+
+    fn heartbeat_interval_ms(&self) -> i32 {
+        rexon_core::renderer_watch::HEARTBEAT_INTERVAL_MS as i32
     }
 
     unsafe fn mmap_center_rgb(&self, window: *mut qobject::QObject) -> f64 {

@@ -114,7 +114,7 @@
       "{\"op\":\"WriteFile\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon/.rexon-owner\",\"content\":\"my-theme\\n\"}"
     ],
     "uninstall": [
-      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
+      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
@@ -126,12 +126,12 @@
     ],
     "enable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     },
     "disable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     }
   },
@@ -338,19 +338,13 @@
   "GNOME / theme-conky": {
     "install": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
     "uninstall": [
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}"
+      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
@@ -901,7 +895,7 @@
       "{\"op\":\"WriteFile\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon/.rexon-owner\",\"content\":\"my-theme\\n\"}"
     ],
     "uninstall": [
-      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
+      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
@@ -913,12 +907,12 @@
     ],
     "enable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     },
     "disable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     }
   },
@@ -1125,19 +1119,13 @@
   "KDE / theme-conky": {
     "install": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
     "uninstall": [
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}"
+      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
@@ -1682,7 +1670,7 @@
       "{\"op\":\"WriteFile\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon/.rexon-owner\",\"content\":\"my-theme\\n\"}"
     ],
     "uninstall": [
-      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
+      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
@@ -1694,12 +1682,12 @@
     ],
     "enable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     },
     "disable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     }
   },
@@ -1906,19 +1894,13 @@
   "LXQt / theme-conky": {
     "install": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
     "uninstall": [
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}"
+      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
@@ -2463,7 +2445,7 @@
       "{\"op\":\"WriteFile\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon/.rexon-owner\",\"content\":\"my-theme\\n\"}"
     ],
     "uninstall": [
-      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
+      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
@@ -2475,12 +2457,12 @@
     ],
     "enable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     },
     "disable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     }
   },
@@ -2687,19 +2669,13 @@
   "MATE / theme-conky": {
     "install": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
     "uninstall": [
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}"
+      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
@@ -3253,7 +3229,7 @@
       "{\"op\":\"WriteFile\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon/.rexon-owner\",\"content\":\"my-theme\\n\"}"
     ],
     "uninstall": [
-      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
+      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
@@ -3265,12 +3241,12 @@
     ],
     "enable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     },
     "disable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     }
   },
@@ -3477,19 +3453,13 @@
   "X-Cinnamon / theme-conky": {
     "install": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
     "uninstall": [
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}"
+      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
@@ -4040,7 +4010,7 @@
       "{\"op\":\"WriteFile\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon/.rexon-owner\",\"content\":\"my-theme\\n\"}"
     ],
     "uninstall": [
-      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
+      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
@@ -4052,12 +4022,12 @@
     ],
     "enable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     },
     "disable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     }
   },
@@ -4264,19 +4234,13 @@
   "XFCE / theme-conky": {
     "install": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
     "uninstall": [
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}"
+      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
@@ -4827,7 +4791,7 @@
       "{\"op\":\"WriteFile\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon/.rexon-owner\",\"content\":\"my-theme\\n\"}"
     ],
     "uninstall": [
-      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
+      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
@@ -4839,12 +4803,12 @@
     ],
     "enable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     },
     "disable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     }
   },
@@ -5051,19 +5015,13 @@
   "none / theme-conky": {
     "install": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
     "uninstall": [
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}"
+      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
@@ -5608,7 +5566,7 @@
       "{\"op\":\"WriteFile\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon/.rexon-owner\",\"content\":\"my-theme\\n\"}"
     ],
     "uninstall": [
-      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
+      "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.local/share/gnome-shell/extensions/my@rexon\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
@@ -5620,12 +5578,12 @@
     ],
     "enable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"meta='/home/t/.local/share/gnome-shell/extensions/my@rexon/metadata.json'\\nif command -v gnome-shell >/dev/null 2>&1 && [ -f \\\"$meta\\\" ]; then\\n  ver=$(gnome-shell --version 2>/dev/null | sed 's/[^0-9.]//g' | cut -d. -f1)\\n  if [ -n \\\"$ver\\\" ] && ! grep -q \\\"\\\\\\\"$ver\\\" \\\"$meta\\\"; then\\n    echo \\\"ВНИМАНИЕ: расширение не заявляет совместимость с GNOME $ver — оно может не запуститься\\\" >&2\\n  fi\\nfi\\nif command -v glib-compile-schemas >/dev/null 2>&1 && [ -d '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' ]; then\\n  glib-compile-schemas '/home/t/.local/share/gnome-shell/extensions/my@rexon/schemas' >/dev/null 2>&1 || true\\nfi\\nif command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions enable 'my@rexon' && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF 'my@rexon'; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     },
     "disable": {
       "my@rexon": [
-        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null || true\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nitems=$(printf '%s\\\\n' \\\"$items\\\" | grep -vF 'my@rexon' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
+        "{\"op\":\"Run\",\"argv\":[\"bash\",\"-c\",\"if command -v gnome-extensions >/dev/null 2>&1; then\\n  gnome-extensions disable 'my@rexon' 2>/dev/null && exit 0\\nfi\\ncur=$(gsettings get org.gnome.shell enabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qxF ''\\\\''my@rexon'\\\\'''; then\\n  items=$(printf '%s\\\\n' \\\"$items\\\" | grep -vxF ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\n  new=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\n  gsettings set org.gnome.shell enabled-extensions \\\"[$new]\\\"\\nfi\\ncur=$(gsettings get org.gnome.shell disabled-extensions 2>/dev/null || echo '@as []')\\nitems=$(printf '%s' \\\"$cur\\\" | sed 's/^@as //; s/^\\\\[//; s/\\\\]$//' | tr ',' '\\\\n' | sed 's/^ *//; s/ *$//' | grep -v '^$')\\nif printf '%s\\\\n' \\\"$items\\\" | grep -qF ''\\\\''my@rexon'\\\\'''; then exit 0; fi\\nitems=$(printf '%s\\\\n%s' \\\"$items\\\" ''\\\\''my@rexon'\\\\''' | grep -v '^$')\\nnew=$(printf '%s' \\\"$items\\\" | paste -sd, -)\\ngsettings set org.gnome.shell disabled-extensions \\\"[$new]\\\"\\n\"],\"timeout_secs\":30}"
       ]
     }
   },
@@ -5832,19 +5790,13 @@
   "sway / theme-conky": {
     "install": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
     "uninstall": [
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}"
+      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}"
     ],
     "reinstall": [
       "{\"op\":\"MakeDirs\",\"path\":\"/home/t/.config/conky\"}",
-      "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/MyTheme\",\"safe\":true,\"ignore_errors\":true}",
-      "{\"op\":\"CopyTree\",\"src\":\"/ext/data/MyTheme\",\"dest\":\"/home/t/.config/conky/MyTheme\"}",
-      "{\"op\":\"WriteFile\",\"path\":\"/home/t/.config/conky/MyTheme/.rexon-owner\",\"content\":\"my-theme\\n\"}",
       "{\"op\":\"RemoveTree\",\"path\":\"/home/t/.config/conky/my-theme\",\"safe\":true,\"ignore_errors\":true}",
       "{\"op\":\"CopyTree\",\"src\":\"/ext/data\",\"dest\":\"/home/t/.config/conky/my-theme\"}"
     ],
