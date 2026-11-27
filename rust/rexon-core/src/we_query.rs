@@ -586,6 +586,10 @@ pub struct SettingSchema {
     /// Переводимый заголовок группы (`SettingSchema.group_label`,
     /// поле 15); запасной текст — `group`.
     pub group_label: PluginText,
+    /// waywallen 0.6.0: переводимые подписи вариантов выбора (поле 16), по
+    /// одной на `choices`. Подписи нет — `SettingField.qml` показывает само
+    /// значение.
+    pub choice_labels: Vec<PluginText>,
 }
 
 impl From<pb::SettingSchema> for SettingSchema {
@@ -604,6 +608,7 @@ impl From<pb::SettingSchema> for SettingSchema {
             max: s.max,
             step: s.step,
             choices: s.choices,
+            choice_labels: s.choice_labels.iter().map(|m| plugin_text(Some(m), "")).collect(),
             group: s.group,
             order: s.order,
         }

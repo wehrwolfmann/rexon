@@ -2620,6 +2620,9 @@ pub struct LibraryInfo {
     pub name: String,
     pub path: String,
     pub plugin_name: String,
+    /// waywallen 0.6.0: значения настроек библиотеки
+    /// (`LibraryInstance.settings`; правит их `EditLibraryPage`).
+    pub settings: BTreeMap<String, String>,
 }
 
 impl From<&pb::LibraryInstance> for LibraryInfo {
@@ -2629,6 +2632,7 @@ impl From<&pb::LibraryInstance> for LibraryInfo {
             name: l.name.clone(),
             path: l.path.clone(),
             plugin_name: l.plugin_name.clone(),
+            settings: l.settings.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         }
     }
 }
@@ -2688,6 +2692,11 @@ impl qobject::LibraryManager {
                 QString::from("pluginName"),
                 QVariant::from(&QString::from(&lib.plugin_name)),
             );
+            let mut settings = QMap::<QMapPair_QString_QVariant>::default();
+            for (key, value) in &lib.settings {
+                settings.insert(QString::from(key), QVariant::from(&QString::from(value)));
+            }
+            map.insert(QString::from("settings"), QVariant::from(&settings));
             out.append(QVariant::from(&map));
         }
         out
@@ -2812,6 +2821,7 @@ mod tests {
             path: path.to_string(),
             plugin_name: "we".to_string(),
             name: name.to_string(),
+            settings: [("recursive".to_string(), "true".to_string())].into(),
         }
     }
 
@@ -2849,12 +2859,14 @@ mod tests {
                     name: String::new(),
                     path: "/p".into(),
                     plugin_name: "we".into(),
+                    settings: [("recursive".to_string(), "true".to_string())].into(),
                 },
                 &LibraryInfo {
                     id: 3,
                     name: "Мастерская".into(),
                     path: "/w".into(),
                     plugin_name: "we".into(),
+                    settings: [("recursive".to_string(), "true".to_string())].into(),
                 },
             ],
             "снимок заменяет список целиком, порядок по номеру"

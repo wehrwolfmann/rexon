@@ -51,13 +51,42 @@ Item {
     /// анимация, шрифты, кнопки заголовка и прочее, что в KDE 6.8 стоит во
     /// «Внешнем виде и стиле», показываются там, а не здесь. Значение —
     /// ключ раздела боковой панели «Оформления»
-    /// (`categories::SETTINGS_PANELS`). Пусто — обычная вкладка: на месте
-    /// переехавших разделов — ссылки «Оформление → …».
+    /// (`categories::SETTINGS_PANELS`) либо разделы вида «⚙️ Настройки»
+    /// раздела каталога через запятую (`categories::SECTION_SETTINGS`:
+    /// в «GTK-темах» их бывает два). Пусто — обычная вкладка.
     property string panel: ""
+    /// Окружение, выбранное во вкладке «Оформление» (режим `panel`); пусто —
+    /// запущенное сейчас. Его получают разделы, чьё пояснение зависит от стола.
+    property string lookDe: ""
 
     /// Переехавшие разделы: содержимое то же, что было во вкладке, их
     /// показывает режим `panel`.
     readonly property bool fullPage: root.panel === ""
+    /// Разделы режима `panel` списком.
+    readonly property var panels: root.panel === "" ? [] : root.panel.split(",")
+    /// Показан ли раздел `key` в режиме `panel`.
+    function showsPanel(key) {
+        return root.panels.indexOf(key) >= 0;
+    }
+    /// Рамки самой вкладки, переехавшие в «Оформление» видом «⚙️ Настройки»
+    /// раздела каталога: ключ режима `panel` → рамка (`page.sections`). Во
+    /// вкладке их нет, в режиме `panel` — только они (шрифты — «Шрифты»,
+    /// размытие обоев — «Обои HD», фоновые звуки и звуки событий — «Звуки»,
+    /// 08.11.2026).
+    readonly property var panelGroups: ({
+        "fontsettings": "fontsGroup",
+        "wallpaperblur": "blurGroup",
+        "ambientsounds": "ambientGroup",
+        "eventsounds": "soundThemeGroup"
+    })
+    /// Рамка `id` переехала в «Оформление».
+    function movedGroup(id) {
+        return Object.keys(root.panelGroups).some(k => root.panelGroups[k] === id);
+    }
+    /// Рамка `id` показана в этом режиме `panel`.
+    function shownGroup(id) {
+        return Object.keys(root.panelGroups).some(k => root.panelGroups[k] === id && root.showsPanel(k));
+    }
 
     SettingsActions {
         id: ownActions
@@ -121,9 +150,10 @@ Item {
     function reload() {
         if (!root.actions)
             return;
-        // Снимок машины нужен только разделам самой вкладки и шрифтам; у
-        // прочих переехавших разделов — свои объекты действий.
-        if (!root.fullPage && root.panel !== "fontsettings")
+        // Снимок машины нужен только рамкам самой вкладки (и переехавшим
+        // рамкам — шрифтам, размытию); у прочих переехавших разделов — свои
+        // объекты действий.
+        if (!root.fullPage && !Object.keys(root.panelGroups).some(k => root.showsPanel(k)))
             return;
         root.st = JSON.parse(root.actions.state());
     }
@@ -173,6 +203,12 @@ Item {
     /// уводит фокус за нижний край, и вкладка выглядит зависшей.
     function ensureVisible(item) {
         if (!item || !flick.contentItem)
+            return;
+        // Окно снова стало активным (закрыт диалог снимка экрана по Print,
+        // вернулись из другой программы) — Qt возвращает фокус тому же
+        // элементу. Это не переход по Tab: крутить страницу к нему нельзя,
+        // иначе прокрученная вниз вкладка прыгает наверх.
+        if (item.focusReason === Qt.ActiveWindowFocusReason)
             return;
         const pos = item.mapToItem(flick.contentItem, 0, 0);
         const top = pos.y;
@@ -293,12 +329,13 @@ Item {
             // ── Разделы ───────────────────────────────────────────────────
             Repeater {
                 id: sectionRepeater
-                // Шрифты переехали в «Оформление»: во вкладке их рамки нет,
-                // в режиме `panel` = «fontsettings» есть только она.
+                // Шрифты, размытие обоев и звуки переехали в «Оформление»
+                // (вид «⚙️ Настройки» разделов «Шрифты», «Обои HD» и
+                // «Звуки»): во вкладке
+                // их рамок нет, в режиме `panel` есть только они
+                // (`panelGroups`).
                 model: (page.sections || []).filter(
-                           s => root.fullPage ? s.id !== "fontsGroup"
-                                              : (root.panel === "fontsettings"
-                                                 && s.id === "fontsGroup"))
+                           s => root.fullPage ? !root.movedGroup(s.id) : root.shownGroup(s.id))
 
                 delegate: Rectangle {
                     id: sectionFrame
@@ -357,67 +394,13 @@ Item {
                 }
             }
 
-            // ── Переехавшее в «Оформление» (01.11.2026) ───────────────────
-            // ⏳ Ссылки — на одну версию: человек, привыкший искать здесь
-            // анимацию и шрифты, видит, куда они ушли, и попадает туда одним
-            // нажатием. Список и подписи — ядро
-            // (`categories::moved_settings_links`).
-            Rectangle {
-                id: movedFrame
-                objectName: "movedToAppearance"
-                Layout.fillWidth: true
-                visible: root.fullPage && page.movedPanels.length > 0
-                color: root.sty.group.background
-                border.color: root.sty.group.border
-                border.width: 1
-                radius: root.sty.group.radius
-                implicitHeight: movedColumn.implicitHeight
-                                + 2 * (root.sty.group.marginV + border.width)
-
-                ColumnLayout {
-                    id: movedColumn
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.margins: root.sty.group.marginH + movedFrame.border.width
-                    y: root.sty.group.marginV + movedFrame.border.width
-                    height: implicitHeight
-                    spacing: root.sty.group.spacing
-
-                    RexonText {
-                        Layout.fillWidth: true
-                        text: page.movedHeading
-                        color: root.colTextSecondary
-                        font.weight: root.pal.text_secondary_weight
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Flow {
-                        Layout.fillWidth: true
-                        spacing: root.sty.spacing.fontRow
-
-                        Repeater {
-                            model: page.movedPanels
-
-                            delegate: RexonButton {
-                                id: movedLink
-                                required property var modelData
-                                pal: root.pal
-                                text: movedLink.modelData.text
-                                onClicked: root.openAppearance(movedLink.modelData.key)
-                                onActiveFocusChanged: if (activeFocus) root.ensureVisible(movedLink)
-                            }
-                        }
-                    }
-                }
-            }
-
             // ── Разделы, которые показывает «Оформление» (режим `panel`) ──
             // Те же компоненты, что стояли здесь до переезда; строятся только
             // в своём разделе, чтобы вкладка не опрашивала машину зря.
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
-                active: root.panel === "animations"
+                active: root.showsPanel("animations")
                 visible: active
                 sourceComponent: Component {
                     AnimationsSection {
@@ -432,12 +415,13 @@ Item {
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
-                active: root.panel === "screeneffects"
+                active: root.showsPanel("screeneffects")
                 visible: active
                 sourceComponent: Component {
                     ScreenEffectsSection {
                         pal: root.pal
                         sty: root.sty
+                        de: root.lookDe
                         onMessage: text => root.say(text)
                     }
                 }
@@ -447,7 +431,7 @@ Item {
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
-                active: root.panel === "desktopeffects"
+                active: root.showsPanel("desktopeffects")
                 visible: active
                 sourceComponent: Component {
                     DesktopEffectsSection {
@@ -461,7 +445,7 @@ Item {
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
-                active: root.panel === "windowbuttons"
+                active: root.showsPanel("windowbuttons")
                 visible: active
                 sourceComponent: Component {
                     WindowButtonsSection {
@@ -477,7 +461,7 @@ Item {
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
-                active: root.panel === "launchfeedback"
+                active: root.showsPanel("launchfeedback")
                 visible: active
                 sourceComponent: Component {
                     LaunchFeedbackSection {
@@ -492,7 +476,7 @@ Item {
             Loader {
                 Layout.fillWidth: true
                 Layout.preferredHeight: item ? item.implicitHeight : 0
-                active: root.panel === "appwidgets"
+                active: root.showsPanel("appwidgets")
                 visible: active
                 sourceComponent: Component {
                     AppWidgetsSection {
@@ -512,14 +496,6 @@ Item {
                 sty: root.sty
             }
         }
-    }
-
-    /// Открыть раздел `key` во вкладке «Оформление» — через ту же дверь
-    /// окна, что у `--section=` и второго запуска (`openSection`).
-    function openAppearance(key) {
-        const w = root.Window.window;
-        if (w && w.openSection !== undefined)
-            w.openSection("appearance", key);
     }
 
     /// Содержимое раздела по его имени из ядра.
@@ -542,7 +518,6 @@ Item {
         case "blurGroup": return cBlur;
         case "ambientGroup": return cAmbient;
         case "soundThemeGroup": return cSound;
-        case "mateIconsGroup": return cMate;
         case "fontsGroup": return cFonts;
         case "protGroup": return cProtection;
         case "plasmaGroup": return cPlasma;
@@ -2068,34 +2043,6 @@ Item {
         }
     }
 
-    // ══ 🌽 MATE: иконки рабочего стола ════════════════════════════════════
-
-    Component {
-        id: cMate
-
-        RowLayout {
-            width: parent ? parent.width : 0
-            height: implicitHeight
-            spacing: root.sty.group.spacing
-
-            Repeater {
-                model: page.mateButtons
-
-                delegate: RexonButton {
-                    id: mateButton
-                    required property var modelData
-                    pal: root.pal
-                    text: mateButton.modelData.label
-                    onClicked: root.did(root.actions.mateAction(
-                                            mateButton.modelData.action))
-                    onActiveFocusChanged: if (activeFocus) root.ensureVisible(mateButton)
-                }
-            }
-
-            Item { Layout.fillWidth: true }
-        }
-    }
-
     // ══ 🔤 Системные шрифты ═══════════════════════════════════════════════
 
     Component {
@@ -2238,6 +2185,45 @@ Item {
                 textFormat: Text.StyledText
                 wrapMode: Text.WordWrap
                 color: root.colText
+            }
+
+            // Готовые наборы, как в MATE: сглаживание, субпиксели и хинтинг
+            // одним нажатием. Выбранный — тот, которому отвечает нынешняя
+            // отрисовка; своя настройка не подсвечивает ни один.
+            Flow {
+                Layout.fillWidth: true
+                spacing: root.sty.spacing.fontRow
+
+                RexonText {
+                    height: presetRepeater.count > 0 ? implicitHeight : 0
+                    text: root.txt["font.render_presets"]
+                    color: root.colText
+                }
+                Repeater {
+                    id: presetRepeater
+                    model: fontBody.render.presets || []
+
+                    delegate: RexonButton {
+                        id: presetButton
+                        required property var modelData
+                        pal: root.pal
+                        // Не `checkable`: нажатие не должно рвать привязку,
+                        // подсветку задаёт снимок после записи.
+                        checked: fontBody.render.preset === presetButton.modelData.id
+                        checkedTone: root.sty.primary
+                        text: presetButton.modelData.label
+                        ToolTip.visible: hovered
+                        ToolTip.text: presetButton.modelData.tip
+                        onClicked: fontBody.applyRender(
+                                       presetButton.modelData.antialias,
+                                       aaExclude.checked,
+                                       parseInt(aaFrom.text) || fontBody.render.from,
+                                       parseInt(aaTo.text) || fontBody.render.to,
+                                       presetButton.modelData.subpixel,
+                                       presetButton.modelData.hinting)
+                        onActiveFocusChanged: if (activeFocus) root.ensureVisible(presetButton)
+                    }
+                }
             }
 
             RexonCheckBox {
@@ -2825,7 +2811,11 @@ Item {
 
     Timer {
         interval: page.ambientRefreshMs
-        running: root.visible && root.actions !== null && root.fullPage
+        // Фоновые звуки живут в «Оформлении → Звуки → ⚙️ Настройки»
+        // (08.11.2026): опрос — пока их рамка на экране. Играют они и без
+        // неё: процессы держит исполнитель ядра на весь процесс
+        // (`wallpaper_exec::live_slot`), а не эта страница.
+        running: root.visible && root.actions !== null && root.showsPanel("ambientsounds")
         repeat: true
         onTriggered: root.reloadAmbient()
     }

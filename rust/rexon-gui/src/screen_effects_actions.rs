@@ -20,14 +20,16 @@ pub mod qobject {
     }
 
     extern "RustQt" {
-        /// Снимок раздела (JSON `screen_effects::ScreenEffectsState`).
+        /// Снимок раздела (JSON `screen_effects::ScreenEffectsState`) для
+        /// окружения `de` (выбор «Текущее окружение»; пусто — запущенное).
         #[qinvokable]
-        fn state(self: &ScreenEffectsActions) -> QString;
+        fn state(self: &ScreenEffectsActions, de: &QString) -> QString;
 
-        /// «Применить»: пресет по имени (пусто — выключить), сила 0…1,
-        /// скорость 0…`max_speed`. Ответ — фраза для плашки.
+        /// «Применить» для окружения `de`: пресет по имени (пусто —
+        /// выключить), сила 0…1, скорость 0…`max_speed`. Ответ — фраза для
+        /// плашки.
         #[qinvokable]
-        fn apply(self: &ScreenEffectsActions, preset: &QString, strength: f64, speed: f64) -> QString;
+        fn apply(self: &ScreenEffectsActions, de: &QString, preset: &QString, strength: f64, speed: f64) -> QString;
     }
 }
 
@@ -38,15 +40,15 @@ use rexon_core::screen_effects as se;
 pub struct ScreenEffectsActionsRust;
 
 impl qobject::ScreenEffectsActions {
-    fn state(&self) -> cxx_qt_lib::QString {
-        let state = se::read_state(&SystemIo, &LookCtx::from_env());
+    fn state(&self, de: &cxx_qt_lib::QString) -> cxx_qt_lib::QString {
+        let state = se::read_state(&SystemIo, &se::ctx_for(LookCtx::from_env(), &de.to_string()));
         cxx_qt_lib::QString::from(&serde_json::to_string(&state).unwrap_or_default())
     }
 
-    fn apply(&self, preset: &cxx_qt_lib::QString, strength: f64, speed: f64) -> cxx_qt_lib::QString {
+    fn apply(&self, de: &cxx_qt_lib::QString, preset: &cxx_qt_lib::QString, strength: f64, speed: f64) -> cxx_qt_lib::QString {
         cxx_qt_lib::QString::from(&se::apply_from_ui(
             &SystemIo,
-            &LookCtx::from_env(),
+            &se::ctx_for(LookCtx::from_env(), &de.to_string()),
             &preset.to_string(),
             strength,
             speed,

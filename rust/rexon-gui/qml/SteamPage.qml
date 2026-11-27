@@ -351,9 +351,32 @@ Item {
         page.start("");
         root.focusFirstControl();
         root.syncPreview();
+        root.takeSubpage();
     }
 
     Component.onDestruction: page.shutdown()
+
+    // ── Подвкладка, открытая снаружи ──────────────────────────────────────
+    //
+    // `--section=steam/screensaver` (и дверь окна `openSection("steam",
+    // ключ)`) приносит ключ подвкладки подразделом окна (`startSubpage`).
+    // Чужой ключ не трогаем — его заберёт тот раздел, чей он.
+    function takeSubpage() {
+        const w = root.Window.window;
+        if (!w || w.startSubpage === undefined || w.startSubpage === "")
+            return;
+        const key = String(w.startSubpage);
+        if (!(page.segments || []).some(s => s.key === key))
+            return;
+        w.startSubpage = "";
+        page.setSection(key);
+    }
+
+    Connections {
+        target: root.Window.window
+        ignoreUnknownSignals: true
+        function onStartSubpageChanged() { root.takeSubpage(); }
+    }
 
     // Фокус на первом кадре берёт ПЕРВЫЙ УПРАВЛЯЕМЫЙ ЭЛЕМЕНТ, а не корень
     // страницы: `forceActiveFocus()` на корне делает activeFocusItem
@@ -544,7 +567,8 @@ Item {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: page.section === "bg" ? 1 : page.section === "showcase" ? 2 : 0
+                currentIndex: page.section === "bg" ? 1 : page.section === "showcase" ? 2
+                              : page.section === "screensaver" ? 3 : 0
 
                 // ══ Секция «🎬 Видеозаставка» ═════════════════════════════════
                 ScrollView {
@@ -1441,6 +1465,24 @@ Item {
                         backgrounds: page.bgChoices
                         onMessage: text => statusToast.show(text)
                         onZoomRequested: (items, index) => viewer.show(items, index)
+                    }
+                }
+
+                // ══ Секция «🌙 Заставка» ══════════════════════════════════════
+                // Заставка Rexon для экрана простоя Steam Big Picture —
+                // отдельный компонент со своим объектом действий
+                // (`SteamScreensaverSection.qml`).
+                ScrollView {
+                    id: screensaverScroll
+                    clip: true
+                    contentWidth: availableWidth
+
+                    SteamScreensaverSection {
+                        width: screensaverScroll.availableWidth
+                        pal: root.pal
+                        sty: root.st
+                        warnColor: page.goldColor
+                        onMessage: text => statusToast.show(text)
                     }
                 }
             }

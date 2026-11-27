@@ -1798,9 +1798,6 @@ const TEXT_FIXES: &[(&str, &str)] = &[
     // «(не задан)» читалось как «шрифта нет»; на деле действует шрифт стола
     // по умолчанию — так и написано (приёмка 10.10.2026).
     ("font.unset", "<i>(не задан)</i>"),
-    ("mate.icons_on", "✅ Иконки ВКЛ"),
-    ("mate.icons_off", "⏹️ Иконки ВЫКЛ"),
-    ("mate.no_api", "⚠️ MATE-API недоступно"),
     (
         "plasma.backup_tip",
         "Технически: копируются plasma-org.kde.plasma.desktop-appletsrc, \
@@ -1827,9 +1824,6 @@ const TEXT_ADDITIONS: &[&str] = &[
     "amb.start_unplayable",
     // Смена громкости звука, который уже не играет: оригинал об этом молчал.
     "amb.not_playing",
-    // Отказы кнопок MATE: оригинал рапортовал успех, не глядя на итог.
-    "mate.icons_failed",
-    "mate.caja_failed",
     // Подтверждение возврата копии панели переехало из окна Qt внутрь
     // страницы (QML-вкладка): подписи ответов теперь свои.
     "dialog.yes",
@@ -1878,6 +1872,8 @@ const TEXT_ADDITIONS: &[&str] = &[
     // «Изменить все шрифты» и принудительное DPI (04.10).
     "font.all_mode",
     "font.dpi",
+    // Готовые наборы отрисовки, как в MATE (14.11).
+    "font.render_presets",
     // Докачка значков и курсора к теме (17.10): сторожа оформления сеанса
     // (`theme_watch`) у оригинала не было.
     "tray.theme_deps",
@@ -1919,6 +1915,8 @@ const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
     // «Изменить все шрифты» и принудительное DPI (04.10).
     "font.all_mode",
     "font.dpi",
+    // Готовые наборы — русский сверяется в `font_render_presets_russian`.
+    "font.render_presets",
     "tray.theme_deps",
     "tray.theme_deps_hint",
     "tray.theme_deps_on",
@@ -1929,6 +1927,39 @@ const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
 
 /// Разделы, появившиеся после снимка русских текстов.
 const AFTER_RU_SNAPSHOT_SECTIONS: &[&str] = &["langGroup"];
+
+/// Разделы оригинала, СНЯТЫЕ с вкладки осознанно, и их подписи. Эталоны
+/// заморожены и их помнят; здесь сказано, что пропажа — решение, а не порча.
+///
+/// `mateIconsGroup` (08.11.2026, решение Wehrwolfmann): разделу, нужному
+/// одному MATE, в общих настройках не место. Значки Caja под живыми обоями
+/// Rexon устраивает сам (`wallpaper_backend::prepare_desktop_icons`).
+const SECTION_REMOVALS: &[&str] = &["mateIconsGroup"];
+const TEXT_REMOVALS: &[&str] = &[
+    "mate.icons_on",
+    "mate.icons_off",
+    "mate.restart_caja",
+    "mate.no_api",
+    "mate.icons_state",
+    "mate.caja_restarted",
+    "mate.icons_failed",
+    "mate.caja_failed",
+];
+
+/// Снятые раздел и подписи действительно сняты: ни в таблицах ядра, ни в
+/// разметке страницы их нет.
+#[test]
+fn removed_sections_and_texts_are_gone() {
+    const SETTINGS_QML: &str = include_str!("../../rexon-gui/qml/SettingsPage.qml");
+    for id in SECTION_REMOVALS {
+        assert!(!qs::SECTIONS.iter().any(|(s, _, _)| s == id), "{id} снова в таблице разделов");
+        assert!(!qs::section_order().contains(id), "{id} снова в порядке показа");
+        assert!(!SETTINGS_QML.contains(&format!("\"{id}\"")), "{id} снова в разметке страницы");
+    }
+    for key in TEXT_REMOVALS {
+        assert!(qs::text_template(key).is_none(), "подпись {key} снова в каталоге");
+    }
+}
 
 /// Разделы, чьё описание переписано ПОСЛЕ снимка русских текстов, потому что
 /// раздел стал больше: `(раздел, новое русское описание)`. Снимок обязан
@@ -2041,7 +2072,7 @@ fn tab_sections_match_python() {
     let g = golden();
     let want = g["tab_sections"].as_object().unwrap();
     assert_eq!(
-        want.len() + SECTION_ADDITIONS.len(),
+        want.len() + SECTION_ADDITIONS.len() - SECTION_REMOVALS.len(),
         qs::SECTIONS.len(),
         "число секций разошлось с оригиналом"
     );
@@ -2103,6 +2134,7 @@ fn section_order_matches_python() {
         .unwrap()
         .iter()
         .map(|v| v.as_str().unwrap().to_string())
+        .filter(|id| !SECTION_REMOVALS.contains(&id.as_str()))
         .collect();
     let ours: Vec<String> = qs::section_order()
         .into_iter()
@@ -2281,7 +2313,6 @@ fn statuses_pick_the_right_sign() {
     assert!(qs::sound_theme_status(false, "ocean").contains("ocean"));
     assert!(qs::event_sounds_status(true, false).contains("выключены"));
     assert!(qs::event_sounds_status(false, true).contains("Не удалось"));
-    assert!(qs::mate_icons_status(true).contains("включены"));
     assert!(qs::font_value_text("  ").contains("по умолчанию"));
     assert_eq!(qs::font_value_text("Noto Sans 11"), "<i>Noto Sans 11</i>");
 }
@@ -2312,16 +2343,6 @@ fn plasma_backups_are_counted_and_confirmed() {
     assert_eq!(qs::PLASMA_BACKUPS_SHOWN, 5);
 }
 
-#[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
-fn mate_buttons_are_three_known_actions() {
-    let _lang = i18n_pin::ru();
-    let buttons = qs::mate_buttons();
-    let actions: Vec<&str> = buttons.iter().map(|(_, a)| a.as_str()).collect();
-    assert_eq!(actions, vec!["on", "off", "restart"]);
-    assert!(buttons[2].0.contains("Caja"));
-}
-
 // ============================================================================
 // Состав разделов и цвета состояний (перенос вкладки на QML, 2026-08-23)
 // ============================================================================
@@ -2331,11 +2352,11 @@ fn mate_buttons_are_three_known_actions() {
 ///
 /// Пара «раздел → факт, без которого его не рисовали»:
 ///   * `obGroup` — `onboarding.available()`;
-///   * `mateIconsGroup` — `self._de != "mate"` → выход;
 ///   * `plasmaGroup` — `PlasmaProtector.is_plasma_running() or has_backups()`;
 ///   * `aeroGroup` — `detect_plasma_forks()`.
 /// Остальные разделы рисовались всегда.
-const CONDITIONAL_SECTIONS: &[&str] = &["obGroup", "mateIconsGroup", "plasmaGroup", "aeroGroup"];
+/// (`mateIconsGroup` с 08.11.2026 снят — см. [`SECTION_REMOVALS`].)
+const CONDITIONAL_SECTIONS: &[&str] = &["obGroup", "plasmaGroup", "aeroGroup"];
 
 #[test]
 fn sections_without_conditions_are_always_shown() {
@@ -2356,10 +2377,9 @@ fn sections_without_conditions_are_always_shown() {
 fn every_condition_opens_exactly_its_own_section() {
     // Каждый факт по отдельности: включает свой раздел и НИ ОДНОГО чужого.
     let cases: &[(&str, qs::SectionFacts)] = &[
-        ("obGroup", qs::SectionFacts::new(true, false, false, false)),
-        ("mateIconsGroup", qs::SectionFacts::new(false, true, false, false)),
-        ("plasmaGroup", qs::SectionFacts::new(false, false, true, false)),
-        ("aeroGroup", qs::SectionFacts::new(false, false, false, true)),
+        ("obGroup", qs::SectionFacts::new(true, false, false)),
+        ("plasmaGroup", qs::SectionFacts::new(false, true, false)),
+        ("aeroGroup", qs::SectionFacts::new(false, false, true)),
     ];
     for (id, facts) in cases {
         let shown = qs::visible_sections(facts);
@@ -2379,7 +2399,7 @@ fn every_condition_opens_exactly_its_own_section() {
 #[test]
 fn all_facts_show_every_section_in_core_order() {
     // Всё подтверждено — видны ВСЕ разделы, и порядок тот же, что в таблице.
-    let everything = qs::SectionFacts::new(true, true, true, true);
+    let everything = qs::SectionFacts::new(true, true, true);
     assert_eq!(qs::visible_sections(&everything), qs::section_order());
 }
 
@@ -2990,19 +3010,6 @@ fn ambient_stopped_status_tells_the_truth() {
     assert_eq!(gone, qs::ambient_volume_status(None, 50, false, true));
 }
 
-/// ⭐ Кнопки MATE: успех — прежние слова, отказ — отказ, а не «включены».
-#[test]
-#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
-fn mate_results_do_not_report_blind_success() {
-    let _lang = i18n_pin::ru();
-    assert_eq!(qs::mate_icons_result(true, true), qs::mate_icons_status(true));
-    let failed = qs::mate_icons_result(true, false);
-    assert!(!failed.contains("включены"), "{failed}");
-    assert!(failed.starts_with("⚠️"), "{failed}");
-    assert!(qs::caja_restart_result(true).contains("перезапущена"));
-    assert!(qs::caja_restart_result(false).starts_with("⚠️"));
-}
-
 // ============================================================================
 // Перевод: русский как было, английский — без единой русской буквы
 // ============================================================================
@@ -3028,11 +3035,14 @@ fn russian_catalog_keeps_old_texts() {
 
     let texts = before["texts"].as_object().unwrap();
     assert_eq!(
-        texts.len() + AFTER_RU_SNAPSHOT_TEXTS.len(),
+        texts.len() + AFTER_RU_SNAPSHOT_TEXTS.len() - TEXT_REMOVALS.len(),
         qs::TEXTS.len(),
         "ключи каталога разошлись со снимком"
     );
     for (key, want) in texts {
+        if TEXT_REMOVALS.contains(&key.as_str()) {
+            continue;
+        }
         assert_eq!(
             qs::text_template(key).as_deref(),
             Some(want.as_str().unwrap()),
@@ -3041,7 +3051,10 @@ fn russian_catalog_keeps_old_texts() {
     }
 
     let sections = before["sections"].as_object().unwrap();
-    assert_eq!(sections.len() + AFTER_RU_SNAPSHOT_SECTIONS.len(), qs::SECTIONS.len());
+    assert_eq!(
+        sections.len() + AFTER_RU_SNAPSHOT_SECTIONS.len() - SECTION_REMOVALS.len(),
+        qs::SECTIONS.len()
+    );
     for (id, title, desc) in qs::SECTIONS {
         if AFTER_RU_SNAPSHOT_SECTIONS.contains(id) {
             assert!(!sections.contains_key(*id), "{id} помечен новым, а в снимке он был");
@@ -3723,6 +3736,47 @@ fn font_rendering_texts_russian() {
     let refused = qs::rendering_status(&qs::RenderingOutcome::FontconfigRefused("/h/.config/fontconfig/fonts.conf".into()));
     assert!(refused.contains("/h/.config/fontconfig/fonts.conf") && refused.contains("не тронул"), "{refused}");
     assert!(qs::rendering_status(&qs::RenderingOutcome::Saved).starts_with("✅ Сглаживание"));
+}
+
+/// Готовые наборы отрисовки — значения MATE, диапазон «не сглаживать» и
+/// порядок субпикселей человека не теряются, набор узнаётся обратно.
+#[test]
+fn font_render_presets_follow_mate() {
+    let mine = qs::FontRendering {
+        antialias: true,
+        exclude: Some((6, 10)),
+        subpixel: "bgr".to_string(),
+        hinting: "none".to_string(),
+    };
+    assert_eq!(qs::render_preset_of(&mine), None, "своя настройка — ни один набор");
+    let want = [
+        ("monochrome", false, "none", "full"),
+        ("best_shapes", true, "none", "medium"),
+        ("best_contrast", true, "none", "full"),
+        ("subpixel", true, "bgr", "slight"),
+    ];
+    for (id, aa, sub, hint) in want {
+        let p = qs::render_preset(id, &mine).expect(id);
+        assert_eq!((p.antialias, p.subpixel.as_str(), p.hinting.as_str()), (aa, sub, hint), "{id}");
+        assert_eq!(p.exclude, Some((6, 10)), "{id}: диапазон остаётся");
+        assert_eq!(qs::render_preset_of(&p), Some(id), "{id}: узнаётся обратно");
+    }
+    // Без сглаживания субпиксели «нет» — «Субпиксельное» ставит RGB.
+    let gray = qs::render_preset("best_shapes", &mine).unwrap();
+    assert_eq!(qs::render_preset("subpixel", &gray).unwrap().subpixel, "rgb");
+    assert!(qs::render_preset("nonsense", &mine).is_none());
+    assert_eq!(qs::render_preset_choices().len(), qs::RENDER_PRESETS.len());
+}
+
+/// Подписи готовых наборов по-русски.
+#[test]
+#[cfg_attr(feature = "isolated-checks", ignore = "нужна живая машина: собирает po/ru.po настоящим msgfmt")]
+fn font_render_presets_russian() {
+    let _lang = i18n_pin::ru();
+    assert_eq!(qs::text_template("font.render_presets").as_deref(), Some("Быстрый выбор:"));
+    let labels: Vec<String> = qs::render_preset_choices().into_iter().map(|(_, l, _)| l).collect();
+    assert_eq!(labels, ["Монохромный", "Лучшие формы", "Лучший контраст", "Субпиксельное (ЖК-экраны)"]);
+    assert!(qs::render_preset_choices().iter().all(|(_, _, tip)| tip.chars().any(|c| ('а'..='я').contains(&c))));
 }
 
 // ── «Изменить все шрифты» и принудительное DPI ──────────────────────────

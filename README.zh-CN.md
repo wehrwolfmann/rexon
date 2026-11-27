@@ -1,4 +1,4 @@
-[English](README.md) | [Русский](README.ru.md) | [Deutsch](README.de.md) | 简体中文
+[English](README.md) | [Русский](README.ru.md) | [Deutsch](README.de.md) | 简体中文 | [Français](README.fr.md)
 
 # Rexon
 
@@ -10,7 +10,7 @@ Rexon 使用 Rust 编写，界面基于 Qt 6 / QML（通过 [cxx-qt](https://git
 
 ![Rexon：桌面环境列表，以及 KDE Plasma 的详细信息](.github/screenshots/desktops.png)
 
-![Rexon：Appearance（外观）中的全局主题目录](.github/screenshots/global-themes.png)
+![Rexon：“外观”中的全局主题目录](.github/screenshots/global-themes.png)
 
 <table>
   <tr>
@@ -22,33 +22,33 @@ Rexon 使用 Rust 编写，界面基于 Qt 6 / QML（通过 [cxx-qt](https://git
 
 ## 使用指南
 
-每个标签页的分步指南（Desktops、Appearance、Extensions、Wallpaper Engine、Steam 和 Settings），目前提供英文、俄文和德文版本：[guide/](guide/README.md)。
+所有标签页（“桌面环境”、“外观”、“扩展”、Wallpaper Engine、Steam 和“设置”）的分步指南，提供中文、英文、俄文、德文和法文版本：[guide/](guide/README.md)。中文版：[桌面环境](guide/zh-CN/desktops.md) · [外观](guide/zh-CN/appearance.md) · [扩展](guide/zh-CN/extensions.md) · [Wallpaper Engine](guide/zh-CN/wallpaper-engine.md) · [Steam](guide/zh-CN/steam.md) · [设置](guide/zh-CN/settings.md)。
 
 ## 功能
 
-**桌面（Desktops）**
+**桌面环境**
 
 - 安装、切换和卸载桌面环境：KDE Plasma、GNOME、Cinnamon、Xfce、MATE、Budgie、Pantheon、COSMIC、LXQt、Deepin（仅 Treeland 会话，实验性，仅限基于 Arch 的系统）、Hyprland、Sway、niri、River 和 Wayfire。
 - 当前登录的桌面无法被卸载，系统启动所必需的组件也无法被卸载（参见 [Rexon 如何使用 root 权限](#rexon-如何使用-root-权限)）。
 - 登录管理器：安装、启用 SDDM、Plasma Login Manager、GDM、LightDM、LXDM、COSMIC Greeter 等，或在它们之间切换，并且会记录下恢复原状的方法。
 - 桌面并排对比（内存占用、界面工具包、合成器、默认设置）。
 - 检查当前桌面（缺少的软件包、设置），一键修复。
-- “Like a distribution”（发行版风格）外观：一次性应用一整套外观（目前有 SteamOS 和 Garuda Dr460nized），也可以恢复到原来的样子。
+- “发行版风格”：一次性应用一整套外观（目前有 SteamOS 和 Garuda Dr460nized），也可以恢复到原来的样子。
 - 保护你的默认应用（浏览器、终端、查看器）：桌面在切换时经常会把它们重置。默认开启。
 
-**外观（Appearance）**
+**外观**
 
-- 在每个受支持的桌面上提供 KDE Plasma“系统设置”中的外观设置，并写入该桌面自己的设置：全局主题（可整体应用，也可逐项应用；“Save Current Appearance…”可以把当前外观保存为主题）、带编辑器的配色方案、强调色、按计划切换浅色和深色、应用程序样式、窗口装饰和标题栏按钮、字体，以及支持字体分组的字体管理器。
+- 在每个受支持的桌面上提供 KDE Plasma“系统设置”中的外观设置，并写入该桌面自己的设置：全局主题（可整体应用，也可逐项应用；“保存当前外观…”可以把当前外观保存为主题）、带编辑器的配色方案、强调色、按计划切换浅色和深色、应用程序样式、窗口装饰和标题栏按钮、字体、支持字体分组的字体管理器、壁纸模糊、事件声音和环境音。
 - 如果 GTK 主题带有 GTK 4 版本，它也会应用到 GTK 4 / libadwaita 应用上；主题卡片上显示的是用该主题实际绘制的控件。
 - 来自 OpenDesktop / Pling 目录、Cinnamon Spices 和 AUR 的主题，涵盖 GTK、Qt / Kvantum、图标、光标、字体、窗口按钮、动画、KDE Plasma、Cinnamon、MATE 面板布局和 Deepin（AUR 软件包在安装前会显示风险提示）。
 - Windows 光标（`.cur` / `.ani`）自动转换为 Xcursor。
 - 登录界面（SDDM）和开机动画（Plymouth）主题。
 - 带预览的 Conky 小部件。
 - 屏幕特效（扫描线、CRT、VHS、胶片等），带实时预览。在 Hyprland、GNOME 和 Cinnamon 上，Rexon 会把特效应用到整个屏幕；在其他桌面上，该页面会如实说明合成器在那里允许做什么。
-- 桌面设置的备份，以及紧急菜单项“Recover desktop appearance”（KDE），用于主题弄坏桌面时恢复。
+- 桌面设置的备份，以及紧急菜单项“恢复桌面外观”（KDE），用于主题弄坏桌面时恢复。
 - GNOME Shell 和 Cinnamon 扩展。
 
-**扩展（Extensions）**
+**扩展**
 
 - Rexon 自己的 `.rxn` 软件包（主题、壁纸包、字体、桌面工具和插件）：可以从文件安装，或直接拖进窗口安装，也可以启用、停用和卸载。
 - Windows 主题（`.themepack`、`.msstyles`）、光标和图标包在安装时会被转换为 Linux 可用的格式。
@@ -65,9 +65,9 @@ Rexon 使用 Rust 编写，界面基于 Qt 6 / QML（通过 [cxx-qt](https://git
 - 像 Steam Deck 一样，登录后播放开场动画，可从你 Steam 库中的视频里选择。
 - 把你拥有的 Steam 个人资料背景用作壁纸。
 
-**设置（Settings）**
+**设置**
 
-- 界面语言和皮肤、托盘图标、带模糊效果和环境音的壁纸库、事件提示音和系统字体。
+- 界面语言和皮肤、托盘图标、壁纸库。
 - KDE Plasma 面板的保存副本、默认应用保护开关，以及导入 Windows 主题。
 
 **系统安全**
@@ -118,9 +118,9 @@ Java 只在构建时需要：Flash 播放器用它来编译自己的 ActionScrip
 ```sh
 git clone https://github.com/wehrwolfmann/rexon.git
 cd rexon/rust
-cargo build-app       # core + the window + its QML libraries (release)
-cargo build-splash    # login startup-movie player (separate on purpose)
-cargo test-core       # core tests, no Qt needed
+cargo build-app       # 核心 + 窗口 + 窗口的 QML 库（release）
+cargo build-splash    # 登录启动影片播放器（特意单独构建）
+cargo test-core       # 核心测试，不需要 Qt
 ```
 
 > **不要直接使用 `cargo build --release`。** 工作区设置了 `default-members = ["rexon-core"]`，这样核心测试就不需要 Qt，因此直接运行 `cargo build` 只会构建核心部分。上面的别名定义在 [`rust/.cargo/config.toml`](rust/.cargo/config.toml) 中（`cargo --list` 可以列出它们），并且只有在 `rust/` 目录下运行 cargo 时才生效。
@@ -130,7 +130,7 @@ cargo test-core       # core tests, no Qt needed
 ```sh
 tools/build_qml_material.sh
 tools/build_qml_control.sh
-tools/build_qml_qextra.sh    # needs lito >= 0.8.7, clang, lld (AUR: lito or lito-bin)
+tools/build_qml_qextra.sh    # 需要 lito >= 0.8.7、clang、lld（AUR：lito 或 lito-bin）
 ```
 
 如果想一次性得到全部内容（插件、waywallen 引擎、特权辅助程序及其 polkit 策略），请直接构建软件包：
@@ -154,7 +154,7 @@ rust/target/release/rexon-main-window
 - `rexon --page=<name>`：打开指定页面；
 - `rexon doctor`：输出关于登录界面和会话的报告，不需要 Qt（在文字控制台中很有用）。
 
-要以其他语言运行 Rexon，可以设置 `LANGUAGE`，例如 `LANGUAGE=de rust/target/release/rexon-main-window`，也可以在 Settings 中选择语言。
+要以其他语言运行 Rexon，可以设置 `LANGUAGE`，例如 `LANGUAGE=de rust/target/release/rexon-main-window`，也可以在“设置”中选择语言。
 
 从源码目录运行时没有安装特权辅助程序，因此系统更改会退回到直接使用 `pkexec`，每次都会要求输入密码。
 
@@ -167,7 +167,7 @@ Rexon 本身始终以你的用户身份运行。所有需要 root 的操作都�
 `rexon-priv-helper`（polkit 动作 `org.rexon.session`）是主要途径。
 
 - 第一次执行需要 root 的操作时，Rexon 会用 `pkexec` 启动一次辅助程序。策略是 `auth_admin`，**不带** “keep”：polkit 不会记住密码。辅助程序本身会在窗口存在期间一直运行，所以每个窗口会话只需输入一次密码，而不是每次操作都输入。
-- 在它运行期间，Settings 和托盘菜单中会显示“Rexon can change the system until the window is closed”（在窗口关闭前 Rexon 可以修改系统），并带有 **Revoke Now**（立即撤销）按钮。
+- 在它运行期间，“设置”和托盘菜单中会显示“在关闭窗口前，Rexon 可以更改系统”，并带有 **“立即撤销”** 按钮。
 - 修改系统的权限会在以下情况下结束：
   1. Rexon 窗口被关闭（包括最小化到托盘），或 Rexon 退出；
   2. 15 分钟内没有任何特权操作；
@@ -198,7 +198,7 @@ Rexon 本身始终以你的用户身份运行。所有需要 root 的操作都�
 
 ### 可以安装什么
 
-软件包只会从 Rexon 内置的表中安装：桌面及其组件、登录管理器、视频壁纸依赖、Shell、Conky、MATE 面板组件、图标和光标主题，以及“Like a distribution”外观。窗口只给出表的名称；辅助程序会对照自己的那份表检查每一个软件包名。
+软件包只会从 Rexon 内置的表中安装：桌面及其组件、登录管理器、视频壁纸依赖、Shell、Conky、MATE 面板组件、图标和光标主题，以及“发行版风格”。窗口只给出表的名称；辅助程序会对照自己的那份表检查每一个软件包名。
 
 **AUR 软件包永远不会被自动安装。** 每次 AUR 构建都由你自己发起，以你的用户身份通过 `paru` 或 `yay` 运行。在 Rexon 内部，它们调用的 `sudo` 会被替换为 `rexon-sudo-shim`；它自身没有任何权限，只是把 `pacman` 调用转交给会话辅助程序。辅助程序只安装官方仓库中存在的构建依赖，以及你要求构建的软件包（软件包名从每个构建出的软件包中读取）。
 
@@ -216,8 +216,8 @@ Rexon 从不以 root 身份运行第三方安装脚本。有些主题作者附�
 
 - **切换登录管理器：** 如果启用新的登录管理器失败，会恢复之前的那个。Rexon 还会记下一条命令，方便你在文字控制台中恢复之前的登录管理器。
 - **登录界面故障：** 只要安装了 Rexon，每个登录管理器都会带有一个 systemd `OnFailure=` 附加配置（`rexon-login-rescue`），在控制台上显示纯文字说明，而不是黑屏。
-- **外观：** Rexon 所做的更改可以通过 “Put Back as It Was”（恢复原样）撤销；KDE 面板布局可以在 Desktops → Tools 中保存和恢复（“Save Panel” / “Restore Panel”）。KDE 有一个紧急菜单项“Recover desktop appearance”，即使 Rexon 窗口无法启动也能使用。
-- **“Like a distribution”外观** 会记住它们改动了什么，并且可以还原。
+- **外观：** Rexon 所做的更改可以通过“还原”按钮撤销；KDE 面板布局可以在“桌面环境”→“工具”中保存和恢复（“保存面板” / “恢复面板”）。KDE 有一个紧急菜单项“恢复桌面外观”，即使 Rexon 窗口无法启动也能使用。
+- **“发行版风格”** 会记住它们改动了什么，并且可以还原。
 - **登录界面和开机动画** 主题可以重置为发行版默认值。
 - **Plasma 的主题分支版本**（例如 AeroThemePlasma）可以替换回官方软件包；如果某次 Plasma 更新把它们弄坏了，Rexon 可以让你在不加载它们的情况下登录一次。
 
@@ -225,7 +225,7 @@ Rexon 从不以 root 身份运行第三方安装脚本。有些主题作者附�
 
 ## 翻译
 
-界面使用 GNU gettext 翻译：Rust 代码和 QML 页面共用一个翻译目录。模板是 [`po/rexon.pot`](po/rexon.pot)，每种语言对应 [`po/`](po/) 中的一个文件。基础语言是英语，目前已有俄语和德语翻译。要添加新语言，请参阅 [`po/README.md`](po/README.md)，无需修改代码。
+界面使用 GNU gettext 翻译：Rust 代码和 QML 页面共用一个翻译目录。模板是 [`po/rexon.pot`](po/rexon.pot)，每种语言对应 [`po/`](po/) 中的一个文件。基础语言是英语，目前已有俄语、德语、简体中文和法语翻译。要添加新语言，请参阅 [`po/README.md`](po/README.md)，无需修改代码。
 
 ## 致谢
 
@@ -234,7 +234,7 @@ Rexon 的动态壁纸建立在他人的工作之上：
 - **[waywallen](https://github.com/hypengw/waywallen)**，作者 hypengw，MIT 许可证。壁纸引擎（一个独立的守护进程）；软件包附带其未经修改的官方发布版本。动态壁纸页面使用 waywallen 的 QML 界面，并带有少量补丁，存放在 `data/qt_wallpaper_engine/qml_ui/waywallen/patches/`。
 - **[Open Wallpaper Engine](https://github.com/waywallen/open-wallpaper-engine)**，GPL-2.0-only。渲染场景和网页壁纸的 waywallen 插件。它作为由 waywallen 守护进程启动的独立进程运行，Rexon 不与它链接。软件包附带其未经修改的官方发布版本及完整源代码。
 - **[waywallen-display](https://github.com/waywallen/waywallen-display)**：KDE Plasma 壁纸插件，未经修改随附。
-- **[Ruffle](https://github.com/ruffle-rs/ruffle)**（MIT / Apache-2.0）：Flash 壁纸；**[QmlMaterial](https://github.com/hypengw/QmlMaterial)** 和**[QExtra](https://github.com/hypengw/QExtra)**（MIT）：壁纸页面的 QML 插件；**[Mozilla Translations](https://github.com/mozilla/translations)** 模型配合 `fxtranslate` crate（MPL-2.0）：离线翻译壁纸描述；**mpv**：开场动画播放器。
+- **[Ruffle](https://github.com/ruffle-rs/ruffle)**（MIT / Apache-2.0）：Flash 壁纸；**[QmlMaterial](https://github.com/hypengw/QmlMaterial)** 和 **[QExtra](https://github.com/hypengw/QExtra)**（MIT）：壁纸页面的 QML 插件；**[Mozilla Translations](https://github.com/mozilla/translations)** 模型配合 `fxtranslate` crate（MPL-2.0）：离线翻译壁纸描述；**mpv**：开场动画播放器。
 
 第三方组件的完整列表、它们的许可证以及所做的修改，请见 [`NOTICE`](NOTICE)。
 

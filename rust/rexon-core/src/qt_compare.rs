@@ -104,6 +104,7 @@ pub fn legend_title() -> String {
     tr("<b>How to read the table</b>")
 }
 pub fn legend_body() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("<b>Memory</b> — how much it takes right after login (depends on the computer)<br>\
 <b>Customization ⭐</b> — from 1 (minimal) to 5 (most flexible)<br>\
 <b>Gaming 🎮</b> — how well it suits games<br>\
@@ -134,22 +135,42 @@ pub const QUICK_PAIRS: &[(&str, &str, &str)] = &[
 ///
 /// Тексты — `msgid` каталога; переводит их место показа ([`rec_rows`]).
 pub const RECOMMENDATIONS: &[(&str, &str, &str)] = &[
-    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-    (n_("🎮 For gamers"), n_("Minimal overhead → XFCE or KDE"), "xfce"),
-    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-    (n_("💻 Low-end hardware"), n_("Under 2 GB of RAM → MATE or XFCE"), "mate"),
-    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-    (n_("🎨 For eye candy fans"), n_("Animations and widgets → KDE Plasma"), "kde"),
+    (
+        n_("🎮 For gamers"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+        n_("Minimal overhead → XFCE or KDE"),
+        "xfce",
+    ),
+    (
+        n_("💻 Low-end hardware"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+        n_("Under 2 GB of RAM → MATE or XFCE"),
+        "mate",
+    ),
+    (
+        n_("🎨 For eye candy fans"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+        n_("Animations and widgets → KDE Plasma"),
+        "kde",
+    ),
     (
         n_("🟢 For newcomers"),
         // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         n_("Simple out of the box → Cinnamon or GNOME"),
         "cinnamon-mint",
     ),
-    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-    (n_("🔧 For power users"), n_("Full customization → KDE Plasma"), "kde"),
-    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-    (n_("⚡ Maximum speed"), n_("The fastest one → XFCE"), "xfce"),
+    (
+        n_("🔧 For power users"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+        n_("Full customization → KDE Plasma"),
+        "kde",
+    ),
+    (
+        n_("⚡ Maximum speed"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+        n_("The fastest one → XFCE"),
+        "xfce",
+    ),
     (
         n_("⌨️ For keyboard lovers"),
         // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.

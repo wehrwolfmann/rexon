@@ -84,7 +84,13 @@ use serde::Serialize;
 /// проход прячет только потерянные имена, выдуманные повторы («и и») и
 /// поправки «проводник»/«вход в систему»/«системный лоток». Без бампа
 /// «Базцитовый Linux» и «разногласия» жили бы в кеше до конца TTL.
-pub const TRANSLATOR_VERSION: u32 = 7;
+///
+/// `8` — ОПИСАНИЕ «Candy icons» (08.11, KDE Store): ссылка-имя склеивается с
+/// фразой и не переводится ([`fold_name_links`]), словарь устойчивых терминов
+/// — «тема значков», «тема курсоров», «Примечание», «заявка», «запрос на
+/// слияние», «виджет Plasma». Без бампа «моему Сладкий тема темы» жило бы в
+/// кеше до конца TTL.
+pub const TRANSLATOR_VERSION: u32 = 8;
 
 // ── src_hash (ключ кеша переводов) ─────────────────────────────────────────
 
@@ -709,6 +715,7 @@ fn is_plain_slash_pair(core: &str) -> bool {
 ///
 /// Что считается куском техники:
 ///   * всё между парой обратных кавычек вместе с ними (`` `make install` ``);
+///   * ссылка Markdown, чей текст — имя ([`markdown_name_links`]);
 ///   * токен между пробелами, технический по форме ([`is_technical_token`]:
 ///     путь, ссылка, `$HOME`, `--user`, `index.theme`, `*.tar.gz`). Краевая
 ///     пунктуация фразы («(», «.», «,», «:», кавычки) в кусок НЕ входит:
@@ -722,6 +729,13 @@ pub fn technical_spans(text: &str) -> Vec<(usize, usize)> {
     let ticks: Vec<usize> = text.match_indices('`').map(|(i, _)| i).collect();
     for pair in ticks.chunks_exact(2) {
         spans.push((pair[0], pair[1] + 1));
+    }
+    // Ссылка Markdown с текстом-именем (`[Sweet](https://…/p/1253385/)`) —
+    // целиком, вместе с текстом: имя соседнего товара не переводится.
+    for (a, b) in markdown_name_links(text) {
+        if !spans.iter().any(|(s, e)| a < *e && b > *s) {
+            spans.push((a, b));
+        }
     }
     let in_ticks = |s: usize, e: usize| spans.iter().any(|(a, b)| s < *b && e > *a);
     let mut tokens: Vec<(usize, usize)> = Vec::new();
@@ -2079,6 +2093,182 @@ pub const TERM_FIXES: &[TermFix] = &[
         ],
         collapse_repeats: false,
     },
+    // ── устойчивые термины оформления и GitHub (живая проверка 08.11,
+    // «Candy icons»: «икона темы», «Записка», «открыть вопрос», «вытащить
+    // запрос»). Источник терминов — наш po/ru.po и KDE ru: «тема значков»
+    // («Checking the icon theme...» → «Проверка темы значков...»), «набор
+    // значков», «тема курсоров» («cursor themes» → «тем курсоров»).
+    //
+    // icon / icons — «значки». Только формы множественного числа: у них нет
+    // рода, и согласованные слова менять не нужно («иконки» ж. р. → «значки»
+    // м. р. во множественном одинаковы). «Иконописная тема», «икона темы» —
+    // целые словосочетания движка на `icon theme`.
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["icon"],
+        gate: always,
+        forms: &[
+            TermForm::Phrase("икона темы", "тема значков"),
+            TermForm::Phrase("тема иконы", "тема значков"),
+            TermForm::Phrase("икона тема", "тема значков"),
+            TermForm::Phrase("иконка темы", "тема значков"),
+            TermForm::Phrase("иконка тема", "тема значков"),
+            TermForm::Phrase("иконописная тема", "тема значков"),
+            TermForm::Phrase("иконописной темы", "темы значков"),
+            TermForm::Phrase("иконописную тему", "тему значков"),
+            TermForm::Phrase("иконописной темой", "темой значков"),
+            TermForm::Phrase("иконописные темы", "темы значков"),
+            TermForm::Phrase("иконописных тем", "тем значков"),
+            TermForm::Phrase("иконная тема", "тема значков"),
+            TermForm::Phrase("иконной темы", "темы значков"),
+            TermForm::Phrase("иконную тему", "тему значков"),
+            TermForm::Word("иконок", "значков"),
+            TermForm::Word("иконкам", "значкам"),
+            TermForm::Word("иконками", "значками"),
+            TermForm::Word("иконках", "значках"),
+            TermForm::Word("икон", "значков"),
+        ],
+        collapse_repeats: false,
+    },
+    // «иконки» — и именительный множественного, и родительный единственного
+    // («цвет иконки»). Поэтому только там, где в источнике одно `icons`, без
+    // `icon` в единственном: «To request for icons please» → «запросить
+    // значки».
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["icons"],
+        gate: |s| !s.split(|c: char| !c.is_alphanumeric()).any(|w| w == "icon"),
+        forms: &[TermForm::Word("иконки", "значки")],
+        collapse_repeats: false,
+    },
+    // «theme» — повтор «тема темы» (одинокое `theme` живая модель отдаёт
+    // именно так, замер 08.11).
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["theme"],
+        gate: always,
+        forms: &[
+            TermForm::Phrase("тема темы", "тема"),
+            TermForm::Phrase("темы темы", "темы"),
+        ],
+        collapse_repeats: false,
+    },
+    // cursor theme — «тема курсоров» (po/ru.po: «GitHub: %1 cursor themes…» →
+    // «тем курсоров»). Модель пишет «курсорная тема».
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["cursor"],
+        gate: |s| s.contains("cursor theme") || s.contains("cursors theme"),
+        forms: &[
+            TermForm::Phrase("курсорная тема", "тема курсоров"),
+            TermForm::Phrase("курсорной темы", "темы курсоров"),
+            TermForm::Phrase("курсорную тему", "тему курсоров"),
+            TermForm::Phrase("курсорной темой", "темой курсоров"),
+            TermForm::Phrase("курсорной теме", "теме курсоров"),
+            TermForm::Phrase("курсорные темы", "темы курсоров"),
+            TermForm::Phrase("курсорных тем", "тем курсоров"),
+        ],
+        collapse_repeats: false,
+    },
+    // Note / NOTE в начале фразы — подпись «Примечание» (KDE ru). Модель даёт
+    // «записка», «заметка», а на `NOTE` — «НОТЕ ПРИМЕЧАНИЕ» (замер 08.11).
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["note"],
+        gate: |s| {
+            let t = s.trim_start_matches(|c: char| !c.is_alphanumeric());
+            t.strip_prefix("note").is_some_and(|r| !r.starts_with(char::is_alphanumeric))
+        },
+        forms: &[
+            TermForm::Word("записка", "примечание"),
+            TermForm::Word("заметка", "примечание"),
+            TermForm::Word("ноте", "примечание"),
+        ],
+        collapse_repeats: true,
+    },
+    // issue — «заявка» (трекер проекта): «open an issue» модель отдаёт
+    // «открыть вопрос»/«открывать проблему», «issue tracker» — «трекер
+    // вопросов».
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["issue"],
+        gate: always,
+        forms: &[
+            TermForm::Phrase("открыть вопрос", "создать заявку"),
+            TermForm::Phrase("открыть проблему", "создать заявку"),
+            TermForm::Phrase("открыть выпуск", "создать заявку"),
+            TermForm::Phrase("открывать вопрос", "создавать заявку"),
+            TermForm::Phrase("открывать проблему", "создавать заявку"),
+            TermForm::Phrase("откройте вопрос", "создайте заявку"),
+            TermForm::Phrase("откройте проблему", "создайте заявку"),
+            TermForm::Phrase("откройте выпуск", "создайте заявку"),
+            TermForm::Phrase("трекер вопросов", "трекер заявок"),
+            TermForm::Phrase("трекере вопросов", "трекере заявок"),
+            TermForm::Phrase("трекер проблем", "трекер заявок"),
+            TermForm::Phrase("трекере проблем", "трекере заявок"),
+        ],
+        collapse_repeats: false,
+    },
+    // pull request — «запрос на слияние» (так зовут его русский GitLab и KDE
+    // ru). Модель: «вытащить запрос», «вытащитные запросы».
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["pull"],
+        gate: |s| s.contains("pull request") || s.contains("pull-request") || s.contains("pullrequest"),
+        forms: &[
+            TermForm::Phrase("вытащить запрос", "запрос на слияние"),
+            TermForm::Phrase("вытащить запросы", "запросы на слияние"),
+            TermForm::Phrase("вытащитные запросы", "запросы на слияние"),
+            TermForm::Phrase("вытащитный запрос", "запрос на слияние"),
+            TermForm::Phrase("запрос на вытягивание", "запрос на слияние"),
+            TermForm::Phrase("запросы на вытягивание", "запросы на слияние"),
+            TermForm::Phrase("запрос на извлечение", "запрос на слияние"),
+            TermForm::Phrase("запросы на извлечение", "запросы на слияние"),
+            TermForm::Phrase("тянуть запрос", "запрос на слияние"),
+        ],
+        collapse_repeats: false,
+    },
+    // star (глагол) — «отметьте звёздочкой»: «Please star the repository» →
+    // «отведайте репозиторий» (замер 08.11). Падеж дополнения у «отметьте»
+    // тот же (винительный).
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["star"],
+        gate: |s| ["star the", "star this", "star it", "star my", "star our"].iter().any(|p| s.contains(p)),
+        forms: &[
+            TermForm::Word("отведайте", "отметьте звёздочкой"),
+            TermForm::Word("отведай", "отметьте звёздочкой"),
+            TermForm::Phrase("звездите", "отметьте звёздочкой"),
+        ],
+        collapse_repeats: false,
+    },
+    // plasma widget — «виджет Plasma» (po/ru.po: «Виджеты рабочего стола»,
+    // имя Plasma латиницей). Модель: «плазменный виджет».
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["plasma", "widget"],
+        gate: |s| s.contains("plasma widget") || s.contains("plasma 6 widget") || s.contains("plasma 5 widget"),
+        forms: &[
+            TermForm::Phrase("плазменный виджет", "виджет Plasma"),
+            TermForm::Phrase("плазменного виджета", "виджета Plasma"),
+            TermForm::Phrase("плазменному виджету", "виджету Plasma"),
+            TermForm::Phrase("плазменным виджетом", "виджетом Plasma"),
+            TermForm::Phrase("плазменном виджете", "виджете Plasma"),
+            TermForm::Phrase("плазменные виджеты", "виджеты Plasma"),
+            TermForm::Phrase("плазменных виджетов", "виджетов Plasma"),
+            TermForm::Phrase("плазменными виджетами", "виджетами Plasma"),
+        ],
+        collapse_repeats: false,
+    },
 ];
 
 /// Слово в нижнем регистре и с `ё` → `е` — так словарь и сравнивает.
@@ -2401,6 +2591,403 @@ pub fn render_segments_with_flags(
             String::new()
         }
     })
+}
+
+// ── ссылки-имена ───────────────────────────────────────────────────────────
+//
+// ⭐ ЗАЧЕМ (живая проверка 08.11, KDE Store, «Candy icons» от eliverlara):
+// «Sweet gradient icon theme originally created to fit my <a
+// href="https://www.gnome-look.org/p/1253385/">Sweet</a> theme» выходило
+// «…чтобы соответствовать моему Сладкий тема темы». Текст ссылки — имя
+// соседнего товара, а HTML режет фразу на три узла, и движок получал «Sweet»
+// и «theme» поодиночке. Поэтому ссылка, чей текст — имя
+// ([`is_name_link`]), склеивается с соседними узлами в ОДНУ фразу
+// ([`fold_name_links`]): движок видит предложение целиком, имя охраняется как
+// название товара, а теги ссылки встают обратно вокруг уцелевшего имени
+// ([`NameLinkRun::relink`]). Та же мерка — для ссылки Markdown `[Sweet](…)`
+// внутри прозы ([`technical_spans`]).
+
+/// Хосты страниц товаров семейства Pling (KDE Store и родня): страница товара
+/// там всегда `/p/<номер>`.
+const STORE_HOSTS: &[&str] = &[
+    "store.kde.org", "kde-look.org", "gnome-look.org", "xfce-look.org", "cinnamon-look.org",
+    "opendesktop.org", "pling.com", "linux-apps.com", "appimagehub.com",
+];
+
+/// Хосты хранилищ кода: страница хранилища — `/<владелец>/<имя>`.
+const CODE_HOSTS: &[&str] =
+    &["github.com", "gitlab.com", "codeberg.org", "invent.kde.org", "gitlab.gnome.org", "framagit.org"];
+
+/// Первые части пути у хранилищ кода, которые хранилищем не бывают
+/// (`github.com/sponsors/eliverlara` — страница спонсорства).
+const CODE_HOST_NON_REPO: &[&str] =
+    &["sponsors", "orgs", "settings", "marketplace", "topics", "explore", "users", "search"];
+
+/// Обычные слова, которые бывают текстом ссылки на страницу товара, но
+/// именем не являются: «Download», «Here», «Source code»…
+const LINK_WORDS_NOT_NAMES: &[&str] = &[
+    "here", "download", "downloads", "link", "source", "code", "website", "site", "page",
+    "homepage", "repo", "repository", "click", "project", "this", "theme", "themes", "icons",
+    "readme", "wiki", "releases", "release", "issues", "issue", "changelog", "version",
+];
+
+/// Ссылка ведёт на страницу товара (`…/p/1253385/`) или на хранилище кода
+/// (`github.com/EliverLara/Sweet`), а не на раздел, заявку или оплату.
+pub fn is_product_page_url(href: &str) -> bool {
+    let lower = href.trim().to_lowercase();
+    let Some(rest) = lower.strip_prefix("https://").or_else(|| lower.strip_prefix("http://"))
+    else {
+        return false;
+    };
+    let rest = rest.split(['?', '#']).next().unwrap_or("");
+    let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+    if STORE_HOSTS.iter().any(|h| host == *h || host.ends_with(&format!(".{h}"))) {
+        return parts
+            .windows(2)
+            .any(|w| w[0] == "p" && w[1].chars().all(|c| c.is_ascii_digit()) && !w[1].is_empty());
+    }
+    if CODE_HOSTS.contains(&host) {
+        return parts.len() == 2 && !CODE_HOST_NON_REPO.contains(&parts[0]);
+    }
+    false
+}
+
+/// Текст ссылки похож на имя: от одного до четырёх слов, каждое С Заглавной
+/// (или цифрой), либо слаг через дефис/подчёркивание (`sweet-folders`), и ни
+/// одного обычного слова из [`LINK_WORDS_NOT_NAMES`]. «open an issue»,
+/// «Become a sponsor on github», «pull request» — проза, не имена.
+fn is_name_shaped_link_text(text: &str) -> bool {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    if words.is_empty() || words.len() > 4 || !text.chars().any(char::is_alphabetic) {
+        return false;
+    }
+    words.iter().all(|w| {
+        let core = trim_token_punct(w);
+        if core.is_empty() || LINK_WORDS_NOT_NAMES.contains(&core.to_lowercase().as_str()) {
+            return false;
+        }
+        let first = core.chars().next().unwrap_or(' ');
+        let slug = (core.contains('-') || core.contains('_'))
+            && core.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_');
+        first.is_uppercase() || first.is_ascii_digit() || slug
+    })
+}
+
+/// Ссылка — имя собственное: текст похож на имя и ведёт на страницу товара
+/// или хранилища. Такой текст не переводится никогда.
+pub fn is_name_link(text: &str, href: &str) -> bool {
+    is_name_shaped_link_text(text) && is_product_page_url(href)
+}
+
+/// Адрес из открывающего тега `<a …>` (без учёта регистра имени атрибута).
+pub fn link_href(open_tag: &str) -> Option<String> {
+    let (name, closing, _) = parse_literal_tag(open_tag)?;
+    if name != "a" || closing {
+        return None;
+    }
+    let lower = open_tag.to_lowercase();
+    let at = lower.find("href")?;
+    let rest = open_tag[at + 4..].trim_start().strip_prefix('=')?.trim_start();
+    let value = match rest.chars().next()? {
+        q @ ('"' | '\'') => rest[1..].split(q).next()?,
+        _ => rest.split(|c: char| c.is_whitespace() || c == '>').next()?,
+    };
+    Some(html_unescape(value))
+}
+
+/// Ссылки Markdown `[текст](адрес)` с текстом-именем ([`is_name_link`]):
+/// (начало, конец) в байтах — весь кусок вместе со скобками.
+pub fn markdown_name_links(text: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut from = 0usize;
+    while let Some(open) = text[from..].find('[').map(|i| from + i) {
+        let Some(close) = text[open..].find("](").map(|i| open + i) else { break };
+        let label = &text[open + 1..close];
+        let Some(end) = text[close + 2..].find(')').map(|i| close + 2 + i) else { break };
+        let href = &text[close + 2..end];
+        if !label.contains('[') && !href.contains(char::is_whitespace) && is_name_link(label, href) {
+            out.push((open, end + 1));
+            from = end + 1;
+        } else {
+            from = open + 1;
+        }
+    }
+    out
+}
+
+/// Кусок склеенной фразы: обычный текст или ссылка-имя с её тегами.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkPart {
+    Text(String),
+    Link { open: String, name: String, close: String },
+}
+
+/// Фраза, склеенная через ссылки-имена: её куски по порядку.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NameLinkRun {
+    pub parts: Vec<LinkPart>,
+}
+
+impl NameLinkRun {
+    /// Что видит движок: ссылки — голым именем.
+    pub fn plain(&self) -> String {
+        self.parts
+            .iter()
+            .map(|p| match p {
+                LinkPart::Text(t) => t.as_str(),
+                LinkPart::Link { name, .. } => name.as_str(),
+            })
+            .collect()
+    }
+
+    /// Исходная разметка дословно — на случай, если перевода нет.
+    pub fn markup(&self) -> String {
+        self.parts
+            .iter()
+            .map(|p| match p {
+                LinkPart::Text(t) => t.clone(),
+                LinkPart::Link { open, name, close } => format!("{open}{name}{close}"),
+            })
+            .collect()
+    }
+
+    /// Имена ссылок по порядку.
+    pub fn names(&self) -> Vec<&str> {
+        self.parts
+            .iter()
+            .filter_map(|p| match p {
+                LinkPart::Link { name, .. } => Some(name.trim()),
+                LinkPart::Text(_) => None,
+            })
+            .collect()
+    }
+
+    /// Вернуть теги ссылок в перевод: каждое имя (по порядку, отдельным
+    /// словом) обрамляется своими тегами. Имя не нашлось — `None`.
+    ///
+    /// ⚠️ Имя ссылки может стоять во фразе и без ссылки: «Sweet gradient icon
+    /// theme … to fit my <a>Sweet</a> theme» — ссылка на ВТОРОМ «Sweet».
+    /// Поэтому берётся вхождение с тем же номером, что у ссылки в исходной
+    /// фразе; если движок число вхождений изменил — ближайшее по месту во
+    /// фразе.
+    pub fn relink(&self, translated: &str) -> Option<String> {
+        let plain = self.plain();
+        let mut out = String::with_capacity(translated.len() + 64);
+        let mut cursor = 0usize;
+        let mut plain_at = 0usize;
+        for part in &self.parts {
+            let (open, name, close) = match part {
+                LinkPart::Text(t) => {
+                    plain_at += t.len();
+                    continue;
+                }
+                LinkPart::Link { open, name, close } => (open, name, close),
+            };
+            let here = plain_at + (name.len() - name.trim_start().len());
+            plain_at += name.len();
+            let name = name.trim();
+            let in_plain = free_word_positions(&plain, name);
+            let in_tgt: Vec<usize> =
+                free_word_positions(translated, name).into_iter().filter(|p| *p >= cursor).collect();
+            let rank = in_plain.iter().position(|p| *p == here)?;
+            let at = if in_plain.len() == free_word_positions(translated, name).len() {
+                *free_word_positions(translated, name).get(rank).filter(|p| **p >= cursor)?
+            } else {
+                // Место ссылки в исходной фразе — доля длины; берётся ближайшее.
+                let want = here as f64 / plain.len().max(1) as f64;
+                *in_tgt.iter().min_by(|a, b| {
+                    let da = (**a as f64 / translated.len().max(1) as f64 - want).abs();
+                    let db = (**b as f64 / translated.len().max(1) as f64 - want).abs();
+                    da.total_cmp(&db)
+                })?
+            };
+            out.push_str(&translated[cursor..at]);
+            out.push_str(open);
+            out.push_str(name);
+            out.push_str(close);
+            cursor = at + name.len();
+        }
+        out.push_str(&translated[cursor..]);
+        Some(out)
+    }
+}
+
+/// Все вхождения `word` отдельным словом (границы — не буква и не цифра).
+fn free_word_positions(text: &str, word: &str) -> Vec<usize> {
+    let mut found = Vec::new();
+    if word.is_empty() {
+        return found;
+    }
+    let mut from = 0usize;
+    while let Some(i) = text[from..].find(word) {
+        let start = from + i;
+        let end = start + word.len();
+        let before = text[..start].chars().next_back().is_none_or(|c| !c.is_alphanumeric());
+        let after = text[end..].chars().next().is_none_or(|c| !c.is_alphanumeric());
+        if before && after {
+            found.push(start);
+        }
+        from = start + word.chars().next().map_or(1, char::len_utf8);
+    }
+    found
+}
+
+/// Склеить фразы через ссылки-имена.
+///
+/// `текст <a href=…>Имя</a> текст` (узел, тег, узел-имя, тег, узел) становится
+/// ОДНИМ текстовым узлом `текст Имя текст`; рядом, на том же месте второго
+/// списка, лежит [`NameLinkRun`] — по нему сборщик вернёт теги
+/// ([`NameLinkRun::relink`]) или, без перевода, исходную разметку
+/// ([`NameLinkRun::markup`]). Слаг (`sweet-folders`) не склеивается. Ссылка-имя
+/// без соседних узлов остаётся как была:
+/// её текст и так не переводится ([`translatable_flags_with_links`]).
+/// Внутри кодового окружения ничего не склеивается.
+pub fn fold_name_links(segments: Vec<Segment>) -> (Vec<Segment>, Vec<Option<NameLinkRun>>) {
+    // Ссылка-имя, начинающаяся с `i`: (открывающий тег, узел-имя, закрывающий).
+    let name_link_at = |segs: &[Segment], i: usize| -> Option<(String, String, String)> {
+        let (Segment::Literal { text: open }, Some(Segment::Text { lead, stripped, trail }), Some(Segment::Literal { text: close })) =
+            (&segs[i], segs.get(i + 1), segs.get(i + 2))
+        else {
+            return None;
+        };
+        let href = link_href(open)?;
+        let closes_a = matches!(parse_literal_tag(close), Some((n, true, _)) if n == "a");
+        // Слаг (`sweet-folders`) не склеивается: под заполнителем живая
+        // модель обрубает фразу на нём («…представленных в sweet-folders
+        // виде.» вместо «…как показано на втором скриншоте», замер 08.11), а
+        // одинокий слаг и так не переводится.
+        let slug = stripped.contains('-') || stripped.contains('_');
+        (closes_a && !slug && is_name_link(stripped, &href))
+            .then(|| (open.clone(), format!("{lead}{stripped}{trail}"), close.clone()))
+    };
+
+    let mut out: Vec<Segment> = Vec::with_capacity(segments.len());
+    let mut runs: Vec<Option<NameLinkRun>> = Vec::with_capacity(segments.len());
+    let mut env = CodeEnvStack::new();
+    let mut i = 0usize;
+    while i < segments.len() {
+        let link = if env.in_code() { None } else { name_link_at(&segments, i) };
+        let Some((open, name, close)) = link else {
+            if let Segment::Literal { text } = &segments[i] {
+                env.feed_literal(text);
+            }
+            out.push(segments[i].clone());
+            runs.push(None);
+            i += 1;
+            continue;
+        };
+        let before = matches!(out.last(), Some(Segment::Text { .. }));
+        let after = matches!(segments.get(i + 3), Some(Segment::Text { .. }));
+        if !before && !after {
+            out.extend(segments[i..i + 3].iter().cloned());
+            runs.extend([None, None, None]);
+            i += 3;
+            continue;
+        }
+        // Начало склейки: прежний узел (или уже склеенная фраза) либо пусто.
+        let (lead, mut run) = match (before, out.last().cloned()) {
+            (true, Some(Segment::Text { lead, stripped, trail })) => {
+                out.pop();
+                let prev = runs.pop().flatten();
+                let run = match prev {
+                    Some(mut run) => {
+                        run.parts.push(LinkPart::Text(trail));
+                        run
+                    }
+                    None => NameLinkRun { parts: vec![LinkPart::Text(format!("{stripped}{trail}"))] },
+                };
+                (lead, run)
+            }
+            _ => (String::new(), NameLinkRun::default()),
+        };
+        run.parts.push(LinkPart::Link { open, name, close });
+        let mut trail = String::new();
+        i += 3;
+        if let Some(Segment::Text { lead: l, stripped: s, trail: t }) = segments.get(i) {
+            run.parts.push(LinkPart::Text(format!("{l}{s}")));
+            trail = t.clone();
+            i += 1;
+        }
+        // Склеенный узел: `stripped` — то, что увидит движок (без краевых
+        // пробелов), сами пробелы — в `lead`/`trail`, как у обычного узла.
+        let plain = run.plain();
+        let body = plain.trim();
+        let inner_lead = &plain[..plain.len() - plain.trim_start().len()];
+        let inner_trail = &plain[plain.trim_end().len()..];
+        // Краевые пробелы фразы уже внутри кусков: срезаем их и там.
+        trim_run_edges(&mut run);
+        out.push(Segment::Text {
+            lead: format!("{lead}{inner_lead}"),
+            stripped: body.to_string(),
+            trail: format!("{inner_trail}{trail}"),
+        });
+        runs.push(Some(run));
+    }
+    (out, runs)
+}
+
+/// Срезать краевые пробелы склеенной фразы в её первом и последнем куске —
+/// они вынесены в `lead`/`trail` узла.
+fn trim_run_edges(run: &mut NameLinkRun) {
+    if let Some(LinkPart::Text(t)) = run.parts.first_mut() {
+        *t = t.trim_start().to_string();
+    }
+    if let Some(LinkPart::Text(t)) = run.parts.last_mut() {
+        *t = t.trim_end().to_string();
+    }
+}
+
+/// Признаки «звать движок» для склеенных узлов: как
+/// [`translatable_flags_by_sentence`], плюс текст ссылки-имени, оставшейся
+/// без соседей, — не проза никогда.
+pub fn translatable_flags_with_links(
+    segments: &[Segment],
+    sentences: &dyn Fn(&str) -> Vec<String>,
+) -> Vec<bool> {
+    let mut flags = translatable_flags_by_sentence(segments, sentences);
+    for i in 0..segments.len().saturating_sub(2) {
+        if let (Segment::Literal { text: open }, Segment::Text { stripped, .. }) =
+            (&segments[i], &segments[i + 1])
+        {
+            if link_href(open).is_some_and(|href| is_name_link(stripped, &href)) {
+                flags[i + 1] = false;
+            }
+        }
+    }
+    flags
+}
+
+/// Сборка строки из склеенных узлов: перевод склеенной фразы получает теги
+/// ссылок обратно, а без перевода (или если имя не уцелело) встаёт исходная
+/// разметка. Остальное — как [`render_segments_with_flags`].
+pub fn render_folded(
+    segments: &[Segment],
+    flags: &[bool],
+    runs: &[Option<NameLinkRun>],
+    translate: impl Fn(&str) -> String,
+) -> String {
+    let mut out = String::new();
+    for (i, seg) in segments.iter().enumerate() {
+        match seg {
+            Segment::Literal { text } => out.push_str(text),
+            Segment::Text { lead, stripped, trail } => {
+                let res = if flags[i] { translate(stripped) } else { String::new() };
+                out.push_str(lead);
+                match &runs[i] {
+                    Some(run) => {
+                        let linked = (!res.is_empty()).then(|| run.relink(&res)).flatten();
+                        out.push_str(&linked.unwrap_or_else(|| run.markup()));
+                    }
+                    None if res.is_empty() => out.push_str(stripped),
+                    None => out.push_str(&res),
+                }
+                out.push_str(trail);
+            }
+        }
+    }
+    out
 }
 
 // Пробельные символы `[\t\n\r\f ]` из регэкспов html.parser (ASCII-набор).

@@ -528,6 +528,77 @@ pub fn restart_after_install(installed_now: bool, was_present: bool, in_use: boo
     installed_now && was_present && in_use
 }
 
+// ── тихое освежение уже установленного плагина ──────────────────────────
+//
+// Дефект 12.11.2026: Rexon обновил вшитый движок до waywallen 0.6.0 и
+// плагин в бандле до 0.4.5, а у человека в `~/.local/share/plasma/…`
+// остался плагин от 06.10. Плагин освежался только при применении обоев в
+// KDE; человек работал в GNOME/MATE, и при входе в Plasma старый плагин с
+// новым демоном повесил plasmashell (окна есть, ни панели, ни стола).
+// Поэтому уже УСТАНОВЛЕННЫЙ плагин освежается и при старте Rexon, и после
+// обновления движка — на любом рабочем столе (kpackagetool6 работает и вне
+// Plasma). НЕ установленный не ставится: это дело применения обоев в KDE.
+
+/// Что делать с установленным плагином при старте и после обновления движка.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefreshDecision {
+    /// Плагина у человека нет — не ставим (его ставит применение обоев в KDE).
+    NotInstalled,
+    /// Рантайм совпадает с бандлом (или сторож версии считает их одним) — ничего.
+    UpToDate,
+    /// Нет kpackagetool6 — пропускаем, пишем в журнал.
+    NoTool,
+    /// Бандла нет или он без metadata.json — обновлять нечем.
+    NoBundle,
+    /// Обновить: `kpackagetool6 -u` тем же конвейером [`install_or_upgrade`].
+    Upgrade,
+    /// Сторож версии против (установленный новее, чужой неизвестной версии,
+    /// бандл не подходит к демону) — не трогаем молча.
+    Skip(PluginAction),
+}
+
+impl RefreshDecision {
+    /// Нужен ли запуск kpackagetool6.
+    pub fn upgrades(self) -> bool {
+        self == RefreshDecision::Upgrade
+    }
+}
+
+/// Решить, освежать ли установленный плагин. Чистая функция: состояние ФС
+/// (`check`), наличие инструмента и годность бандла подаёт исполнитель.
+///
+/// Порядок дешёвый: сначала «есть ли плагин» и сверка хэшей рантайма —
+/// при старте Rexon в обычном случае дальше дело не идёт. Решение «новее /
+/// старее / чужой» — за общим сторожем версии [`plan_plugin`] (без согласия
+/// человека: молча ставим только то, что поставили бы и при применении).
+pub fn refresh_decision(check: &PluginCheck, tool_found: bool, bundle_valid: bool) -> RefreshDecision {
+    if !check.installed.present {
+        return RefreshDecision::NotInstalled;
+    }
+    if check.bundle_sha.is_some() && check.installed.runtime_sha == check.bundle_sha {
+        return RefreshDecision::UpToDate;
+    }
+    if !tool_found {
+        return RefreshDecision::NoTool;
+    }
+    if !bundle_valid {
+        return RefreshDecision::NoBundle;
+    }
+    let silent = PluginCheck { consent: false, ..check.clone() };
+    match plan_plugin(&silent).action {
+        PluginAction::Upgrade | PluginAction::Install => RefreshDecision::Upgrade,
+        PluginAction::Keep => RefreshDecision::UpToDate,
+        other => RefreshDecision::Skip(other),
+    }
+}
+
+/// Перезапускать ли plasmashell после тихого освежения: только на KDE и
+/// только по общему правилу [`restart_after_install`] (обновили плагин,
+/// который сейчас стоит обоями). Вне Plasma оболочки нет — нечего и трогать.
+pub fn refresh_restarts(is_kde_now: bool, installed_now: bool, in_use: bool) -> bool {
+    is_kde_now && restart_after_install(installed_now, true, in_use)
+}
+
 /// Как отправить кадр запроса.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApplyGate {
@@ -613,7 +684,8 @@ pub fn no_displays_hint(setup: crate::wallpaper_backend::DisplaySetup) -> String
              and press “Apply” or “Play playlist” — Rexon will put them on the Plasma desktop by \
              itself.",
         ),
-        DisplaySetup::RexonHost => crate::i18n::tr(
+        // GNOME: расширение waywallen Rexon включает сам — те же слова.
+        DisplaySetup::RexonHost | DisplaySetup::GnomeExtension => crate::i18n::tr(
             "Wallpaper Engine wallpapers are not on the desktop yet. Pick a wallpaper or a playlist \
              and press “Apply” or “Play playlist” — Rexon will put them on the desktop by itself.",
         ),
@@ -1004,6 +1076,9 @@ pub fn parse_vendor_version(text: &str) -> Option<String> {
 /// остаются у тех, кто ставил прежние пакеты. Незнакомый хэш — версия
 /// неизвестна, а не «старая».
 pub const KNOWN_RUNTIME_SHA: &[(&str, &str)] = &[
+    // 0.4.5 — релиз апстрима `waywallen-kde-0.4.5-x86_64.zip` (с 08.11.2026
+    // едет в пакете; с этого выпуска у архива нет суффикса «-embed»).
+    ("4d90629e44055113", "0.4.5"),
     // 0.4.3 — релиз апстрима `waywallen-kde-0.4.3-x86_64-embed.zip` (с
     // 23.10.2026 едет в пакете; посчитано по архиву выпуска).
     ("5981949590228ee7", "0.4.3"),
@@ -1042,7 +1117,7 @@ pub fn version_from_runtime_sha(sha: &str) -> Option<&'static str> {
 /// 19.10.2026 — константа та же, провод не менялся, правки только внутри
 /// библиотеки: синхронизация кадров EGL, #76; v0.4.3 сверен 23.10.2026 —
 /// константа та же, добавлено только необязательное «tagged»-поле роли
-/// дисплея).
+/// дисплея; v0.4.4 и v0.4.5 сверены 08.11.2026 — константа та же, v9).
 pub const PLUGIN_DISPLAY_PROTOCOLS: &[(&str, u32)] = &[
     ("0.4.0", 9),
     ("0.3.0", 8),
@@ -1055,17 +1130,17 @@ pub const PLUGIN_DISPLAY_PROTOCOLS: &[(&str, u32)] = &[
 
 /// До какой версии плагина таблица выше проверена. Новее — протокол не
 /// угадываем (у нового выпуска он мог смениться).
-pub const PLUGIN_PROTOCOLS_CHECKED_UP_TO: &str = "0.4.3";
+pub const PLUGIN_PROTOCOLS_CHECKED_UP_TO: &str = "0.4.5";
 
 /// Какие протоколы вывода принимает демон waywallen данной версии
 /// (`MIN/MAX_SUPPORTED_CLIENT_VERSION`), по убыванию версий. Снято с тегов
 /// апстрима `waywallen` 02.10.2026, v0.4.4 сверен 09.10.2026, v0.5.0 —
-/// 23.10.2026 (по-прежнему `[9..=9]`). Ниже 0.3.0 не записано (там диапазон шире и для нас
+/// 23.10.2026, v0.6.0 — 08.11.2026 (по-прежнему `[9..=9]`). Ниже 0.3.0 не записано (там диапазон шире и для нас
 /// неинтересен) — вердикта нет.
 pub const DAEMON_DISPLAY_PROTOCOLS: &[(&str, u32, u32)] = &[("0.4.0", 9, 9), ("0.3.0", 8, 8)];
 
 /// До какой версии демона таблица выше проверена.
-pub const DAEMON_PROTOCOLS_CHECKED_UP_TO: &str = "0.5.0";
+pub const DAEMON_PROTOCOLS_CHECKED_UP_TO: &str = "0.6.0";
 
 fn version_key(v: &str) -> Vec<u128> {
     let mut t = crate::engine_update::ver_tuple(v);

@@ -103,15 +103,17 @@ UI_DIR = os.path.join(VENDOR_DIR, "ui")
 #: Наша патч-серия поверх вендора (накладывается по возрастанию имени).
 PATCH_DIR = os.path.join(VENDOR_DIR, "patches")
 
-#: Что берём с апстрима побайтово. Каталог `ui/qml` целиком плюс отдельные
-#: файлы: каталоги переводов (каждый компилируется в свой
-#: `waywallen_<язык>.qm`; немецкий у апстрима с 0.5.0) и ровно те два
-#: файла `assets`, которые апстрим кладёт в свой QML-модуль (`resources` в
-#: build.lua) — остальное его `assets` читает пакет, а не QML.
+#: Что берём с апстрима побайтово. Каталог `ui/qml` целиком плюс: каталог
+#: переводов `ui/i18n` ЦЕЛИКОМ (каждый `.ts` компилируется в свой
+#: `waywallen_<язык>.qm`) и ровно те два файла `assets`, которые апстрим
+#: кладёт в свой QML-модуль (`resources` в build.lua) — остальное его
+#: `assets` читает пакет, а не QML. Переводы — каталогом, а не списком
+#: языков: список с ru и de 08.11.2026 потерял китайский, который у
+#: апстрима был с 0.5.0 (сторож — `vendor_has_every_upstream_catalog` в
+#: rust/rexon-core/tests/remote_l10n_parity.rs).
 UPSTREAM_TREE = "ui/qml"
 UPSTREAM_FILES = (
-    "ui/i18n/waywallen_de.ts",
-    "ui/i18n/waywallen_ru.ts",
+    "ui/i18n",
     "ui/assets/waywallen-ui.svg",
     "ui/assets/waywallen-ui.releases.xml",
 )
@@ -638,11 +640,62 @@ def _carry_qmltypes(stage_ui: str, ref: str) -> list[str]:
         shutil.copy2(live, os.path.join(stage_ui, QMLTYPES_NAME))
         print(f"[qmltypes] опись C++-типов тега {tag} — из дерева")
         return []
+    if tag and _qmltypes_from_appimage(tag, os.path.join(stage_ui, QMLTYPES_NAME)):
+        return []
     _eprint(f"[qmltypes] НЕТ описи C++-типов для {tag or ref}: собрать "
             f"waywallen-ui этого тега (lito build -p waywallen-ui) и положить "
             f"build/<профиль>/generated/waywallen-ui/lito-qml/waywallen/ui/"
             f"{QMLTYPES_NAME} в {os.path.relpath(UI_DIR, _REPO)}/")
     return [QMLTYPES_NAME]
+
+
+#: Где в AppImage выпуска лежит опись модуля интерфейса (с waywallen 0.6.0
+#: модуль `waywallen.ui` ставится файлами — waywallen#346).
+APPIMAGE_QMLTYPES = "usr/share/qml/waywallen/ui/" + QMLTYPES_NAME
+
+
+def _qmltypes_from_appimage(tag: str, dest: str) -> bool:
+    """Достать `module.qmltypes` тега из официального AppImage выпуска.
+
+    Собирать waywallen-ui ради одной описи не нужно: тот же файл лежит в
+    образе выпуска. Образ — `$REXON_WAYWALLEN_APPIMAGE`, иначе
+    `~/.cache/rexon/waywallen-<версия>-x86_64.AppImage` (нет — скачивается
+    с выпуска GitHub). Файл вынимается `unsquashfs` по смещению образа, сам
+    образ не запускается (кроме `--appimage-offset` его загрузчика).
+    """
+    version = tag[1:] if tag.startswith("v") else tag
+    image = os.environ.get("REXON_WAYWALLEN_APPIMAGE") or os.path.expanduser(
+        f"~/.cache/rexon/waywallen-{version}-x86_64.AppImage")
+    if not os.path.isfile(image):
+        url = (f"https://github.com/waywallen/waywallen/releases/download/"
+               f"{tag}/waywallen-{version}-x86_64.AppImage")
+        try:
+            import urllib.request
+            os.makedirs(os.path.dirname(image), exist_ok=True)
+            print(f"[qmltypes] качаю {url}")
+            urllib.request.urlretrieve(url, image + ".part")
+            os.replace(image + ".part", image)
+            os.chmod(image, 0o755)
+        except Exception as e:  # сеть, нет выпуска
+            _eprint(f"[qmltypes] образ выпуска {tag} не получен: {e}")
+            return False
+    try:
+        offset = subprocess.run([image, "--appimage-offset"], capture_output=True,
+                                text=True, timeout=30, check=True).stdout.strip()
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "x")
+            subprocess.run(["unsquashfs", "-q", "-o", offset, "-d", out, image,
+                            APPIMAGE_QMLTYPES], capture_output=True, timeout=120,
+                           check=True)
+            got = os.path.join(out, APPIMAGE_QMLTYPES)
+            if not os.path.isfile(got):
+                return False
+            shutil.copy2(got, dest)
+    except (OSError, subprocess.SubprocessError) as e:
+        _eprint(f"[qmltypes] из образа {image} не достать: {e}")
+        return False
+    print(f"[qmltypes] опись C++-типов тега {tag} — из AppImage выпуска ({image})")
+    return True
 
 
 def _walk_rel(root: str) -> set[str]:

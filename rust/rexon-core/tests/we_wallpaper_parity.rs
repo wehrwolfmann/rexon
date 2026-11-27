@@ -79,6 +79,8 @@ fn full_entry() -> pb::WallpaperEntry {
         // waywallen 0.4.4: флаг «скрыта». В карту QML не идёт — разметка
         // v0.4.3 его не читает; приедет с приёмом разметки v0.4.4.
         hidden: false,
+        update_available: false,
+        sub_type: 0,
     }
 }
 
@@ -114,6 +116,9 @@ fn entry_map_keys_match_qt_protobuf_gadget_properties() {
         "webUrl",
         // waywallen 0.4.4: признак «скрыта».
         "hidden",
+        // waywallen 0.6.0: обновление в источнике и подтип записи.
+        "updateAvailable",
+        "subType",
     ];
     expected.sort_unstable();
     assert_eq!(keys, expected);
@@ -950,6 +955,14 @@ fn entry_map_carries_hidden_flag_and_layout_flip() {
     });
     let m = w::entry_to_map(&e);
     assert_eq!(m.get("hidden"), Some(&Value::Bool(true)));
+    // waywallen 0.6.0: значок обновления и подтип «таймлайн» — как у гаджета.
+    assert_eq!(m.get("updateAvailable"), Some(&Value::Bool(false)));
+    assert_eq!(m.get("subType"), Some(&json!(0)));
+    e.update_available = true;
+    e.sub_type = pb::WallpaperSubType::Timeline as i32;
+    let m = w::entry_to_map(&e);
+    assert_eq!(m.get("updateAvailable"), Some(&Value::Bool(true)));
+    assert_eq!(m.get("subType"), Some(&json!(1)));
     assert_eq!(
         m["wallpaperLayoutOverride"].get("flip"),
         Some(&json!(pb::Flip::Horizontal as i32))

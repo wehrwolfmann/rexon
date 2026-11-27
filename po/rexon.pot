@@ -736,6 +736,7 @@ msgstr ""
 msgid "🐧 The boot splash is already the default one (%1)."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/app.rs
 msgid ""
 "🐧 Boot splash: “%1” → “%2” (rebuilding the initramfs; takes effect after a "
@@ -759,12 +760,14 @@ msgstr ""
 msgid "🖥️ The login screen (SDDM) already has the standard settings."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/app.rs
 msgid ""
 "🖥️ Login screen (SDDM): removing third-party settings [%1] → it goes back to "
 "“%2”."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/app.rs
 msgid ""
 "🖥️ Login screen (SDDM): removing third-party settings [%1] → it goes back to "
@@ -890,6 +893,10 @@ msgstr ""
 msgid "No apps available for %1"
 msgstr ""
 
+#: rust/rexon-core/src/appdefaults.rs rust/rexon-core/src/compliance.rs
+msgid "ℹ️ Terminal: %1 (%2 isn't installed)"
+msgstr ""
+
 #: rust/rexon-core/src/appdefaults.rs
 msgid "ℹ️ COSMIC: default apps via XDG MIME (no gsettings)"
 msgstr ""
@@ -946,7 +953,30 @@ msgid "Switches default applications for the current desktop environment"
 msgstr ""
 
 #: rust/rexon-core/src/appdefaults_exec.rs
+msgid ""
+"🔒 Autostart %1 now runs only in %2: in other desktops it took over the "
+"keyboard layouts"
+msgstr ""
+
+#: rust/rexon-core/src/appdefaults_exec.rs
 msgid "Couldn't write %1: %2"
+msgstr ""
+
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+#: rust/rexon-core/src/appdefaults_exec.rs rust/rexon-core/src/compliance.rs
+msgid "✅ Fixed: terminal → %1"
+msgstr ""
+
+#: rust/rexon-core/src/appdefaults_exec.rs
+msgid "📝 Created %1"
+msgstr ""
+
+#: rust/rexon-core/src/appdefaults_exec.rs rust/rexon-core/src/compliance.rs
+msgid "✅ Terminal: %1"
+msgstr ""
+
+#: rust/rexon-core/src/appdefaults_exec.rs
+msgid "✅ %1 already exists"
 msgstr ""
 
 #: rust/rexon-core/src/appdefaults_exec.rs
@@ -960,14 +990,6 @@ msgstr ""
 #. TRANSLATORS: %1 is a desktop environment id (kde, gnome…).
 #: rust/rexon-core/src/appdefaults_exec.rs
 msgid "🖥️ Current desktop: %1"
-msgstr ""
-
-#: rust/rexon-core/src/appdefaults_exec.rs
-msgid "✅ %1 already exists"
-msgstr ""
-
-#: rust/rexon-core/src/appdefaults_exec.rs
-msgid "📝 Created %1"
 msgstr ""
 
 #: rust/rexon-core/src/appdefaults_exec.rs
@@ -1041,10 +1063,11 @@ msgid ""
 "leaving it alone"
 msgstr ""
 
+#. TRANSLATORS: %1 is a file manager (caja, thunar…). Rexon didn't close it because it has open windows.
 #: rust/rexon-core/src/appdefaults_exec.rs
 msgid ""
-"⚠️ %1 (pid %2) took over “Show in Folder”, but it has open windows — not "
-"closing it so your work isn't lost"
+"⚠️ “Show in Folder” is opened by %1 right now. Close its windows and run this "
+"again, or log out and back in"
 msgstr ""
 
 #: rust/rexon-core/src/appdefaults_exec.rs
@@ -1079,6 +1102,13 @@ msgstr ""
 
 #: rust/rexon-core/src/appearance_installer.rs
 msgid "“%1” skipped: a different theme with this name is already installed"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_installer.rs
+#: rust/rexon-core/src/ext_manager.rs
+msgid ""
+"“%1” skipped: this is the shared icon set of all programs, a theme must not "
+"replace it"
 msgstr ""
 
 #: rust/rexon-core/src/appearance_installer.rs
@@ -1136,6 +1166,7 @@ msgid ""
 "usr is read-only)."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/appearance_installer.rs
 msgid ""
 "Plasma Login Manager (Plasma 6.6+) is active, and it doesn't support SDDM "
@@ -2055,6 +2086,7 @@ msgid "In favorites: %1"
 msgstr ""
 
 #: rust/rexon-core/src/appearance_page.rs
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid "Updated: %1"
 msgstr ""
 
@@ -2231,6 +2263,40 @@ msgstr ""
 
 #: rust/rexon-core/src/appearance_page.rs
 msgid "Refresh catalog"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs rust/rexon-core/src/qt_settings.rs
+msgid "⚙️ Settings"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid ""
+"Fonts of the interface, terminal, menus and window titles, text smoothing "
+"and font DPI"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid ""
+"Icons in menus and on buttons, text on toolbar buttons — in all applications"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+#: rust/rexon-gui/qml/LaunchFeedbackSection.qml
+msgid "How the pointer and the task bar show that an application is starting."
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Animations inside applications"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid "Title bar buttons: which ones, on which side and in what order"
+msgstr ""
+
+#: rust/rexon-core/src/appearance_page.rs
+msgid ""
+"Turn on and set up the effects KWin already has: magic lamp, translucency, "
+"blur and others"
 msgstr ""
 
 #: rust/rexon-core/src/appearance_page.rs
@@ -2775,6 +2841,14 @@ msgid ""
 "previous one finishes."
 msgstr ""
 
+#: rust/rexon-core/src/aur_install.rs rust/rexon-core/src/system_plan.rs
+msgid "✅ already installed: %1"
+msgstr ""
+
+#: rust/rexon-core/src/aur_install.rs rust/rexon-core/src/system_plan.rs
+msgid "⬇️  Downloading packages…"
+msgstr ""
+
 #: rust/rexon-core/src/aur_trust.rs
 msgid "Couldn't load PKGBUILD: %1"
 msgstr ""
@@ -3160,7 +3234,7 @@ msgstr ""
 msgid "Folder with Razer Axon wallpapers"
 msgstr ""
 
-#: rust/rexon-core/src/axon_library.rs
+#: rust/rexon-core/src/axon_library.rs rust/rexon-core/src/conky_procs.rs
 msgid "📂 Open folder"
 msgstr ""
 
@@ -3228,6 +3302,111 @@ msgstr ""
 #. original encrypted file, %3 — failures.
 #: rust/rexon-core/src/axon_prepare.rs
 msgid "Descriptions restored: %1 (with original files: %2). Failed: %3."
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Sort by name"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Sort by date added"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Wallpaper titles"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Tags"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Dynamic"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Static"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Interactive"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Favorites"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Premiums"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Rewards"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Audio-enabled"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "AI wallpaper"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Search wallpapers"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Sort"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Type"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Clear"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Recently added"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "AVAILABLE FOR SYNC"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "No items"
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "No wallpapers found."
+msgstr ""
+
+#: rust/rexon-core/src/axon_window.rs
+msgctxt "Razer Axon"
+msgid "Clear filter"
 msgstr ""
 
 #. TRANSLATORS: goes after a colon inside a restore failure message, hence lowercase.
@@ -3502,44 +3681,13 @@ msgctxt "appearance section"
 msgid "Favorites"
 msgstr ""
 
-#: rust/rexon-core/src/categories.rs
-#: rust/rexon-gui/qml/WindowButtonsSection.qml
-msgid "Window title bar buttons"
-msgstr ""
-
-#: rust/rexon-core/src/categories.rs
-#: rust/rexon-gui/qml/LaunchFeedbackSection.qml
-msgid "Launch feedback"
-msgstr ""
-
-#: rust/rexon-core/src/categories.rs rust/rexon-gui/qml/AppWidgetsSection.qml
-msgid "Icons and toolbars in applications"
-msgstr ""
-
 #: rust/rexon-core/src/categories.rs rust/rexon-gui/qml/AnimationsSection.qml
 msgid "Animation"
 msgstr ""
 
 #: rust/rexon-core/src/categories.rs
-#: rust/rexon-gui/qml/DesktopEffectsSection.qml
-msgid "Desktop effects"
-msgstr ""
-
-#: rust/rexon-core/src/categories.rs
 #: rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgid "Screen effects"
-msgstr ""
-
-#. TRANSLATORS: link in the Settings tab to a section that moved; %1 is the section name.
-#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-#: rust/rexon-core/src/categories.rs
-msgid "Appearance → %1"
-msgstr ""
-
-#: rust/rexon-core/src/categories.rs
-msgid ""
-"These settings have moved to the Appearance tab — where KDE System Settings "
-"keeps them too."
 msgstr ""
 
 #: rust/rexon-core/src/categories.rs
@@ -3978,6 +4126,12 @@ msgstr ""
 msgid "bring back the Plasma look that Rexon set aside after a crash"
 msgstr ""
 
+#. TRANSLATORS: `rexon --help`, explains the --gamemode-preflight option.
+#: rust/rexon-core/src/cli.rs
+msgid ""
+"check which video card game mode will show the picture on (changes nothing)"
+msgstr ""
+
 #. TRANSLATORS: `rexon --help`, explains the --sanitize-gtk option.
 #: rust/rexon-core/src/cli.rs
 msgid "fix links to deleted themes in GTK settings"
@@ -4296,17 +4450,9 @@ msgstr ""
 msgid "🖥️ Checking the default terminal..."
 msgstr ""
 
-#: rust/rexon-core/src/compliance.rs
-msgid "✅ Terminal: %1"
-msgstr ""
-
 #. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/compliance.rs
 msgid "✅ Fixed: %1 → %2"
-msgstr ""
-
-#: rust/rexon-core/src/compliance.rs
-msgid "ℹ️ Terminal: %1 (%2 isn't installed)"
 msgstr ""
 
 #: rust/rexon-core/src/compliance.rs
@@ -4435,11 +4581,6 @@ msgstr ""
 
 #: rust/rexon-core/src/compliance.rs
 msgid "🖥️ Checking the %1 terminal..."
-msgstr ""
-
-#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-#: rust/rexon-core/src/compliance.rs
-msgid "✅ Fixed: terminal → %1"
 msgstr ""
 
 #: rust/rexon-core/src/compliance.rs
@@ -4942,6 +5083,20 @@ msgstr ""
 
 #: rust/rexon-core/src/conky_procs.rs
 msgid "Remove from the desktop (the widget stays installed)"
+msgstr ""
+
+#: rust/rexon-core/src/conky_procs.rs
+msgid "Open the widget's folder in the file manager"
+msgstr ""
+
+#: rust/rexon-core/src/conky_procs.rs
+msgid "📝 Open settings file"
+msgstr ""
+
+#: rust/rexon-core/src/conky_procs.rs
+msgid ""
+"Open the widget's settings file in your text editor. Restart the widget to "
+"see your changes."
 msgstr ""
 
 #: rust/rexon-core/src/conky_safety.rs rust/rexon-core/src/plugin_journal.rs
@@ -5508,6 +5663,7 @@ msgstr ""
 msgid "Light and dark: sunset to sunrise"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/day_night.rs
 msgid ""
 "In Plasma, Rexon hands the global theme switch to Plasma itself (System "
@@ -5617,6 +5773,7 @@ msgstr ""
 msgid "Choose…"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/dde.rs
 msgid ""
 "In the Deepin Wayland session (Treeland) this is set only by Deepin's "
@@ -5624,6 +5781,7 @@ msgid ""
 "Personalization."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/dde.rs
 msgid ""
 "Rexon supports Deepin only on Treeland. To switch, open Rexon → Desktops → "
@@ -5636,6 +5794,7 @@ msgid ""
 "selected there."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/dde.rs
 msgid ""
 "Deepin's Control Center didn't take the wallpaper — set it in Control Center "
@@ -6120,6 +6279,7 @@ msgid ""
 "deepin-kwin) is still %3."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/deepin_treeland.rs
 msgid ""
 "The Treeland session keeps working on the old build. To update it, open "
@@ -6367,6 +6527,12 @@ msgstr ""
 msgid ""
 "The wallpaper of %1 is turned off at your request, and the background is "
 "drawn by Rexon. “Return to Shell” turns it back on."
+msgstr ""
+
+#: rust/rexon-core/src/distro_compat.rs
+msgid ""
+"This distribution builds its own packages: some desktop environments may be "
+"missing from its repositories."
 msgstr ""
 
 #: rust/rexon-core/src/distro_compat.rs
@@ -7314,6 +7480,7 @@ msgid ""
 "so the login screen background was not changed."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/ext_manager.rs
 msgid ""
 "Deepin's account service didn't take the login screen background — set it in "
@@ -7344,6 +7511,145 @@ msgstr ""
 #. TRANSLATORS: type of an extension whose own type is unknown.
 #: rust/rexon-core/src/extension.rs rust/rexon-core/src/qt_extensions.rs
 msgid "Extension"
+msgstr ""
+
+#. TRANSLATORS: game mode check, one line per video card. %1 = "card1 (0000:06:00.0, 1002:15bf, amdgpu)", %2 = connected screens like "eDP-1".
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "Video card %1: connected screens: %2"
+msgstr ""
+
+#. TRANSLATORS: game mode check result. %1 = "1002:15bf", %2 = "card1".
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"Game mode will draw on the card with the screen: VULKAN_ADAPTER=%1 (%2)."
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"VULKAN_ADAPTER=%1 points to a card without a screen or to no card at all; "
+"using %2 (%3) instead."
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "One video card: nothing to choose."
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "VULKAN_ADAPTER already points to the card with the screen."
+msgstr ""
+
+#. TRANSLATORS: game mode check result. %1 = the VULKAN_ADAPTER value the user set.
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "VULKAN_ADAPTER=%1 is set by you; left as it is."
+msgstr ""
+
+#. TRANSLATORS: game mode check result. %1 = "1002:15bf".
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"Two video cards have the same id %1, they can't be told apart; nothing "
+"changed."
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "No video cards found."
+msgstr ""
+
+#. TRANSLATORS: game mode check warning. %1 = variables like "__VK_LAYER_NV_optimus=NVIDIA_only".
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"These settings hide video cards from games and gamescope, the screen may "
+"stay black: %1"
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"No screen is connected to any video card: game mode would show a black "
+"screen."
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"The screen is on the NVIDIA card, but nvidia_drm.modeset is off: game mode "
+"can't show a picture."
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"VULKAN_ADAPTER=%1 in environment.d points to a card without a screen: game "
+"mode would show a black screen."
+msgstr ""
+
+#. TRANSLATORS: game mode watcher. %1 = DRM node like "/dev/dri/card2".
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"gamescope opened the video card %1, which has no screen connected: the "
+"screen is black."
+msgstr ""
+
+#. TRANSLATORS: game mode watcher. %1 = the gamescope log line.
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "gamescope could not turn the screen on: %1"
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "gamescope did not pick a screen in time."
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "Steam did not show any window in time."
+msgstr ""
+
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "Steam did not finish starting in time."
+msgstr ""
+
+#. TRANSLATORS: game mode watcher, check run without a real session.
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "Check only: the session is left running."
+msgstr ""
+
+#. TRANSLATORS: game mode watcher, the session is being ended.
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"Ending the game mode session: you will get back to the login screen, choose "
+"your desktop there."
+msgstr ""
+
+#. TRANSLATORS: game mode watcher. %1 = connector like "eDP-1".
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "gamescope picked the screen %1."
+msgstr ""
+
+#. TRANSLATORS: game mode watcher. %1 = seconds.
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "Steam is on the screen after %1 s."
+msgstr ""
+
+#. TRANSLATORS: game mode, five short sessions in a row.
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "Game mode stopped right after the start five times in a row."
+msgstr ""
+
+#. TRANSLATORS: %1 = path of the gamescope-session-plus script.
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid ""
+"gamescope-session-plus is not installed or has changed (%1): the game mode "
+"guard can't be set up."
+msgstr ""
+
+#. TRANSLATORS: %1 = path of the user's own sessions.d/steam file.
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "%1 is your own file: Rexon doesn't touch it."
+msgstr ""
+
+#. TRANSLATORS: %1 = path of the file Rexon wrote.
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "Game mode guard is set up: %1"
+msgstr ""
+
+#. TRANSLATORS: game mode guard file was removed (or there was none).
+#: rust/rexon-core/src/gamemode_guard.rs
+msgid "Game mode guard is removed."
 msgstr ""
 
 #: rust/rexon-core/src/global_save.rs
@@ -7579,6 +7885,10 @@ msgctxt "decimal separator"
 msgid "."
 msgstr ""
 
+#: rust/rexon-core/src/icon_hygiene.rs
+msgid "Icon protection: a truncated %1 was hiding system icons — renamed to %2"
+msgstr ""
+
 #. TRANSLATORS: file type group in the “Import Windows theme” file dialog.
 #: rust/rexon-core/src/importers.rs
 msgid "Themes and Styles"
@@ -7676,7 +7986,7 @@ msgid ""
 "cursors: %1"
 msgstr ""
 
-#: rust/rexon-core/src/importers.rs
+#: rust/rexon-core/src/importers.rs rust/rexon-core/src/installed_scan.rs
 msgid "Imported from Windows"
 msgstr ""
 
@@ -7835,6 +8145,11 @@ msgstr ""
 
 #: rust/rexon-core/src/installed_scan.rs
 msgid "🗂️ Installed manually"
+msgstr ""
+
+#. TRANSLATORS: badge on a cursor theme tile: the theme was converted from Windows cursors.
+#: rust/rexon-core/src/installed_scan.rs
+msgid "🪟 From Windows"
 msgstr ""
 
 #: rust/rexon-core/src/installed_scan.rs
@@ -8150,6 +8465,7 @@ msgid ""
 "login screen if the system has none) without your confirmation."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/installer.rs
 msgid ""
 "How to undo: uninstall Rexon from its menu (%1 → “%2”) — the permission is "
@@ -10077,6 +10393,7 @@ msgstr ""
 msgid "<b>How to read the table</b>"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid ""
 "<b>Memory</b> — how much it takes right after login (depends on the "
@@ -10093,29 +10410,29 @@ msgstr ""
 msgid "🎯 Quick Recommendations"
 msgstr ""
 
-#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🎮 For gamers"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Minimal overhead → XFCE or KDE"
 msgstr ""
 
-#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "💻 Low-end hardware"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Under 2 GB of RAM → MATE or XFCE"
 msgstr ""
 
-#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🎨 For eye candy fans"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Animations and widgets → KDE Plasma"
 msgstr ""
@@ -10129,20 +10446,20 @@ msgstr ""
 msgid "Simple out of the box → Cinnamon or GNOME"
 msgstr ""
 
-#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "🔧 For power users"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "Full customization → KDE Plasma"
 msgstr ""
 
-#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "⚡ Maximum speed"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_compare.rs
 msgid "The fastest one → XFCE"
 msgstr ""
@@ -10532,6 +10849,10 @@ msgid "✅ Installed"
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
+msgid "⚠️ Partially installed"
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
 msgid "❌ Not installed"
 msgstr ""
 
@@ -10612,6 +10933,16 @@ msgid ""
 msgid_plural ""
 "🔄 %n packages have an update: %1 — it will come with the regular system "
 "update."
+msgstr[0] ""
+msgstr[1] ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"🛠 %n package is your own build, newer than the repository: %1 — Rexon leaves "
+"it as is."
+msgid_plural ""
+"🛠 %n packages are your own builds, newer than the repository: %1 — Rexon "
+"leaves them as is."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -10755,15 +11086,38 @@ msgid ""
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"The picture is smoother, without tearing, and sharper on high-resolution "
+"screens."
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name.
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "For %1 it's still experimental: some applets and settings may not work."
+msgstr ""
+
+#. TRANSLATORS: %1 is a program name (labwc, Wayfire).
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"Windows there are handled by %1, so some of the usual window settings won't "
+"apply."
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
 msgid "X11 — proven"
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
-msgid "Wayland — experimental, from the AUR"
+msgid "Wayland — newer"
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
-msgid "Wayland — newer"
+msgid "Both (choose on the login screen)"
+msgstr ""
+
+#. TRANSLATORS: %1 is a session option such as "Wayland — newer".
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "%1 ⚠️ from the AUR"
 msgstr ""
 
 #. TRANSLATORS: %1 is a session option such as "X11 — proven".
@@ -10773,14 +11127,21 @@ msgid "%1 (recommended)"
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
-msgid "How the desktop will run"
+msgid "Not available: installing from the AUR needs yay or paru."
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
 msgid ""
-"%1 can also run on Wayland, but that version exists only in the AUR, and to "
-"install from there Rexon needs yay or paru. For now %1 will be installed in "
-"the proven X11 version."
+"This is how the desktop has worked for years: everything is familiar and "
+"everything works. The best choice for older computers."
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Install both versions and choose on the login screen."
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "How the desktop will run"
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
@@ -10802,16 +11163,16 @@ msgid ""
 "resolution screens."
 msgstr ""
 
-#. TRANSLATORS: %1 is a program name (labwc, Wayfire).
 #: rust/rexon-core/src/qt_desktops.rs
 msgid ""
-"Windows there are handled by %1, so some of the usual window settings won't "
-"apply."
+"The X11 version stays too: you can choose either one on the login screen."
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
 msgid ""
-"The X11 version stays too: you can choose either one on the login screen."
+"%1 can also run on Wayland, but that version exists only in the AUR, and to "
+"install from there Rexon needs yay or paru. For now %1 will be installed in "
+"the proven X11 version."
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
@@ -10826,8 +11187,45 @@ msgstr ""
 msgid "On the login screen, choose the “%1” session."
 msgstr ""
 
+#. TRANSLATORS: %1 and %2 are session names as the login screen shows them.
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "On the login screen, choose the “%1” or “%2” session."
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs rust/rexon-core/src/system.rs
+msgid "X11 + Wayland (experimental)"
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs rust/rexon-core/src/system.rs
+msgid "X11 + Wayland"
+msgstr ""
+
+#. TRANSLATORS: %1 is a list of sessions, e.g. "X11 + Wayland".
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Sessions: %1"
+msgstr ""
+
+#. TRANSLATORS: %1 is a session, e.g. "X11" or "Wayland (experimental)".
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Session: %1"
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Wayland (experimental)"
+msgstr ""
+
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "➕ Add the Wayland version"
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "➕ Add the X11 version"
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid ""
+"%1 can also run on X11 — the proven version. Rexon can add it, and the "
+"Wayland version will stay."
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
@@ -10847,15 +11245,27 @@ msgid "Add the Wayland version?"
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
-msgid "Rexon will ask for the administrator password."
-msgstr ""
-
-#: rust/rexon-core/src/qt_desktops.rs
 msgid "Adding Wayland to %1"
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
 msgid "The Wayland version of <b>%1</b> is installed."
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Add the X11 version?"
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Adding X11 to %1"
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "The X11 version of <b>%1</b> is installed."
+msgstr ""
+
+#: rust/rexon-core/src/qt_desktops.rs
+msgid "Rexon will ask for the administrator password."
 msgstr ""
 
 #: rust/rexon-core/src/qt_desktops.rs
@@ -11642,6 +12052,42 @@ msgid "Full"
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
+msgctxt "font rendering preset"
+msgid "Monochrome"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "No smoothing, full hinting: sharp pixel-exact letters"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgctxt "font rendering preset"
+msgid "Best shapes"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Grayscale smoothing, medium hinting: letters closest to their drawing"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgctxt "font rendering preset"
+msgid "Best contrast"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Grayscale smoothing, full hinting: the sharpest smoothed text"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgctxt "font rendering preset"
+msgid "Subpixel smoothing (LCDs)"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Sub-pixel smoothing, slight hinting: the clearest text on flat screens"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
 msgid "Family only"
 msgstr ""
 
@@ -11688,6 +12134,7 @@ msgstr ""
 msgid "The monospace font stays %1: the chosen one isn't monospaced"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
 "In the Plasma Wayland session fonts follow the display scale: change it in "
@@ -11857,6 +12304,7 @@ msgid "Who the new font is for"
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
 msgid "Remove"
 msgstr ""
 
@@ -13312,8 +13760,8 @@ msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid ""
-"The look of the Rexon app itself (window colors). This is NOT the KDE system "
-"theme — only Rexon's own look changes."
+"The look of the Rexon app itself (window colors). Your desktop's theme stays "
+"as it is — only Rexon's own look changes."
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
@@ -13423,16 +13871,6 @@ msgid ""
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
-msgid "🌽 MATE: Desktop Icons"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid ""
-"Manage icons on the MATE desktop (Caja). Handy when Rexon wallpaper is on "
-"and the icons get in the way"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
 msgid "🔤 System Fonts"
 msgstr ""
 
@@ -13476,10 +13914,6 @@ msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
 msgid "Rexon — Settings"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid "⚙️ Settings"
 msgstr ""
 
 #. TRANSLATORS: button in a question dialog.
@@ -14119,39 +14553,6 @@ msgid "⚠️ Could not switch event sounds"
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
-msgid "✅ Show Icons"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid "⏹️ Hide Icons"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid "🔄 Restart Caja"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid "⚠️ MATE settings are unavailable"
-msgstr ""
-
-#. TRANSLATORS: %1 is “turned on” or “turned off”.
-#: rust/rexon-core/src/qt_settings.rs
-msgid "✅ Desktop icons %1"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid "🔄 Caja restarted"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid "⚠️ Could not switch MATE desktop icons"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
-msgid "⚠️ Could not restart the Caja desktop"
-msgstr ""
-
-#: rust/rexon-core/src/qt_settings.rs
 msgid "<i>(default)</i>"
 msgstr ""
 
@@ -14188,6 +14589,10 @@ msgstr ""
 #. TRANSLATORS: abbreviation of “points”, the unit of font size.
 #: rust/rexon-core/src/qt_settings.rs
 msgid "pt"
+msgstr ""
+
+#: rust/rexon-core/src/qt_settings.rs
+msgid "Quick choice:"
 msgstr ""
 
 #: rust/rexon-core/src/qt_settings.rs
@@ -14449,6 +14854,11 @@ msgstr ""
 
 #: rust/rexon-core/src/qt_steam.rs rust/rexon-gui/qml/SteamShowcaseSection.qml
 msgid "🖼️ Profile Showcases"
+msgstr ""
+
+#: rust/rexon-core/src/qt_steam.rs
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "🌙 Screensaver"
 msgstr ""
 
 #: rust/rexon-core/src/qt_steam.rs
@@ -15977,6 +16387,18 @@ msgid ""
 "“%1”."
 msgstr ""
 
+#. TRANSLATORS: Screen effects on KDE Plasma: the person already uses Plasma's color filter for color blindness. "System Settings → Accessibility" is the KDE place, keep it as KDE translates it; arrows ← → point the way they should in your language: in right-to-left languages swap them.
+#: rust/rexon-core/src/screen_effects.rs
+msgid ""
+"Plasma's color filter is already in use for color blindness correction. "
+"Rexon won't replace it: turn it off in System Settings → Accessibility first."
+msgstr ""
+
+#. TRANSLATORS: Toast after screen effects were changed on COSMIC, which reads the setting only at login.
+#: rust/rexon-core/src/screen_effects.rs
+msgid "COSMIC will apply this the next time you log in."
+msgstr ""
+
 #. TRANSLATORS: Toast after screen effects were changed.
 #: rust/rexon-core/src/screen_effects.rs
 msgid "Screen effects applied."
@@ -16691,10 +17113,113 @@ msgstr ""
 msgid "couldn't replace %1: %2"
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/steam_screensaver.rs
 msgid ""
 "In Steam Big Picture open Settings → Customization → Screensaver and choose "
-"«Rexon (User Created)». Steam keeps your choice; Rexon never changes it."
+"«rexon (User Created)». Steam keeps your choice; Rexon never changes it."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Slideshow"
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Artwork of your recently played games and your screenshots take turns."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Bouncing logo"
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "A logo floats across the screen and bounces off the edges."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Rexon logo"
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Changes colour every time it hits an edge."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Logos of your games"
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "After each bounce off an edge the next recently played game is shown."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Steam (Flatpak)"
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Steam was not found on this computer — install Steam and start it once."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "✅ Installed. No pictures were found, so the bouncing logo is shown."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "✅ Installed — %n picture."
+msgid_plural "✅ Installed — %n pictures."
+msgstr[0] ""
+msgstr[1] ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid ""
+"Steam already has another screensaver called «Rexon». Rexon did not make it "
+"and leaves it alone."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "⚪ Not installed yet."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid ""
+"No game artwork or screenshots were found in Steam yet. Play a game or take "
+"a screenshot (F12) — until then the screensaver shows the bouncing logo."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "%n game picture"
+msgid_plural "%n game pictures"
+msgstr[0] ""
+msgstr[1] ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "%n screenshot"
+msgid_plural "%n screenshots"
+msgstr[0] ""
+msgstr[1] ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Found in your Steam: %1 and %2."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Steam was not found on this computer."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "The screensaver is ready. Now choose it in Steam — see the steps below."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "The screensaver was not installed — there was nothing to remove."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "The screensaver was removed from Steam."
+msgstr ""
+
+#: rust/rexon-core/src/steam_screensaver.rs
+msgid "Not in the list? Close Steam completely and start it again."
 msgstr ""
 
 #: rust/rexon-core/src/steam_showcase.rs
@@ -16887,6 +17412,7 @@ msgid ""
 "author complains."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/steam_showcase.rs
 msgid ""
 "Open Edit Profile → Featured Showcase, add \"Artwork Showcase\" and pick the "
@@ -16897,12 +17423,14 @@ msgstr ""
 msgid "Upload the file and give it a clear title."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/steam_showcase.rs
 msgid ""
 "Open Edit Profile → Featured Showcase, add \"Featured Artwork Showcase\" and "
 "pick the uploaded file."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/steam_showcase.rs
 msgid ""
 "Note: by default Steam may show a tall picture shrunk or with black bars. "
@@ -16997,6 +17525,7 @@ msgstr ""
 msgid "The profile is private — there is nothing to read."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/steam_showcase.rs
 msgid ""
 "Open Edit Profile → Privacy Settings in Steam and set \"My profile\" to "
@@ -17234,14 +17763,6 @@ msgid "High"
 msgstr ""
 
 #: rust/rexon-core/src/system.rs
-msgid "X11 + Wayland"
-msgstr ""
-
-#: rust/rexon-core/src/system.rs
-msgid "X11 + Wayland (experimental)"
-msgstr ""
-
-#: rust/rexon-core/src/system.rs
 msgid "X11 + Wayland (experimental, AUR)"
 msgstr ""
 
@@ -17320,6 +17841,14 @@ msgstr ""
 msgid ""
 "🏞️ A dynamic tiling Wayland compositor: windows are grouped by tags instead "
 "of workspaces"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name (UKUI). Rexon recognizes the session but can't install this desktop or change its own settings yet.
+#: rust/rexon-core/src/system.rs
+msgid ""
+"Rexon doesn't support the %1 desktop yet: it can't install it or change its "
+"own settings. Wallpapers, themes, cursors and fonts work as on any other "
+"desktop."
 msgstr ""
 
 #: rust/rexon-core/src/system.rs
@@ -17403,6 +17932,50 @@ msgid "%1 + %2 from the AUR"
 msgstr ""
 
 #: rust/rexon-core/src/system_de_exec.rs
+msgid "🔍 Checking: %n package"
+msgid_plural "🔍 Checking: %n packages"
+msgstr[0] ""
+msgstr[1] ""
+
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "✅ The main packages are all in place — nothing to install"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "✅ %1 checked — everything is in place"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "✅ %1 checked — the missing parts are installed"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "⚠️ %1 checked, but not everything could be installed — see above"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "✅ Default apps for %1 are set"
+msgstr ""
+
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "✅ Your default apps are in place"
+msgstr ""
+
+#. TRANSLATORS: %1 is an app kind with its icon, e.g. “🗂️ File Manager”.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "%1: your choice is back"
+msgstr ""
+
+#. TRANSLATORS: %1 is a comma-separated list of desktop environment names.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "✅ File associations saved for: %1"
+msgstr ""
+
+#: rust/rexon-core/src/system_de_exec.rs
 msgid "Post-install setup didn't fully finish: %1"
 msgstr ""
 
@@ -17424,6 +17997,26 @@ msgstr ""
 
 #: rust/rexon-core/src/system_de_exec.rs
 msgid "Couldn't restore the default apps: %1"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "📦 Adding the Wayland version of %1…"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "📦 Adding the X11 version of %1…"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name, %2 is the session name on the login screen.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "✅ The Wayland version of %1 is added — choose “%2” on the login screen"
+msgstr ""
+
+#. TRANSLATORS: %1 is a desktop environment name, %2 is the session name on the login screen.
+#: rust/rexon-core/src/system_de_exec.rs
+msgid "✅ The X11 version of %1 is added — choose “%2” on the login screen"
 msgstr ""
 
 #. TRANSLATORS: %1 is a desktop environment name.
@@ -17635,16 +18228,6 @@ msgstr ""
 #: rust/rexon-core/src/system_de_exec.rs
 msgid ""
 "⚠️ The system-wide schema override from older versions is still there: %1"
-msgstr ""
-
-#: rust/rexon-core/src/system_de_exec.rs
-msgid "⏭️ %1: no installed apps"
-msgstr ""
-
-#. TRANSLATORS: %1 desktop id, %2 “created”/“updated”, %3 entry count, %4 file path.
-#. Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-#: rust/rexon-core/src/system_de_exec.rs
-msgid "✅ %1: %2 (%3 entries) → %4"
 msgstr ""
 
 #: rust/rexon-core/src/system_de_exec.rs
@@ -19287,6 +19870,13 @@ msgid "Here the login screen is switched by %1, and Rexon can't do it yet."
 msgstr ""
 
 #: rust/rexon-core/src/system_plan.rs
+msgid ""
+"Couldn't download the packages: the package servers didn't respond. The "
+"internet connection may have dropped.\n"
+"Nothing was changed — check the connection and try again."
+msgstr ""
+
+#: rust/rexon-core/src/system_plan.rs
 msgctxt "pacman action"
 msgid "Installing"
 msgstr ""
@@ -19309,6 +19899,10 @@ msgstr ""
 #: rust/rexon-core/src/system_plan.rs
 msgctxt "pacman action"
 msgid "Downgrading"
+msgstr ""
+
+#: rust/rexon-core/src/system_plan.rs
+msgid "🔍 (%1/%2) Checking the packages…"
 msgstr ""
 
 #: rust/rexon-core/src/system_plan.rs
@@ -19352,11 +19946,7 @@ msgid "🌐 no longer asking mirror %1 for the rest of this installation"
 msgstr ""
 
 #: rust/rexon-core/src/system_plan.rs
-msgid "✅ already installed: %1"
-msgstr ""
-
-#: rust/rexon-core/src/system_plan.rs
-msgid "⬇️  Downloading packages…"
+msgid "🔧 (%1/%2) Finishing the installation…"
 msgstr ""
 
 #: rust/rexon-core/src/system_plan.rs
@@ -19559,11 +20149,11 @@ msgid "🎨 Checking the Ubuntu MATE themes (Yaru-MATE)…"
 msgstr ""
 
 #: rust/rexon-core/src/system_plan.rs
-msgid "🔔 Checking the Ayatana indicator stack…"
+msgid "🔔 Checking the status icons in the panel (Ayatana)…"
 msgstr ""
 
 #: rust/rexon-core/src/system_plan.rs
-msgid "📋 Checking vala-panel-appmenu (global menu)…"
+msgid "📋 Checking the global menu in the panel (vala-panel-appmenu)…"
 msgstr ""
 
 #: rust/rexon-core/src/system_plan.rs
@@ -20344,6 +20934,7 @@ msgstr ""
 msgid "Light neutral colors (dark text on a white background)."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-core/src/ui_base.rs
 msgid ""
 "Neon retro: a purple→blue gradient, pink/green/cyan accents, neon borders "
@@ -20471,9 +21062,9 @@ msgstr ""
 msgid "If you don't use it, Rexon can remove it."
 msgstr ""
 
-#. TRANSLATORS: In a desktop notification about a package that no longer gets updates.
+#. TRANSLATORS: In a desktop notification about a package that no longer gets updates; %1 is the label of the “Check Now” button in Rexon settings.
 #: rust/rexon-core/src/update_guard.rs
-msgid "If you don't use it, open Rexon to remove it."
+msgid "If you don't use it, remove it in Rexon settings with “%1”."
 msgstr ""
 
 #. TRANSLATORS: %1 and %2 are session names as shown on the login screen, e.g. "Plasma (X11)" and "Plasma (Wayland)".
@@ -22493,6 +23084,18 @@ msgid ""
 "from the application menu; details are in the log: %1"
 msgstr ""
 
+#: rust/rexon-gui/src/steam_screensaver_actions.rs
+msgid "Already working — please wait."
+msgstr ""
+
+#: rust/rexon-gui/src/steam_screensaver_actions.rs
+msgid "Install the screensaver first."
+msgstr ""
+
+#: rust/rexon-gui/src/steam_screensaver_actions.rs
+msgid "Could not open the browser."
+msgstr ""
+
 #: rust/rexon-gui/src/steam_showcase_actions.rs
 msgid "A video background needs ffmpeg to take a frame from it."
 msgstr ""
@@ -22505,6 +23108,7 @@ msgstr ""
 msgid "This background has no picture to show."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-gui/src/steam_showcase_actions.rs
 msgid ""
 "Could not open the Steam page. Open it by hand: Profile → Artwork → Upload."
@@ -22515,6 +23119,7 @@ msgid ""
 "The Steam page is open, but the folder with the parts could not be shown."
 msgstr ""
 
+#. TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
 #: rust/rexon-gui/src/steam_showcase_actions.rs
 msgid ""
 "Could not open the Steam page. Open it by hand: your profile → Edit Profile "
@@ -22610,6 +23215,10 @@ msgid "Defaults"
 msgstr ""
 
 #: rust/rexon-gui/qml/AppWidgetsSection.qml
+msgid "Icons and toolbars in applications"
+msgstr ""
+
+#: rust/rexon-gui/qml/AppWidgetsSection.qml
 msgid "Show icons in menus"
 msgstr ""
 
@@ -22634,6 +23243,10 @@ msgid "Deepin windows"
 msgstr ""
 
 #: rust/rexon-gui/qml/DesktopEffectsSection.qml
+msgid "Desktop effects"
+msgstr ""
+
+#: rust/rexon-gui/qml/DesktopEffectsSection.qml
 msgid ""
 "Effects of the KWin window manager. Window and desktop animations are in the "
 "Animation section."
@@ -22648,7 +23261,7 @@ msgid "No effects found."
 msgstr ""
 
 #: rust/rexon-gui/qml/LaunchFeedbackSection.qml
-msgid "How the pointer and the task bar show that an application is starting."
+msgid "Launch feedback"
 msgstr ""
 
 #: rust/rexon-gui/qml/LaunchFeedbackSection.qml
@@ -22802,6 +23415,82 @@ msgstr ""
 #: rust/rexon-gui/qml/ScreenEffectsSection.qml
 msgctxt "screen effect"
 msgid "Revert"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid ""
+"Rexon makes a screensaver for Steam Big Picture: Steam shows it when you "
+"leave your Steam Deck, Steam Machine, TV or computer idle for a while. It "
+"shows the artwork of your recently played games and your screenshots, or a "
+"bouncing logo."
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Show:"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Game artwork"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "My screenshots"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Next picture every:"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "%1 s"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Looking for pictures in Steam…"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Logo:"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Show the clock"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Update Screensaver"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Install Screensaver"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Collects fresh artwork and screenshots and applies the settings above."
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "👁️ Preview"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Opens the screensaver in your web browser."
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Click again to remove"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Preparing the pictures…"
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "Press «Update Screensaver» to apply the changes."
+msgstr ""
+
+#: rust/rexon-gui/qml/SteamScreensaverSection.qml
+msgid "How to turn it on in Steam"
 msgstr ""
 
 #: rust/rexon-gui/qml/SteamShowcaseSection.qml
@@ -23001,6 +23690,10 @@ msgstr ""
 
 #: rust/rexon-gui/qml/WindowButtonsSection.qml
 msgid "Buttons:"
+msgstr ""
+
+#: rust/rexon-gui/qml/WindowButtonsSection.qml
+msgid "Window title bar buttons"
 msgstr ""
 
 #: rust/rexon-gui/qml/WindowButtonsSection.qml

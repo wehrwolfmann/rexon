@@ -1627,6 +1627,10 @@ fn a_manual_desktop_choice_is_labelled_and_can_be_reset() {
     // Сеанс не опознан — сравнивать не с чем.
     assert!(ap::de_picker_choices("kde", "").iter().all(|(id, _)| id != ap::DE_AUTO_ID));
 
+    // Узнанный, но неподдержанный стол сеанса — его именем, не сырым id.
+    let ukui = ap::de_picker_choices("kde", "ukui");
+    assert_eq!(ukui[0], (ap::DE_AUTO_ID.to_string(), "Определять автоматически (UKUI)".to_string()));
+
     // Что делать по выбору пункта: (стол каталога, что запомнить как выбор).
     // «Автоматически» — стол сеанса и пустой выбор: `initial_de` дальше
     // сам идёт за сеансом.

@@ -45,6 +45,10 @@ pub struct DistroInfo {
     pub warnings: &'static [&'static str],
 }
 
+/// Предупреждение дистрибутивов со своим репозиторием (openKylin, Kylin OS).
+const OWN_REPOS_WARNING: &str =
+    n_("This distribution builds its own packages: some desktop environments may be missing from its repositories.");
+
 /// `DISTRO_INFO`: os-release ID → информация. Порядок вставки важен для
 /// `get_supported_*_distros` (итерируют `DISTRO_INFO.items()`).
 pub const DISTRO_INFO: &[(&str, DistroInfo)] = &[
@@ -129,13 +133,36 @@ pub const DISTRO_INFO: &[(&str, DistroInfo)] = &[
         has_de_repos: true,
         warnings: &[],
     }),
+    // Ключ не из os-release: у Ubuntu Kylin `ID=ubuntu`, а узнаётся она по
+    // `NAME="Ubuntu Kylin"` (его вписывает пакет ubuntukylin-default-settings),
+    // см. [`info_key`]. До 13.11.2026 запись искалась по ID и была недостижима.
     ("ubuntukylin", DistroInfo {
         name: "Ubuntu Kylin",
         family: PkgFamily::Debian,
         country: "CN",
-        notes: "Официальный флейвор Ubuntu. ID=ubuntu. Рабочий стол UKUI.",
+        notes: "Официальный флейвор Ubuntu. ID=ubuntu, узнаётся по NAME=\"Ubuntu Kylin\". Рабочий стол UKUI.",
         has_de_repos: true,
         warnings: &[],
+    }),
+    ("openkylin", DistroInfo {
+        name: "openKylin",
+        family: PkgFamily::Debian,
+        country: "CN",
+        notes: "ID=openkylin без ID_LIKE. apt/dpkg, но репозиторий свой (не Debian). Рабочий стол UKUI.",
+        has_de_repos: true,
+        warnings: &[OWN_REPOS_WARNING],
+    }),
+    // Kylin OS (银河麒麟): `ID=kylin` у настольной редакции на Debian/Ubuntu и
+    // у серверной на RPM, поэтому семейство в таблице не задано
+    // (`Unknown`) — его решает менеджер пакетов машины
+    // (`system::DistroDetector::family` по бинарникам).
+    ("kylin", DistroInfo {
+        name: "Kylin OS",
+        family: PkgFamily::Unknown,
+        country: "CN",
+        notes: "ID=kylin у двух редакций: настольная на Debian/Ubuntu, серверная на RPM. Семейство — по менеджеру пакетов. Рабочий стол UKUI.",
+        has_de_repos: true,
+        warnings: &[OWN_REPOS_WARNING],
     }),
     ("boss", DistroInfo {
         name: "BOSS Linux (Bharat OS)",
@@ -226,6 +253,20 @@ pub struct Detector {
     pub name: String,
 }
 
+/// Ключ записи `DISTRO_INFO` для детектора. Обычно это os-release `ID`.
+/// Исключение — флейвор, у которого ID родителя: Ubuntu Kylin несёт
+/// `ID=ubuntu`, и отличает её только `NAME="Ubuntu Kylin"` (пакет
+/// ubuntukylin-default-settings переписывает NAME и PRETTY_NAME).
+pub fn info_key(detector: &Detector) -> &str {
+    let named = |needle: &str| {
+        detector.name.to_lowercase().contains(needle) || detector.pretty_name.to_lowercase().contains(needle)
+    };
+    if detector.distro_id == "ubuntu" && named("kylin") {
+        return "ubuntukylin";
+    }
+    &detector.distro_id
+}
+
 /// Расширенная проверка совместимости дистрибутива — порт класса
 /// `DistroCompat`. Держит данные детектора и найденную запись `DISTRO_INFO`.
 pub struct DistroCompat {
@@ -234,9 +275,9 @@ pub struct DistroCompat {
 }
 
 impl DistroCompat {
-    /// Создать из детектора: `info = DISTRO_INFO.get(distro_id)`.
+    /// Создать из детектора: запись `DISTRO_INFO` по [`info_key`].
     pub fn new(detector: Detector) -> Self {
-        let info = lookup(DISTRO_INFO, &detector.distro_id).copied();
+        let info = lookup(DISTRO_INFO, info_key(&detector)).copied();
         Self { detector, info }
     }
 
@@ -352,7 +393,10 @@ impl DistroCompat {
             return format!("ℹ️ {}", self.detector.pretty_name);
         };
         let name = i.name;
-        let family = i.family.as_str();
+        // Семейство не задано таблицей (Kylin OS: одна ID у Debian- и
+        // RPM-редакции) — берём то, что нашёл детектор на машине.
+        let family = if i.family == PkgFamily::Unknown { self.detector.family } else { i.family };
+        let family = family.as_str();
         if !i.has_de_repos {
             // TRANSLATORS: compatibility badge; %1 is the distribution name.
             return format!("⚠️ {}", trf("%1 (limited repositories)", &[&name]));

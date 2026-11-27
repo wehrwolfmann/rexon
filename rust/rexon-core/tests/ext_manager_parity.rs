@@ -531,3 +531,67 @@ fn lightdm_background_follows_the_greeter() {
     assert_eq!(staged_category(&web), None);
     assert!(web.iter().any(|s| matches!(s, ExtStep::Notice { text } if text.contains("lightdm-webkit2-greeter"))));
 }
+
+// ============================================================================
+// Общий набор значков `hicolor` пакет не ставит
+// ============================================================================
+
+/// Пакет значков (курсоров) с подпапками `hicolor`/`locolor` рядом со своей
+/// темой: тема ставится, общие наборы — нет (заметка), даже когда их
+/// каталогов в профиле ещё нет. Иначе `index.theme` пакета перекрыл бы
+/// системный и спрятал значки всего стола (дефект 09.11.2026).
+#[test]
+fn rxn_never_installs_shared_hicolor() {
+    rexon_core::i18n::set_language(Some(rexon_core::i18n::SOURCE_LANGUAGE));
+    for kind in ["theme-icons", "theme-cursors"] {
+        let fs = FsSnap::from_json(&json!({
+            "dirs": {
+                "/x/ext/data": ["MyIcons", "hicolor", "locolor"],
+                "/x/ext/data/MyIcons": ["index.theme"],
+                "/x/ext/data/hicolor": ["index.theme"],
+                "/x/ext/data/locolor": [],
+            },
+            "files": {
+                "/x/ext/data/MyIcons/index.theme": {"size": 30, "text": "[Icon Theme]\nName=My\nDirectories=apps\n"},
+                "/x/ext/data/hicolor/index.theme": {"size": 40, "text": "[Icon Theme]\nName=Hicolor\nDirectories=48x48/apps\n"},
+            },
+        }));
+        let tmp = TmpAlloc::new("/tmp/rexon_plan_t");
+        let which = |_: &str| None;
+        let run_ok = |_: &[String]| false;
+        let env = ExtEnv {
+            home: "/home/w",
+            fs: &fs,
+            which: &which,
+            run_ok: &run_ok,
+            xdg_current_desktop: "",
+            xdg_session_type: "wayland",
+            wayland_display: true,
+            stage_helper_available: false,
+            system_helper_path: "/usr/lib/rexon-system-helper",
+            system_helper_exists: false,
+            helper_family: "arch",
+            tmp: &tmp,
+        };
+        let manifest = json!({"id": "my-icons", "name": "My", "type": kind});
+        let ext = ExtInfo { dir: "/x/ext", manifest: manifest.as_object().unwrap() };
+        let steps = safe_install_plan(&env, &ext);
+        let dests: Vec<&str> = steps
+            .iter()
+            .filter_map(|s| match s {
+                ExtStep::CopyTree { dest, .. } => Some(dest.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(dests, ["/home/w/.local/share/icons/MyIcons"], "{kind}: {steps:?}");
+        let notes: Vec<&str> = steps
+            .iter()
+            .filter_map(|s| match s {
+                ExtStep::Notice { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(notes.len(), 2, "{kind}: {notes:?}");
+        assert!(notes.iter().all(|n| n.contains("shared icon set of all programs")), "{notes:?}");
+    }
+}

@@ -247,6 +247,11 @@ pub enum DisplaySetup {
     KdePlugin,
     /// X11: клиент вывода — хост обоев Rexon (`--mode waywallen`).
     RexonHost,
+    /// GNOME: вывод — расширение оболочки от waywallen
+    /// ([`WAYWALLEN_GNOME_EXT_ID`]); Rexon выключает его ради своих обоев
+    /// и включает по «Применить» ([`set_waywallen_gnome_display`]).
+    /// Чистым ответом бэкенда не бывает — только [`display_setup_for`].
+    GnomeExtension,
 }
 
 impl WallpaperBackend {
@@ -268,6 +273,217 @@ impl DisplaySetup {
     pub fn rexon_brings_display(self) -> bool {
         self != DisplaySetup::None
     }
+}
+
+// ── GNOME: расширение вывода waywallen и обои не от waywallen ───────────
+//
+// ⛔ Дефект 09.11.2026 (GNOME 51 Wayland, расширение waywallen 0.4.5): при
+// включённом расширении `org.waywallen.gnome@waywallen.io` и без живых
+// обоев стол ЧЁРНЫЙ — так задумано у них (`_showFallback`, «the desktop
+// keeps the disconnected fallback black»). Rexon, ставя картинку, снимал
+// рендереры waywallen и писал `picture-uri`, но картинку закрывала чёрная
+// заглушка расширения. То же — с видео, GIF и Flash через наше расширение
+// `rexon-wallpaper@rexon.app`: оба внедряются в один и тот же
+// `BackgroundManager`.
+//
+// Решение одно на все форматы: обои не от waywallen (их список —
+// `wallpaper_exec::yields_we_wallpapers`) выключают расширение waywallen,
+// обои waywallen (вкладка WE, «Применить» и плейлист) включают его
+// обратно — тем же путём придержки кадра, что у KDE и X11
+// ([`DisplaySetup::GnomeExtension`]): без расширения у демона ноль
+// дисплеев, и «Применить» иначе отказало бы (`NoDisplayRegistered`).
+// Вкл/выкл — вызовом самой оболочки по шине (`EnableExtension`), запасной
+// путь — список `enabled-extensions` общими сценариями `de_customization`
+// без потери чужих uuid.
+//
+// Другие столы: KDE — `plasma-apply-wallpaperimage` сам переключает
+// плагин стола на `org.kde.image`, конфликта нет; X11 — вывод waywallen
+// там наш хост (`RexonHost`), его заглушку здесь не решали.
+
+/// Расширение оболочки GNOME, которым waywallen показывает обои.
+pub const WAYWALLEN_GNOME_EXT_ID: &str = "org.waywallen.gnome@waywallen.io";
+
+/// Сеанс GNOME Shell (а не стол, который лишь приписывает `GNOME` к своему
+/// имени: `Budgie:GNOME`, `X-Cinnamon`, `Unity`, `Pantheon`).
+pub fn is_gnome_shell_session(xdg_current_desktop: &str) -> bool {
+    has_desktop(xdg_current_desktop, &["gnome"])
+        && !has_desktop(
+            xdg_current_desktop,
+            &["budgie", "budgie-desktop", "x-cinnamon", "cinnamon", "unity", "pantheon"],
+        )
+}
+
+/// Каталоги, где может лежать расширение `uuid`: пользовательский
+/// (`$XDG_DATA_HOME`, иначе `~/.local/share`) и системные из
+/// `$XDG_DATA_DIRS` (пусто — `/usr/local/share:/usr/share`) — порядок
+/// поиска самой оболочки.
+pub fn gnome_extension_dirs(uuid: &str, xdg_data_home: &str, home: &str, xdg_data_dirs: &str) -> Vec<String> {
+    let user = if xdg_data_home.trim().is_empty() {
+        format!("{}/.local/share", home.trim_end_matches('/'))
+    } else {
+        xdg_data_home.trim_end_matches('/').to_string()
+    };
+    let system = if xdg_data_dirs.trim().is_empty() { "/usr/local/share:/usr/share" } else { xdg_data_dirs };
+    std::iter::once(user.as_str())
+        .chain(system.split(':').map(|d| d.trim_end_matches('/')).filter(|d| !d.is_empty()))
+        .map(|base| format!("{base}/gnome-shell/extensions/{uuid}"))
+        .collect()
+}
+
+/// Как у демона появляется дисплей в ЭТОМ сеансе: ответ бэкенда, а на
+/// GNOME Shell с поставленным расширением waywallen — его включение.
+pub fn display_setup_for(
+    backend: WallpaperBackend,
+    xdg_current_desktop: &str,
+    waywallen_gnome_ext_installed: bool,
+) -> DisplaySetup {
+    if backend == WallpaperBackend::ShellExtension
+        && waywallen_gnome_ext_installed
+        && is_gnome_shell_session(xdg_current_desktop)
+    {
+        return DisplaySetup::GnomeExtension;
+    }
+    backend.display_setup()
+}
+
+/// Что вышло у [`set_waywallen_gnome_display`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GnomeDisplaySwitch {
+    /// Трогать нечего: не GNOME Shell, расширения нет или оболочка не
+    /// ответила. Молча — это не ошибка человека.
+    Skipped,
+    /// Расширение уже в нужном состоянии.
+    Already,
+    /// Переключили.
+    Switched,
+    /// Переключить не вышло (или включение без толку: ошибка, не та
+    /// версия, оболочка его ещё не загрузила).
+    Failed,
+}
+
+/// Наблюдения и действия для [`set_waywallen_gnome_display`].
+pub trait GnomeExtIo {
+    /// Переменная окружения (пусто — нет).
+    fn env(&self, name: &str) -> String;
+    /// Есть ли каталог.
+    fn is_dir(&self, path: &str) -> bool;
+    /// Запустить команду: stdout при коде 0, иначе `None`.
+    fn run(&self, argv: &[String]) -> Option<String>;
+}
+
+/// Каталог поставленного расширения waywallen, если есть.
+pub fn waywallen_gnome_ext_dir(io: &dyn GnomeExtIo) -> Option<String> {
+    gnome_extension_dirs(
+        WAYWALLEN_GNOME_EXT_ID,
+        &io.env("XDG_DATA_HOME"),
+        &io.env("HOME"),
+        &io.env("XDG_DATA_DIRS"),
+    )
+    .into_iter()
+    .find(|d| io.is_dir(d))
+}
+
+/// Включить (`on`) или выключить расширение вывода waywallen в GNOME.
+///
+/// Состояние спрашивается у самой оболочки
+/// ([`crate::wallpaper_engine::gnome_ext_info_argv`]): не ответила — сеанса
+/// GNOME Shell нет, ничего не трогаем.
+pub fn set_waywallen_gnome_display(io: &dyn GnomeExtIo, on: bool) -> GnomeDisplaySwitch {
+    use crate::wallpaper_engine::{gnome_ext_info_argv, parse_shell_ext_state, ShellExtState as S};
+    if !is_gnome_shell_session(&io.env("XDG_CURRENT_DESKTOP")) {
+        return GnomeDisplaySwitch::Skipped;
+    }
+    if waywallen_gnome_ext_dir(io).is_none() {
+        return GnomeDisplaySwitch::Skipped;
+    }
+    let state = parse_shell_ext_state("gnome", io.run(&gnome_ext_info_argv(WAYWALLEN_GNOME_EXT_ID)).as_deref());
+    match (state, on) {
+        (S::Unknown, _) => return GnomeDisplaySwitch::Skipped,
+        (S::Enabled, true) => return GnomeDisplaySwitch::Already,
+        // Не работает — и стол не закрывает.
+        (S::Disabled | S::Error | S::OutOfDate | S::NotLoaded, false) => return GnomeDisplaySwitch::Already,
+        _ => {}
+    }
+    // Сама оболочка (`EnableExtension`/`DisableExtension`): она же правит
+    // оба списка настроек. Свою правку `enabled-extensions` после
+    // `gnome-extensions` здесь делать нельзя — оболочка пишет списки
+    // позже, и две записи наперегонки оставляли расширение выключенным
+    // при «включено» в настройках (живьём 09.11.2026). Сценарий установки
+    // (`gnome_extension_enable_script`) тоже не годится: он пересобирает
+    // схемы чужого расширения, а под нагрузкой на диск это 5+ с.
+    // Шина не ответила — запасной путь: список настроек без чужих uuid.
+    let ok = io.run(&gnome_ext_toggle_argv(WAYWALLEN_GNOME_EXT_ID, on)).is_some_and(|out| out.contains("true"))
+        || {
+            use crate::de_customization::{gsettings_list_add_script, gsettings_list_remove_script};
+            let (schema, key, uuid) = ("org.gnome.shell", "enabled-extensions", WAYWALLEN_GNOME_EXT_ID);
+            let script = if on {
+                gsettings_list_add_script(schema, key, uuid, uuid)
+            } else {
+                gsettings_list_remove_script(schema, key, uuid)
+            };
+            io.run(&["sh".to_string(), "-c".to_string(), script]).is_some()
+        };
+    match (ok, state) {
+        // Включено, но дисплея сейчас не будет: сказать придержке «не
+        // вышло», чтобы она не ждала понапрасну.
+        (true, S::Error | S::OutOfDate | S::NotLoaded) if on => GnomeDisplaySwitch::Failed,
+        (true, _) => GnomeDisplaySwitch::Switched,
+        (false, _) => GnomeDisplaySwitch::Failed,
+    }
+}
+
+/// `EnableExtension`/`DisableExtension` у GNOME Shell; ответ — `(true,)`.
+pub fn gnome_ext_toggle_argv(uuid: &str, on: bool) -> Vec<String> {
+    let method = if on {
+        "org.gnome.Shell.Extensions.EnableExtension"
+    } else {
+        "org.gnome.Shell.Extensions.DisableExtension"
+    };
+    [
+        "gdbus", "call", "--session", "--dest", "org.gnome.Shell", "--object-path", "/org/gnome/Shell",
+        "--method", method, uuid,
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+
+/// Живые наблюдения для [`set_waywallen_gnome_display`].
+pub struct LiveGnomeExtIo;
+
+impl GnomeExtIo for LiveGnomeExtIo {
+    fn env(&self, name: &str) -> String {
+        std::env::var(name).unwrap_or_default()
+    }
+    fn is_dir(&self, path: &str) -> bool {
+        std::path::Path::new(path).is_dir()
+    }
+    fn run(&self, argv: &[String]) -> Option<String> {
+        crate::splash_exec::run_capture(argv, 20.0).filter(|o| o.rc == 0).map(|o| o.stdout)
+    }
+}
+
+/// То же на живом сеансе, с записью в журнал, когда что-то переключено.
+pub fn set_waywallen_gnome_display_live(on: bool) -> GnomeDisplaySwitch {
+    let res = set_waywallen_gnome_display(&LiveGnomeExtIo, on);
+    let what = if on { "включено" } else { "выключено" };
+    match res {
+        GnomeDisplaySwitch::Switched => {
+            crate::log_info!("gnome-display", "расширение вывода waywallen {what} ({WAYWALLEN_GNOME_EXT_ID})")
+        }
+        GnomeDisplaySwitch::Failed => crate::log_warn!(
+            "gnome-display",
+            "расширение вывода waywallen не {what}: {WAYWALLEN_GNOME_EXT_ID}"
+        ),
+        GnomeDisplaySwitch::Skipped | GnomeDisplaySwitch::Already => {}
+    }
+    res
+}
+
+/// Поставлено ли расширение вывода waywallen (живая проба ФС, без шины —
+/// годится для частых вызовов).
+pub fn waywallen_gnome_ext_installed_live() -> bool {
+    waywallen_gnome_ext_dir(&LiveGnomeExtIo).is_some()
 }
 
 /// Имя определения вывода у демона (поле `name`, видно в его журнале и в

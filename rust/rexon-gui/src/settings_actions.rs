@@ -422,13 +422,6 @@ pub mod qobject {
         #[cxx_name = "playSound"]
         fn play_sound(self: &SettingsActions, theme: &QString, event_id: &QString) -> QString;
 
-        // ── MATE ─────────────────────────────────────────────────────────
-
-        /// Иконки рабочего стола MATE: `on` / `off` / `restart`.
-        #[qinvokable]
-        #[cxx_name = "mateAction"]
-        fn mate_action(self: &SettingsActions, action: &QString) -> QString;
-
         // ── Системные шрифты ─────────────────────────────────────────────
 
         /// Выбрать системный шрифт: `system` / `mono` / `title`.
@@ -1145,7 +1138,6 @@ impl qobject::SettingsActions {
         QString::from(
             &json!({
                 "onboarding": onboarding_available,
-                "mate": de == "mate",
                 "plasma": plasma,
                 "aeroshell": aeroshell,
                 "deDisplay": qs::de_display(&de, &xdg, &session),
@@ -1631,6 +1623,23 @@ fn rendering_state(r: &qs::FontRendering) -> Value {
         "hinting": r.hinting,
         "subpixels": choices(qs::subpixel_choices()),
         "hintings": choices(qs::hinting_choices()),
+        // Готовые наборы MATE: каждый несёт свои значения целиком — кнопка
+        // отдаёт их тем же `setFontRendering`, что и ручная настройка.
+        "presets": qs::render_preset_choices()
+            .into_iter()
+            .filter_map(|(id, label, tip)| {
+                let p = qs::render_preset(id, r)?;
+                Some(json!({
+                    "id": id,
+                    "label": label,
+                    "tip": tip,
+                    "antialias": p.antialias,
+                    "subpixel": p.subpixel,
+                    "hinting": p.hinting,
+                }))
+            })
+            .collect::<Vec<Value>>(),
+        "preset": qs::render_preset_of(r).unwrap_or(""),
     })
 }
 
@@ -2392,12 +2401,19 @@ fn current_defaults() -> Vec<(String, Option<String>)> {
 /// Текущий терминал по умолчанию.
 ///
 /// Ленивость источников повторена за оригиналом дословно: непустая первая
-/// строка `xdg-terminals.list` конклюзивна, и ни `kdeglobals`, ни `gsettings`
-/// после неё не читаются. Решение принимает ядро.
+/// строка `<стол>-xdg-terminals.list` или `xdg-terminals.list` конклюзивна,
+/// и ни `kdeglobals`, ни `gsettings` после неё не читаются. Решение
+/// принимает ядро.
 fn current_terminal() -> Option<String> {
     let cfg = config_home();
-    let xdg_list = read_file(&format!("{cfg}/xdg-terminals.list"));
     let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    // Список своего стола `xdg-terminal-exec` читает раньше общего — его
+    // ответ и есть терминал, который откроется.
+    let xdg_list = defaults::effective_terminals_list(
+        rexon_core::appdefaults::terminals_list_filename(&desktop)
+            .and_then(|name| read_file(&format!("{cfg}/{name}"))),
+        read_file(&format!("{cfg}/xdg-terminals.list")),
+    );
 
     if let Some(content) = &xdg_list {
         if content.lines().next().is_some_and(|l| !l.trim().is_empty()) {
@@ -2790,6 +2806,8 @@ impl qobject::SettingsActions {
                         dx::complete_de_live(sink, token, &fixes)
                     }))
                     .ok();
+                    // Доустановка могла привести ещё один демон уведомлений.
+                    rexon_core::notifications_slot::sync_live();
                     deliver(&handle, move |object| object.finish_completeness(done));
                 });
             }
@@ -3484,23 +3502,6 @@ impl qobject::SettingsActions {
             )),
         };
         QString::from(&t1("snd.cannot_play", &problem))
-    }
-
-    // ── MATE ─────────────────────────────────────────────────────────────
-
-    fn mate_action(&self, action: &QString) -> QString {
-        let action = action.to_string();
-        // Команды MATE и проверка их итога — исполнитель ядра; слова ответа —
-        // ядро. Незнакомое действие отвечает внятно, а не молчит.
-        let reply = try_with_slot(&live_slot(), |exec| match action.as_str() {
-            "restart" => qs::caja_restart_result(exec.mate_restart_caja_desktop()),
-            "on" | "off" => {
-                let visible = action == "on";
-                qs::mate_icons_result(visible, exec.mate_set_desktop_icons(visible))
-            }
-            _ => t("mate.no_api"),
-        });
-        QString::from(&reply.unwrap_or_else(|| t("wp.busy")))
     }
 
     // ── Системные шрифты ─────────────────────────────────────────────────
@@ -4291,16 +4292,25 @@ impl qobject::SettingsActions {
             return;
         };
         let fingerprint = advice.fingerprint();
-        let actionable = ug::orphan_offer_live(&advice.findings) != ug::OrphanOffer::Nothing
-            || ug::rollback_offer_live(&advice).is_some();
-        // Уведомление звало «откройте Rexon, чтобы удалить / вернуть» — окно
-        // с кнопкой показывается и после него.
+        let rollback = ug::rollback_offer_live(&advice).is_some();
+        let removal = matches!(ug::orphan_offer_live(&advice.findings), ug::OrphanOffer::Remove(_));
+        // Откат после уведомления «откройте Rexon, чтобы вернуть» — окном;
+        // предложение удалить пакет без просьбы человека не всплывает
+        // (решение ядра, `update_guard::window_should_show`).
         if !ug::window_should_show(
             manual,
-            actionable,
+            rollback,
+            removal,
             ug::notice_seen_live(&fingerprint),
             ug::window_seen_live(&fingerprint),
         ) {
+            if removal && !manual {
+                rexon_core::log_info!(
+                    "update",
+                    "сирота без обновлений ({fingerprint}) — окно «Удалить» само не открываю, \
+                     о ней говорит уведомление; удалить — «Проверить сейчас» в настройках"
+                );
+            }
             return;
         }
         if !self.rust().op.phase.is_empty() {

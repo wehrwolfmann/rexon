@@ -501,11 +501,13 @@ pub fn save_dest(dir: &str, de: &str, content_type: Option<&str>) -> String {
 
 /// Имя файла на Wikimedia Commons для DE (`_filename_for_de`), None если нет.
 /// Квирк: для `cinnamon` (в отличие от `cinnamon-mint`) записи нет.
+/// У `niri` записи нет намеренно: на Commons единственный его снимок — с
+/// немецким интерфейсом, и запасной путь подменял бы им основной снимок.
 pub fn filename_for_de(de: &str) -> Option<&'static str> {
     let m: &[(&str, &str)] = &[
         ("kde", "KDE_neon_6_Breeze_Desktop_English.png"),
         ("gnome", "Fedora_Workstation_39_Desktop_English.png"),
-        ("xfce", "Xfce_4.18_in_Arch_Linux.png"),
+        ("xfce", "Xubuntu_24.04_LTS_default_desktop_-_English.png"),
         (
             "mate",
             "Ubuntu_MATE_24.04_LTS_default_desktop_-_English.png",
@@ -518,12 +520,11 @@ pub fn filename_for_de(de: &str) -> Option<&'static str> {
             "cosmic",
             "Pop!_OS_24.04_Alpha_7_default_desktop_-_English.png",
         ),
-        ("hyprland", "Hyprland_screen.png"),
+        ("hyprland", "Omarchy_Tokyo_Night_theme.png"),
         (
             "lxqt",
             "Lubuntu_24.04_LTS_default_desktop_-_English.jpg",
         ),
-        ("niri", "Screenshot_LXQt-Niri_2025-06-11.png"),
         ("sway", "Sway_1.4_Window_Manager.png"),
     ];
     m.iter().find(|(k, _)| *k == de).map(|(_, v)| *v)
@@ -544,7 +545,7 @@ pub const SCREENSHOT_URLS: &[(&str, &[&str])] = &[
         &[
             "https://cdn.xfce.org/about/screenshots/4.20-1.png",
             "https://cdn.xfce.org/about/screenshots/4.18-1.png",
-            "https://commons.wikimedia.org/wiki/Special:FilePath/Xfce_4.18_in_Arch_Linux.png",
+            "https://commons.wikimedia.org/wiki/Special:FilePath/Xubuntu_24.04_LTS_default_desktop_-_English.png",
         ],
     ),
     (
@@ -602,10 +603,13 @@ pub const SCREENSHOT_URLS: &[(&str, &[&str])] = &[
             "https://cdn11.bigcommerce.com/s-pywjnxrcr2/images/stencil/original/image-manager/themingr5.png",
         ],
     ),
+    // Hyprland: первый снимок — тема Tokyo Night из Omarchy (Commons, GPLv2+,
+    // автор David Heinemeier Hansson). Прежний `Hyprland_screen.png` показывал
+    // русскую Википедию на пол-экрана.
     (
         "hyprland",
         &[
-            "https://commons.wikimedia.org/wiki/Special:FilePath/Hyprland_screen.png",
+            "https://commons.wikimedia.org/wiki/Special:FilePath/Omarchy_Tokyo_Night_theme.png",
             "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/desktop.png",
             "https://github.com/YAWTUUYAS/hyprland-riced/raw/main/screenshots/wofi.png",
         ],
@@ -618,11 +622,13 @@ pub const SCREENSHOT_URLS: &[(&str, &[&str])] = &[
             "https://lxqt-project.org/images/screenshots/pcmanfm-qt.png",
         ],
     ),
+    // niri: второй снимок — из вики проекта (GPL-3.0); снимок с Commons был
+    // с немецким интерфейсом.
     (
         "niri",
         &[
             "https://github.com/user-attachments/assets/dea5909e-1859-4aaa-9d88-d37f9663e00b",
-            "https://commons.wikimedia.org/wiki/Special:FilePath/Screenshot_LXQt-Niri_2025-06-11.png?width=1200",
+            "https://raw.githubusercontent.com/niri-wm/niri/main/docs/wiki/img/blur.png",
         ],
     ),
     (
@@ -1017,9 +1023,108 @@ pub fn carousel_paths_on_disk(dir: &str, bundled_dirs: &[String], de: &str) -> V
     out
 }
 
+// ── Смена источника снимка ─────────────────────────────────────────────────
+//
+// Кэш раскладывает снимки по тегу (`hyprland.png`, `xfce_2.png`), а не по
+// адресу, и тёплый кэш больше не качается. Поэтому заменённый в
+// [`SCREENSHOT_URLS`] снимок без особой меры остался бы у покупателя навсегда.
+// Мера — опись рядом со снимками: тег → адрес, с которого файл скачан. Тег, чей
+// адрес в таблице сменился, считается устаревшим: его файлы удаляются, и
+// закачка берёт снимок заново.
+
+/// Опись источников скачанных снимков: строки `тег<TAB>адрес`.
+pub const SOURCES_FILE: &str = ".sources";
+
+/// Теги, чей источник сменился ДО появления описи: файлы с этими тегами,
+/// которых нет в описи, скачаны со старого адреса. Остальные файлы без описи
+/// принимаются как скачанные с нынешнего адреса.
+///
+/// 08.11.2026: `hyprland` — на снимке была открыта русская Википедия;
+/// `xfce_2` — интерфейс Xfce по-испански; `niri_1` — по-немецки.
+pub const REPLACED_BEFORE_SOURCES: &[&str] = &["hyprland", "xfce_2", "niri_1"];
+
+/// Разобрать опись: `(тег, адрес)` в порядке строк; кривые строки пропускаются.
+pub fn parse_sources(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| line.split_once('\t'))
+        .filter(|(tag, url)| !tag.is_empty() && !url.is_empty())
+        .map(|(tag, url)| (tag.to_string(), url.to_string()))
+        .collect()
+}
+
+/// Текст описи из пар `(тег, адрес)`.
+pub fn render_sources(entries: &[(String, String)]) -> String {
+    entries.iter().map(|(tag, url)| format!("{tag}\t{url}\n")).collect()
+}
+
+/// Какие теги устарели — решение без ФС. `have_file(tag)` — лежит ли годный
+/// файл под тегом; `recorded` — опись. Возвращает устаревшие теги и опись,
+/// дополненную принятыми файлами без записи.
+pub fn retired_tags<H>(recorded: &[(String, String)], have_file: H) -> (Vec<String>, Vec<(String, String)>)
+where
+    H: Fn(&str) -> bool,
+{
+    let mut retired = Vec::new();
+    let mut sources: Vec<(String, String)> = Vec::new();
+    for (de, urls) in SCREENSHOT_URLS {
+        for (idx, url) in urls.iter().enumerate() {
+            let tag = auto_download_tag(de, idx);
+            if !have_file(&tag) {
+                continue;
+            }
+            let stale = match recorded.iter().find(|(t, _)| *t == tag) {
+                Some((_, was)) => was != url,
+                None => REPLACED_BEFORE_SOURCES.contains(&tag.as_str()),
+            };
+            if stale {
+                retired.push(tag);
+            } else {
+                sources.push((tag, (*url).to_string()));
+            }
+        }
+    }
+    (retired, sources)
+}
+
+/// Убрать из кэша `dir` снимки, чей источник в таблице сменился, и
+/// переписать опись. Возвращает удалённые теги.
+pub fn drop_retired_on_disk(dir: &str) -> Vec<String> {
+    let path = format!("{dir}/{SOURCES_FILE}");
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let recorded = parse_sources(&text);
+    let (retired, sources) =
+        retired_tags(&recorded, |tag| tag_candidates(dir, tag).iter().any(|p| usable_file(p)));
+    for tag in &retired {
+        for p in tag_candidates(dir, tag) {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+    let fresh = render_sources(&sources);
+    if fresh != text && (!fresh.is_empty() || !text.is_empty()) {
+        let _ = crate::utils::atomic_write(&path, &fresh);
+    }
+    retired
+}
+
+/// Записать в опись `dir` адреса только что скачанных снимков.
+fn record_sources(dir: &str, saved: &[(String, String)]) {
+    if saved.is_empty() {
+        return;
+    }
+    let path = format!("{dir}/{SOURCES_FILE}");
+    let mut entries = parse_sources(&std::fs::read_to_string(&path).unwrap_or_default());
+    for (tag, url) in saved {
+        entries.retain(|(t, _)| t != tag);
+        entries.push((tag.clone(), url.clone()));
+    }
+    let _ = crate::utils::atomic_write(&path, &render_sources(&entries));
+}
+
 /// План автоскачивания над настоящим каталогом `dir` — те же наблюдения, что
-/// собирает `auto_download_all` оригинала.
+/// собирает `auto_download_all` оригинала. Снимки со сменившимся источником
+/// перед этим убираются ([`drop_retired_on_disk`]) и попадают в план заново.
 pub fn auto_download_plan_on_disk(dir: &str) -> AutoDownloadPlan {
+    drop_retired_on_disk(dir);
     auto_download_plan(
         |de| screenshot_paths_on_disk(dir, de).len(),
         |tag| tag_candidates(dir, tag).iter().any(|p| usable_file(p)),
@@ -1121,6 +1226,13 @@ where
             }
             drop(tx);
             for mut outcome in rx {
+                // Опись пишется сразу: закроют окно посреди пачки — уже
+                // скачанное не сочтётся устаревшим.
+                if outcome.result.is_ok() {
+                    if let Some(task) = plan.tasks.iter().find(|t| t.tag == outcome.tag) {
+                        record_sources(dir, &[(task.tag.clone(), task.url.clone())]);
+                    }
+                }
                 if let Some(slot) = downloaded.iter_mut().find(|(de, ..)| *de == outcome.de) {
                     slot.1 += usize::from(outcome.result.is_ok());
                     slot.2 += 1;
@@ -1322,8 +1434,9 @@ mod live_download_tests {
             Err(offline())
         }
         fn open(&mut self, url: &str, _: &str, _: u64) -> Result<i64, NetError> {
-            // Третий адрес xfce — `Xfce_4.18_…` с Commons, с большой буквы.
-            if !url.to_ascii_lowercase().contains("xfce") {
+            // Адреса xfce — по таблице: третий (Xubuntu с Commons) слова
+            // «xfce» в себе не несёт.
+            if !online_urls("xfce").contains(&url) {
                 return Err(offline());
             }
             self.body = vec![0x89; 2048];
@@ -1373,7 +1486,13 @@ mod live_download_tests {
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
         files.sort();
-        assert_eq!(files, ["xfce.png", "xfce_1.png", "xfce_2.png"]);
+        assert_eq!(files, [SOURCES_FILE, "xfce.png", "xfce_1.png", "xfce_2.png"]);
+        // Опись помнит, откуда взят каждый файл.
+        let recorded = parse_sources(&std::fs::read_to_string(format!("{dir}/{SOURCES_FILE}")).unwrap());
+        assert_eq!(recorded.len(), 3);
+        for (idx, url) in online_urls("xfce").iter().enumerate() {
+            assert!(recorded.contains(&(auto_download_tag("xfce", idx), (*url).to_string())));
+        }
         assert_eq!(screenshot_paths_on_disk(&dir, "xfce").len(), 3);
 
         // Итог — словарь `results` оригинала: у xfce есть снимки, у
@@ -1397,6 +1516,35 @@ mod live_download_tests {
         let plan = auto_download_plan_on_disk(&dir);
         assert!(plan.tasks.iter().all(|t| t.de != "xfce"));
         assert!(plan.already_complete.contains(&("xfce".to_string(), 3)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn replaced_source_drops_cached_shot() {
+        let dir = scratch("retire");
+        std::fs::create_dir_all(&dir).unwrap();
+        let big = vec![0x89u8; 2048];
+        // Кэш до описи: снимок Hyprland со старого адреса, kde — годный.
+        std::fs::write(format!("{dir}/hyprland.png"), &big).unwrap();
+        std::fs::write(format!("{dir}/kde.png"), &big).unwrap();
+        // Снимок, чей адрес в описи не совпадает с таблицей.
+        std::fs::write(format!("{dir}/gnome.png"), &big).unwrap();
+        std::fs::write(format!("{dir}/{SOURCES_FILE}"), "gnome\thttps://example.org/old.png\n").unwrap();
+
+        let plan = auto_download_plan_on_disk(&dir);
+        assert!(!std::path::Path::new(&format!("{dir}/hyprland.png")).exists());
+        assert!(!std::path::Path::new(&format!("{dir}/gnome.png")).exists());
+        assert!(std::path::Path::new(&format!("{dir}/kde.png")).exists());
+        assert!(plan.tasks.iter().any(|t| t.tag == "hyprland"));
+        assert!(plan.tasks.iter().any(|t| t.tag == "gnome"));
+        assert!(!plan.tasks.iter().any(|t| t.tag == "kde"));
+
+        // Принятый файл записан в опись с нынешним адресом — повторный
+        // проход его не трогает.
+        let recorded = parse_sources(&std::fs::read_to_string(format!("{dir}/{SOURCES_FILE}")).unwrap());
+        assert_eq!(recorded, [("kde".to_string(), online_urls("kde")[0].to_string())]);
+        assert!(drop_retired_on_disk(&dir).is_empty());
+        assert!(std::path::Path::new(&format!("{dir}/kde.png")).exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

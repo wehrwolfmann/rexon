@@ -273,6 +273,26 @@ pub fn log_tail(io: &dyn LookIo, ctx: &Ctx, name: &str) -> String {
     crate::conky_log::widget_log(ctx, &confs).map(|(_, text)| text).unwrap_or_default()
 }
 
+/// Папка виджета `name` для «Открыть папку»: каталог темы, а у
+/// виджета-файла (`~/.conkyrc`, найденный одиночный файл) — папка, где этот
+/// файл лежит. `None` — виджета на диске уже нет.
+pub fn widget_folder(io: &dyn LookIo, ctx: &Ctx, name: &str) -> Option<String> {
+    let path = crate::conky_scan::widget_path(ctx, name);
+    if !io.list_dir(&path).is_empty() {
+        return Some(path);
+    }
+    io.read(&path)?;
+    let parent = path.rsplit_once('/').map(|(dir, _)| dir).filter(|d| !d.is_empty())?;
+    Some(parent.to_string())
+}
+
+/// Файл настроек `conf` для «Открыть файл настроек» — только если это одна
+/// из частей виджета `name`: страница не может попросить открыть чужой
+/// путь.
+pub fn part_file(io: &dyn LookIo, ctx: &Ctx, name: &str, conf: &str) -> Option<String> {
+    parts(io, ctx, name).into_iter().map(|p| p.conf).find(|c| c == conf)
+}
+
 /// Подписи раздела «Виджеты Conky» для страницы.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct SectionTexts {
@@ -287,6 +307,10 @@ pub struct SectionTexts {
     pub ribbon_title: String,
     pub ribbon_open_tooltip: String,
     pub ribbon_stop_tooltip: String,
+    pub open_folder: String,
+    pub open_folder_tooltip: String,
+    pub open_file: String,
+    pub open_file_tooltip: String,
 }
 
 pub fn section_texts() -> SectionTexts {
@@ -303,6 +327,12 @@ pub fn section_texts() -> SectionTexts {
         ribbon_title: tr("On the desktop now"),
         ribbon_open_tooltip: tr("Open the widget's card: settings, parts, log"),
         ribbon_stop_tooltip: tr("Remove from the desktop (the widget stays installed)"),
+        open_folder: tr("📂 Open folder"),
+        open_folder_tooltip: tr("Open the widget's folder in the file manager"),
+        open_file: tr("📝 Open settings file"),
+        open_file_tooltip: tr(
+            "Open the widget's settings file in your text editor. Restart the widget to see your changes."
+        ),
     }
 }
 
@@ -498,6 +528,55 @@ mod tests {
         let io2 = fixture();
         assert!(stop_all(&io2, &["401".into()]).0);
         assert!(io2.ran.borrow().is_empty(), "некого гасить — kill не зовётся");
+    }
+
+    /// Каталоги и файлы для «Открыть папку» без /proc.
+    struct DirIo(HashMap<String, String>);
+
+    impl LookIo for DirIo {
+        fn run(&self, _: &[String]) -> (bool, String) {
+            (false, String::new())
+        }
+        fn have(&self, _: &str) -> bool {
+            false
+        }
+        fn read(&self, path: &str) -> Option<String> {
+            self.0.get(path).cloned()
+        }
+        fn write(&self, _: &str, _: &str) -> bool {
+            false
+        }
+        fn list_dir(&self, path: &str) -> Vec<String> {
+            let pre = format!("{path}/");
+            let mut v: Vec<String> = self
+                .0
+                .keys()
+                .filter_map(|k| k.strip_prefix(&pre)?.split('/').next().map(str::to_string))
+                .collect();
+            v.sort();
+            v.dedup();
+            v
+        }
+    }
+
+    /// «Открыть папку»: у темы — её каталог, у виджета-файла — папка файла,
+    /// пропавший виджет — ничего. «Открыть файл» — только часть виджета.
+    #[test]
+    fn folder_and_file_to_open() {
+        let mut f = HashMap::new();
+        f.insert("/h/.config/conky/Jhalak/Jhalak.conf".to_string(), "conky.text = [[x]]".to_string());
+        f.insert("/h/.conkyrc".to_string(), "conky.text = [[y]]".to_string());
+        let io = DirIo(f);
+        assert_eq!(widget_folder(&io, &ctx(), "Jhalak").as_deref(), Some("/h/.config/conky/Jhalak"));
+        assert_eq!(widget_folder(&io, &ctx(), "/h/.conkyrc").as_deref(), Some("/h"));
+        assert_eq!(widget_folder(&io, &ctx(), "Gone"), None);
+        assert_eq!(widget_folder(&io, &ctx(), "/h/.conky/Gone"), None);
+        assert_eq!(
+            part_file(&io, &ctx(), "Jhalak", "/h/.config/conky/Jhalak/Jhalak.conf").as_deref(),
+            Some("/h/.config/conky/Jhalak/Jhalak.conf")
+        );
+        assert_eq!(part_file(&io, &ctx(), "Jhalak", "/etc/passwd"), None);
+        assert_eq!(part_file(&io, &ctx(), "/h/.conkyrc", "/h/.conkyrc").as_deref(), Some("/h/.conkyrc"));
     }
 
     /// Лента: один пункт на виджет, по порядку запуска; крестик гасит только

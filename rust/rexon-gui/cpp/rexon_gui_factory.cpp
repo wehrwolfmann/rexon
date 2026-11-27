@@ -271,6 +271,99 @@ extern "C" int rexon_qt_translations_dir(char* buf, int len)
     return int(dir.size());
 }
 
+namespace {
+
+/// Меню правки полей QML (`TextArea`, `TextField`, `TextEdit`) — надписи
+/// из `qtbase`, если у `qtdeclarative` их для этого языка нет.
+///
+/// Qt Quick Controls 6.9+ рисует правый щелчок по полю своим меню
+/// (`QtQuick/Controls/<стиль>/impl/TextEditingContextMenu.qml`), и каждая
+/// строка — `qsTr()` в своём файле: контекст `CopyAction`, `SelectAllAction`…
+/// В Qt 6.12 эти контексты переведены в `qtdeclarative_*.qm` не на все
+/// языки (немецкий есть; русского и китайского нет), а те же надписи
+/// меню правки `QLineEdit` в `qtbase` переведены почти везде. Поэтому:
+/// сначала — что скажут каталоги Qt Quick (их перевод главнее), иначе —
+/// надпись `QLineEdit` без знака быстрой клавиши. Ничего не нашлось —
+/// пусто, и Qt оставит английский.
+class RexonQuickEditMenuTranslator final : public QTranslator {
+public:
+    explicit RexonQuickEditMenuTranslator(QObject* parent) : QTranslator(parent) {}
+
+    QString translate(const char* context, const char* sourceText,
+                      const char* disambiguation, int n) const override
+    {
+        if (context == nullptr || sourceText == nullptr || t_busy)
+            return QString();
+        const char* widgetSource = widgetSourceFor(context, sourceText);
+        if (widgetSource == nullptr)
+            return QString();
+        // Вопрос остальным переводчикам — через приложение, и он вернётся
+        // сюда же: флаг потока отвечает на него пустотой. Qt зовёт
+        // переводчики и из QQmlThread, поэтому флаг на поток, а не общий.
+        t_busy = true;
+        const QString quick = QCoreApplication::translate(context, sourceText, disambiguation, n);
+        const QString widget = QCoreApplication::translate("QLineEdit", widgetSource);
+        t_busy = false;
+        if (quick != QLatin1String(sourceText))
+            return quick;
+        if (widget == QLatin1String(widgetSource))
+            return QString();
+        return withoutMnemonic(widget);
+    }
+
+    bool isEmpty() const override { return false; }
+
+private:
+    /// Контекст меню Qt Quick ▸ та же надпись меню `QLineEdit` в `qtbase`.
+    static const char* widgetSourceFor(const char* context, const char* sourceText)
+    {
+        static const struct { const char* context; const char* source; const char* widget; } map[] = {
+            {"UndoAction", "Undo", "&Undo"},
+            {"RedoAction", "Redo", "&Redo"},
+            {"CutAction", "Cut", "Cu&t"},
+            {"CopyAction", "Copy", "&Copy"},
+            {"PasteAction", "Paste", "&Paste"},
+            {"DeleteAction", "Delete", "Delete"},
+            {"SelectAllAction", "Select All", "Select All"},
+        };
+        for (const auto& row : map) {
+            if (std::strcmp(context, row.context) == 0 && std::strcmp(sourceText, row.source) == 0)
+                return row.widget;
+        }
+        return nullptr;
+    }
+
+    /// «&Копировать» → «Копировать», «复制(&C)» → «复制», «&&» → «&».
+    static QString withoutMnemonic(const QString& text)
+    {
+        QString out;
+        out.reserve(text.size());
+        for (qsizetype i = 0; i < text.size(); ++i) {
+            const QChar c = text.at(i);
+            if (c == QLatin1Char('(') && i + 3 < text.size() && text.at(i + 1) == QLatin1Char('&')
+                && text.at(i + 2) != QLatin1Char('&') && text.at(i + 3) == QLatin1Char(')')) {
+                i += 3;
+                continue;
+            }
+            if (c == QLatin1Char('&')) {
+                if (i + 1 < text.size() && text.at(i + 1) == QLatin1Char('&')) {
+                    out.append(c);
+                    ++i;
+                }
+                continue;
+            }
+            out.append(c);
+        }
+        return out.trimmed();
+    }
+
+    static thread_local bool t_busy;
+};
+
+thread_local bool RexonQuickEditMenuTranslator::t_busy = false;
+
+} // namespace
+
 extern "C" int rexon_install_qt_translations(const char* const* paths, int count)
 {
     QCoreApplication* app = QCoreApplication::instance();
@@ -302,6 +395,13 @@ extern "C" int rexon_install_qt_translations(const char* const* paths, int count
         app->installTranslator(tr);
         installed.append(tr);
         ++loaded;
+    }
+    // Меню правки полей QML — поверх каталогов (ставится последним, то есть
+    // спрашивается первым). Без каталогов ему нечего искать.
+    if (loaded > 0) {
+        auto* edit = new RexonQuickEditMenuTranslator(app);
+        app->installTranslator(edit);
+        installed.append(edit);
     }
     return loaded;
 }

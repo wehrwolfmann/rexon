@@ -63,18 +63,6 @@ MD.Page {
         }
     }
 
-    function formatSize(b) {
-        let v = Number(b ?? 0);
-        if (!(v > 0))
-            return "";
-        const u = ["B", "KB", "MB", "GB", "TB"];
-        let i = 0;
-        while (v >= 1024 && i < u.length - 1) {
-            v /= 1024;
-            ++i;
-        }
-        return v.toFixed(i === 0 ? 0 : 1) + " " + u[i];
-    }
 
     component InfoLabel: MD.Text {
         required property string label
@@ -148,7 +136,17 @@ MD.Page {
             }
             InfoValue {
                 visible: root.sizeBytes > 0
-                text: root.formatSize(root.sizeBytes)
+                text: W.I18n.formatSize(root.sizeBytes)
+            }
+
+            InfoLabel {
+                visible: root.wallpaper?.updateAvailable ?? false
+                label: qsTr("Update")
+            }
+            InfoValue {
+                visible: root.wallpaper?.updateAvailable ?? false
+                text: qsTr("Update available")
+                color: MD.Token.color.tertiary
             }
 
             InfoLabel {

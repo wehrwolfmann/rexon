@@ -236,6 +236,9 @@ impl GenerateOutcome {
 // DEAppSwitcher
 // ============================================================================
 
+/// Имя записи автозапуска дефолтов в `<config>/autostart`.
+pub const AUTOSTART_FILE: &str = "rexon-appdefaults.desktop";
+
 /// Порт класса `DEAppSwitcher` — переключение приложений по умолчанию при
 /// смене окружения.
 ///
@@ -252,6 +255,45 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
     pub fn new(io: &'a IO, env: AppDefaultsEnv) -> Self {
         let cfg_dir = utils::config_home(env.xdg_config_home.as_deref(), &env.home);
         DeAppSwitcher { io, env, cfg_dir }
+    }
+
+    /// Завести пользовательские копии записей автозапуска, которым место
+    /// только в своём столе ([`ad::CONFINED_AUTOSTARTS`]). Своё у человека
+    /// (копия с тем же именем) не трогается; пакет, поставленный человеком
+    /// сам, — тоже (проверка `pacman -Qqd`: стоит ли он как зависимость).
+    pub fn confine_desktop_autostarts(&self, logs: &mut Vec<String>) {
+        const SYSTEM_DIR: &str = "/etc/xdg/autostart";
+        let user_dir = join(&self.cfg_dir, "autostart");
+        for entry in ad::CONFINED_AUTOSTARTS {
+            let system_path = join(SYSTEM_DIR, entry.file);
+            let Some(system_text) = self.io.read_text(&system_path) else {
+                continue;
+            };
+            let user_path = join(&user_dir, entry.file);
+            let user_text = self.io.read_text(&user_path);
+            if !ad::needs_confined_autostart(&system_text, user_text.as_deref()) {
+                continue;
+            }
+            if let Some(pkg) = entry.only_if_dependency {
+                let argv: Vec<String> = vec!["pacman".into(), "-Qqd".into(), pkg.into()];
+                if !self.io.which("pacman") || !self.io.run(&argv).is_some_and(|r| r.ok) {
+                    continue;
+                }
+            }
+            if let Err(e) = self.io.makedirs(&user_dir) {
+                logs.push(format!("⚠️ {e}"));
+                continue;
+            }
+            let text = ad::confined_autostart_text(&system_text, entry.only_show_in);
+            match self.io.write_text(&user_path, &text) {
+                // TRANSLATORS: %1 is an autostart file name, %2 a list of desktop names.
+                Ok(()) => logs.push(trf(
+                    "🔒 Autostart %1 now runs only in %2: in other desktops it took over the keyboard layouts",
+                    &[&entry.file, &entry.only_show_in.trim_end_matches(';').replace(';', ", ")],
+                )),
+                Err(e) => logs.push(format!("⚠️ {e}")),
+            }
+        }
     }
 
     /// Каталог пользовательских конфигов сеанса (`$XDG_CONFIG_HOME`).
@@ -317,9 +359,62 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
 
     // ── 2. DE-специфичные настройки (терминал и т.д.) ────────────────────
 
+    /// Список терминалов своего стола (`<стол>-xdg-terminals.list`): он
+    /// перебивает общий у `xdg-terminal-exec`, поэтому стол с родным
+    /// терминалом получает его здесь (решение —
+    /// [`ad::native_terminals_list_plan`]). Выбор, сделанный человеком для
+    /// этого стола в Rexon, не трогается и возвращается: он главнее родного
+    /// терминала и во всех остальных местах стола.
+    pub fn ensure_terminals_list(
+        &self,
+        de_id: &str,
+        desktop: &str,
+        logs: &mut Vec<String>,
+    ) -> Option<String> {
+        let path_of = |name: &str| join(&self.cfg_dir, name);
+        let existing = ad::terminals_list_filename(desktop)
+            .and_then(|name| self.io.read_text(&path_of(&name)));
+        match ad::native_terminals_list_plan(de_id, desktop, existing.as_deref(), &|p| {
+            self.desktop_exists(p)
+        }) {
+            ad::TerminalsListPlan::Write { filename, terminal, content } => {
+                let path = path_of(&filename);
+                match self.io.write_text(&path, &content) {
+                    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+                    Ok(()) if existing.is_some() => logs.push(trf(
+                        "✅ Fixed: terminal → %1",
+                        &[&crate::defaults::terminal_exec_name(&terminal)],
+                    )),
+                    Ok(()) => logs.push(trf("📝 Created %1", &[&filename])),
+                    Err(e) => logs.push(format!("⚠️ {}", trf("Couldn't write %1: %2", &[&path, &e]))),
+                }
+                None
+            }
+            ad::TerminalsListPlan::KeepChosen { terminal, .. } => {
+                logs.push(trf("✅ Terminal: %1", &[&crate::defaults::terminal_exec_name(&terminal)]));
+                Some(terminal)
+            }
+            ad::TerminalsListPlan::UpToDate { filename } => {
+                logs.push(trf("✅ %1 already exists", &[&filename]));
+                None
+            }
+            ad::TerminalsListPlan::Nothing => None,
+        }
+    }
+
     /// Порт `apply_de_specific`: ядро строит план (argv + текст
     /// `helpers.rc` + логи), здесь — запуск команд и запись.
     pub fn apply_de_specific(&self, de_id: &str) -> Vec<String> {
+        self.apply_de_specific_with_terminal(de_id, None)
+    }
+
+    /// [`Self::apply_de_specific`] с терминалом, который человек выбрал для
+    /// этого стола (см. [`ad::apply_de_specific_with_terminal`]).
+    pub fn apply_de_specific_with_terminal(
+        &self,
+        de_id: &str,
+        chosen_terminal: Option<&str>,
+    ) -> Vec<String> {
         // XFCE читается ТЕМ ЖЕ раскрытием пути, каким ниже пишется: иначе
         // при нестандартном `$XDG_CONFIG_HOME` к старому файлу из `~/.config`
         // подмешивались бы новые строки, а результат ложился в другой
@@ -331,11 +426,13 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
             None
         };
 
-        let plan = ad::apply_de_specific(
+        let plan = ad::apply_de_specific_with_terminal(
             de_id,
+            chosen_terminal,
             &|p| self.desktop_exists(p),
             &|c| self.io.which(c),
             xfce_existing.as_deref(),
+            &crate::defaults::xfce_system_helper_exists,
         );
         for cmd in &plan.commands {
             self.io.run(cmd);
@@ -356,6 +453,25 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         // Правки чужих конфигов по месту (LXQt `lxqt-qtxdg.conf`): те же
         // шаги общей таблицы терминала, что у вкладки «Настройки».
         for step in &plan.file_steps {
+            // Свой помощник exo (XFCE, выбранный терминал без помощника
+            // системы): каталог и файл — тем же раскрытием путей.
+            match step {
+                crate::defaults::TermStep::MakeDirs { path } => {
+                    let path = self.expand(path);
+                    if let Err(e) = self.io.makedirs(&path) {
+                        logs.push(format!("⚠️ {}", trf("Couldn't write %1: %2", &[&path, &e])));
+                    }
+                    continue;
+                }
+                crate::defaults::TermStep::WriteFile { path, content } => {
+                    let path = self.expand(path);
+                    if let Err(e) = self.io.write_text(&path, content) {
+                        logs.push(format!("⚠️ {}", trf("Couldn't write %1: %2", &[&path, &e])));
+                    }
+                    continue;
+                }
+                _ => {}
+            }
             if let crate::defaults::TermStep::SetIni { path, section, key, value } = step {
                 let path = self.expand(path);
                 let existing = self.io.read_text(&path);
@@ -404,15 +520,44 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
             }
         }
 
-        // 2. DE-специфичные настройки.
-        logs.extend(self.apply_de_specific(&de_id));
+        // 2. Список терминалов своего стола: его `xdg-terminal-exec` читает
+        //    раньше общего (см. `ad::native_terminals_list_plan`).
+        let desktop = self.env.xdg_current_desktop.clone();
+        let chosen = self.ensure_terminals_list(&de_id, &desktop, &mut logs);
 
-        // 3. Слот «Показать в папке». Идёт ПОСЛЕ mimeapps намеренно: вопрос
+        // 3. DE-специфичные настройки — с выбором человека, если он есть.
+        logs.extend(self.apply_de_specific_with_terminal(&de_id, chosen.as_deref()));
+
+        // 4. Слот «Показать в папке». Идёт ПОСЛЕ mimeapps намеренно: вопрос
         //    решается не там, и порядок делает это видимым в журнале —
         //    сначала «дефолты записаны», потом «а имя на шине держит вот кто».
         logs.extend(self.ensure_filemanager1(&de_id));
 
+        // 5. Чужой автозапуск других столов — только в своём столе
+        //    (`ad::CONFINED_AUTOSTARTS`): иначе, например, fcitx5 от Deepin
+        //    перехватывает раскладки в MATE.
+        self.confine_desktop_autostarts(&mut logs);
+
+        // 6. Своя запись автозапуска из прежних версий — без фазы
+        //    gnome-session (`ad::heal_autostart_text`).
+        self.heal_autostart();
+
         (true, logs)
+    }
+
+    /// Снять из уже лежащей записи автозапуска дефолтов строку фазы,
+    /// которую gnome-session 49+ не исполняет. Записи нет — ничего не
+    /// создаётся: выключенный человеком автозапуск остаётся выключенным.
+    /// Молча: строка в журнале входа ничего человеку не скажет.
+    pub fn heal_autostart(&self) -> bool {
+        let path = join(&join(&self.cfg_dir, "autostart"), AUTOSTART_FILE);
+        let Some(text) = self.io.read_text(&path) else {
+            return false;
+        };
+        match ad::heal_autostart_text(&text) {
+            Some(fixed) => self.io.write_text(&path, &fixed).is_ok(),
+            None => false,
+        }
     }
 
     // ── 4. При переключении окружения через Rexon ────────────────────────
@@ -426,7 +571,12 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
         let status = if ok { "✅" } else { "⚠️" };
         logs.push(format!("  {status} {msg}"));
 
-        for line in self.apply_de_specific(target_de) {
+        // Список терминалов целевого стола — по идентификатору Rexon
+        // (`ad::terminals_list_filename` знает и его).
+        let mut term_logs = Vec::new();
+        let chosen = self.ensure_terminals_list(target_de, target_de, &mut term_logs);
+        term_logs.extend(self.apply_de_specific_with_terminal(target_de, chosen.as_deref()));
+        for line in term_logs {
             logs.push(format!("  {line}"));
         }
         // Слот «Показать в папке» — часть тех же дефолтов (правило #12: одно
@@ -467,7 +617,7 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
             return (false, notes);
         };
         let autostart_dir = join(&self.cfg_dir, "autostart");
-        let autostart_path = join(&autostart_dir, "rexon-appdefaults.desktop");
+        let autostart_path = join(&autostart_dir, AUTOSTART_FILE);
         let content = ad::autostart_desktop_content(&exec_path);
         let (content, refusal) = self.io.login_lines(&content);
         let written = self
@@ -661,9 +811,11 @@ impl<'a, IO: AppDefaultsIo + ?Sized> DeAppSwitcher<'a, IO> {
                 false
             }
             ad::Fm1Verdict::Busy { short, pid } => {
+                crate::log_info!("appdefaults", "FileManager1 держит {short} (pid {pid}) с открытыми окнами — не гасим");
                 notes.push(trf(
-                    "⚠️ %1 (pid %2) took over “Show in Folder”, but it has open windows — not closing it so your work isn't lost",
-                    &[&short, &pid],
+                    // TRANSLATORS: %1 is a file manager (caja, thunar…). Rexon didn't close it because it has open windows.
+                    "⚠️ “Show in Folder” is opened by %1 right now. Close its windows and run this again, or log out and back in",
+                    &[&short],
                 ));
                 false
             }

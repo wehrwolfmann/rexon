@@ -632,13 +632,27 @@ fn skipped_note(name: &str, reason: SkipReason) -> String {
             "“%1” skipped: a different theme with this name is already installed",
             &[&name],
         ),
+        SkipReason::SharedIconSet => trf(
+            "“%1” skipped: this is the shared icon set of all programs, a theme must not replace it",
+            &[&name],
+        ),
     }
+}
+
+/// Тема значков или курсоров с именем общего набора (`hicolor`, `locolor`):
+/// такой каталог в профиле делят все программы, и его `index.theme`
+/// перекрыл бы системный — значки пропали бы по всему столу (дефект
+/// 09.11.2026, [`crate::icon_hygiene`]).
+fn is_shared_icon_set(apply_kind: &str, name: &str) -> bool {
+    matches!(apply_kind, "icons" | "cursor") && crate::icon_hygiene::is_reserved_icon_set(name)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SkipReason {
     DuplicateInArchive,
     TakenByOther,
+    /// Общий набор значков (`hicolor`, `locolor`) — не тема.
+    SharedIconSet,
 }
 
 /// Сообщение «в архиве нет темы этого вида» — только для звуков: у остальных
@@ -683,6 +697,10 @@ fn plan_theme_roots(
         }
         if names.contains(&name) {
             notes.push(skipped_note(&name, SkipReason::DuplicateInArchive));
+            continue;
+        }
+        if is_shared_icon_set(apply_kind, &name) {
+            notes.push(skipped_note(&name, SkipReason::SharedIconSet));
             continue;
         }
         let dest = join(dest_base, &name);
@@ -1344,6 +1362,9 @@ fn plan_install_inner(
     } else {
         own_id
     };
+    if is_shared_icon_set(&apply_kind, &theme_id) {
+        return InstallOutcome::err(skipped_note(&theme_id, SkipReason::SharedIconSet));
+    }
     let dest = join(&dest_base, &theme_id);
     // Правило владельца (как у корней тем и у `.rxn`): снимается только то,
     // что общий журнал записал за этой покупкой. Каталог (файл, ссылка) с
@@ -1796,6 +1817,7 @@ pub fn root_preflight(env: &RootEnv, cat: &ThemeCategory) -> Option<InstallOutco
     }
     if kind == "sddm" && env.is_plasmalogin {
         return Some(InstallOutcome::err(tr(
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             "Plasma Login Manager (Plasma 6.6+) is active, and it doesn't support \
              SDDM QML themes. Change the login screen look in “System Settings → \
              Login Screen”.",
@@ -5082,6 +5104,14 @@ impl LiveInstaller {
         if let Err(e) = exec_install_steps(&out.steps) {
             return (false, trf("Installation error: %1", &[&e]), Vec::new());
         }
+        // Тема значков или курсоров встала — заодно проверить общий набор
+        // `hicolor` профиля: урезанный `index.theme` в нём прячет значки
+        // всего стола ([`crate::icon_hygiene`]).
+        if matches!(record.apply_kind.as_str(), "icons" | "cursor") {
+            if let Some(line) = crate::icon_hygiene::heal_live() {
+                self.say(&line);
+            }
+        }
         // Виджет Conky, написанный под `~/.conky/<Имя>/`: пути — на папку,
         // куда он встал (`de_apply::conky_repair_paths`).
         if record.apply_kind == "conky" {
@@ -6052,7 +6082,8 @@ impl LiveInstaller {
             }
             let got = if part == LnfPart::TitlebarLayout {
                 let io = crate::animations::SystemIo;
-                let ctx = crate::animations::LookCtx::from_env();
+                // Стол — тот, под который ставится тема, а не сеанс.
+                let ctx = crate::animations::LookCtx::from_env().for_chosen(de);
                 crate::themes::lnf_buttons_steps(&io, &ctx, &press.contents)
             } else {
                 let action = match part {
@@ -8329,6 +8360,48 @@ mod tests {
         assert!(out.ok);
         assert_eq!(out.names, ["Ocean"]);
         assert!(home.join(".local/share/sounds/Ocean/index.theme").is_file());
+    }
+
+    /// Общий набор `hicolor` из архива темой не ставится: ни рядом с темой
+    /// (корни), ни единственным содержимым (прежний путь), ни при прежнем
+    /// поведении «занятое перезаписывается» (`own = None`). Каталог
+    /// человека со значками программ остаётся как был (дефект 09.11.2026).
+    #[test]
+    fn shared_hicolor_from_archive_is_never_installed() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let base = tmp_dir("hicolor_guard");
+        let home = base.join("home");
+        let user_hicolor = home.join(".local/share/icons/hicolor");
+        put(&user_hicolor.join("48x48/apps/app.png"), "png");
+        const CUT: &str = "[Icon Theme]\nName=Hicolor\nDirectories=48x48/apps\n[48x48/apps]\nSize=48\n";
+
+        let ex = base.join("pack");
+        put(&ex.join("Pack/MyIcons/index.theme"), "[Icon Theme]\nName=My\nDirectories=apps\n");
+        put(&ex.join("Pack/MyIcons/apps/a.svg"), "");
+        put(&ex.join("Pack/hicolor/index.theme"), CUT);
+        put(&ex.join("Pack/hicolor/48x48/apps/my.png"), "");
+        for (n, own) in [None, Some(&[][..])].into_iter().enumerate() {
+            // Свой дом на проход: иначе второй видит MyIcons первого чужим.
+            let home = base.join(format!("home-{n}"));
+            let out = install_tree(&home, &ex, "icons", own);
+            assert!(out.ok, "{}", out.message);
+            assert_eq!(out.names, ["MyIcons"]);
+            assert!(out.message.contains("“hicolor” skipped: this is the shared icon set"), "{}", out.message);
+            assert!(!out.steps.iter().any(|st| format!("{st:?}").contains("icons/hicolor")), "{:?}", out.steps);
+        }
+
+        let ex = base.join("bare");
+        put(&ex.join("hicolor/index.theme"), CUT);
+        put(&ex.join("hicolor/48x48/apps/my.png"), "");
+        for kind in ["icons", "cursor"] {
+            let out = install_tree(&home, &ex, kind, None);
+            assert!(!out.ok, "{kind}: {}", out.message);
+            assert!(out.message.contains("shared icon set"), "{}", out.message);
+        }
+        assert!(!user_hicolor.join("index.theme").exists(), "index.theme в общий набор не лёг");
+        assert_eq!(listing(&user_hicolor), ["48x48"]);
+        assert!(user_hicolor.join("48x48/apps/app.png").is_file(), "значки программ целы");
+        let _ = std::fs::remove_dir_all(base);
     }
 
     #[test]

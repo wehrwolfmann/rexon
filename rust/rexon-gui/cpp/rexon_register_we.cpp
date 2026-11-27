@@ -188,7 +188,7 @@ extern "C" void rexon_do_register_we_types()
     qmlRegisterType<SourceListQuery>("waywallen.ui", 1, 0, "SourceListQuery");
     qmlRegisterType<LibraryAddQuery>("waywallen.ui", 1, 0, "LibraryAddQuery");
     // waywallen 0.5.0: переименование библиотеки.
-    qmlRegisterType<LibraryRenameQuery>("waywallen.ui", 1, 0, "LibraryRenameQuery");
+    qmlRegisterType<LibraryEditQuery>("waywallen.ui", 1, 0, "LibraryEditQuery");
     qmlRegisterType<LibraryRemoveQuery>("waywallen.ui", 1, 0, "LibraryRemoveQuery");
     qmlRegisterType<LibraryAutoDetectQuery>("waywallen.ui", 1, 0,
                                             "LibraryAutoDetectQuery");

@@ -22,6 +22,7 @@ import org.rexon.gui 1.0
 
 Rectangle {
     id: section
+    RexonBidi { id: bidi }
 
     property var pal: ({})
     property var sty: ({})
@@ -682,8 +683,7 @@ Rectangle {
         RexonText {
             Layout.fillWidth: true
             visible: (section.st.custom || "") !== ""
-            text: qsTranslate("rexon", "Your own layout is set now (%1); changing the buttons here replaces it.")
-                  .arg(section.st.custom || "")
+            text: bidi.arg(qsTranslate("rexon", "Your own layout is set now (%1); changing the buttons here replaces it."), section.st.custom || "")
             color: section.pal.text_secondary
             wrapMode: Text.WordWrap
         }

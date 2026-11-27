@@ -1750,11 +1750,11 @@
  "autostart": [
   {
    "exec_path": "/usr/bin/rexon",
-   "content": "[Desktop Entry]\nType=Application\nName=Rexon App Defaults\nComment=Switches default applications for the current desktop environment\nComment[ru]=Переключает приложения по умолчанию под текущий рабочий стол\nExec=/usr/bin/rexon --apply-defaults\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-Phase=Initialization\n"
+   "content": "[Desktop Entry]\nType=Application\nName=Rexon App Defaults\nComment=Switches default applications for the current desktop environment\nComment[ru]=Переключает приложения по умолчанию под текущий рабочий стол\nExec=/usr/bin/rexon --apply-defaults\nTerminal=false\nNoDisplay=true\n"
   },
   {
    "exec_path": "/usr/local/lib/rexon/rexon_apply_defaults.sh",
-   "content": "[Desktop Entry]\nType=Application\nName=Rexon App Defaults\nComment=Switches default applications for the current desktop environment\nComment[ru]=Переключает приложения по умолчанию под текущий рабочий стол\nExec=/usr/local/lib/rexon/rexon_apply_defaults.sh --apply-defaults\nTerminal=false\nNoDisplay=true\nX-GNOME-Autostart-Phase=Initialization\n"
+   "content": "[Desktop Entry]\nType=Application\nName=Rexon App Defaults\nComment=Switches default applications for the current desktop environment\nComment[ru]=Переключает приложения по умолчанию под текущий рабочий стол\nExec=/usr/local/lib/rexon/rexon_apply_defaults.sh --apply-defaults\nTerminal=false\nNoDisplay=true\n"
   }
  ],
  "fm_default": [

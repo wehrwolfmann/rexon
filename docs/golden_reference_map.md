@@ -49,7 +49,7 @@ scripts/rexon-golden-update --list      # эта же таблица, но из 
 | Эталон | Род | Чем обновлялся ДО | Чем обновляется ТЕПЕРЬ |
 |---|---|---|---|
 | `docs/de_customization_matrix.md` | код | `REXON_UPDATE_DOC=1 cargo test -p rexon-core --test de_customization` — команду знал только текст внутри самого документа | `scripts/rexon-golden-update de_matrix` |
-| `data/qt_wallpaper_engine/qml_ui/waywallen_{ru,de}.qm` (по одному на каждый вендорный `.ts`) | **живое** | строка `lrelease …` из `docs/testing.md`, руками | `… waywallen_qm` |
+| `data/qt_wallpaper_engine/qml_ui/waywallen_{ru,de,zh_CN,fr}.qm` (по одному на каждый вендорный `.ts`) | **живое** | строка `lrelease …` из `docs/testing.md`, руками | `… waywallen_qm` |
 
 ### Что ушло из этой таблицы 02.10.2026 и почему
 

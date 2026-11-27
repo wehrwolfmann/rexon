@@ -54,7 +54,8 @@
     "BG_APPLY_FAILED": "Не удалось применить",
     "SEGMENTS.splash": "🎬 Видеозаставка",
     "SEGMENTS.bg": "🖼️ Steam-фоны",
-    "SEGMENTS.showcase": "🖼️ Витрины профиля"
+    "SEGMENTS.showcase": "🖼️ Витрины профиля",
+    "SEGMENTS.screensaver": "🌙 Заставка"
   },
   "phrases": {
     "header_found": "Найден: ",

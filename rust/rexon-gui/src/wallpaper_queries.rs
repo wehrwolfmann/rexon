@@ -365,6 +365,11 @@ pub mod qobject {
         #[qinvokable]
         fn reload(self: Pin<&mut WallpaperListQuery>);
 
+        /// waywallen 0.6.0: «Повторить» после ошибки — упавший шаг заново
+        /// (догрузка или перезагрузка).
+        #[qinvokable]
+        fn retry(self: Pin<&mut WallpaperListQuery>);
+
         /// `delayReload` базы `Query` (qextra): перезагрузка через тот же
         /// дебаунс 100 мс — подряд идущие просьбы склеиваются в один запрос.
         /// Зовёт страница «Скрытые обои» (waywallen 0.4.4).
@@ -469,6 +474,9 @@ pub struct WallpaperListQueryRust {
     debounce: *mut qobject::QObject,
     /// Подписка на `reqFetchMore` модели (живёт, пока жив запрос).
     fetch_guard: Option<cxx_qt::QMetaObjectConnectionGuard>,
+    /// waywallen 0.6.0: последний запрос был догрузкой — «Повторить»
+    /// после ошибки догружает, а не перезагружает список.
+    failed_append: bool,
 }
 
 impl Default for WallpaperListQueryRust {
@@ -477,6 +485,7 @@ impl Default for WallpaperListQueryRust {
             base: QueryState::default(),
             data: we_wallpaper::WallpaperListData::default(),
             pending: std::collections::BTreeMap::new(),
+            failed_append: false,
             model: core::ptr::null_mut(),
             debounce: core::ptr::null_mut(),
             fetch_guard: None,
@@ -822,6 +831,7 @@ impl qobject::WallpaperListQuery {
         let signals = {
             let mut rust = self.as_mut().rust_mut();
             rust.pending.clear();
+            rust.failed_append = false;
             we_wallpaper::begin_reload(&mut rust.data)
         };
         self.as_mut().dispatch(signals);
@@ -849,7 +859,22 @@ impl qobject::WallpaperListQuery {
             return;
         }
         let page = self.data.offset + 1;
+        self.as_mut().rust_mut().failed_append = true;
         self.send_list(payload, Pending::Page(page));
+    }
+
+    pub fn retry(mut self: Pin<&mut Self>) {
+        if self.base.status != STATUS_ERROR {
+            return;
+        }
+        if self.failed_append {
+            // Ошибка снимает «есть ещё» — догрузку разрешаем заново.
+            self.as_mut().rust_mut().data.no_more = false;
+            let count = self.data.total;
+            self.fetch_more(count);
+        } else {
+            self.reload();
+        }
     }
 
     /// Отправить кадр `wallpaper_list` и запомнить, чей ответ ждём.
@@ -919,6 +944,9 @@ impl qobject::WallpaperListQuery {
         };
         match signals {
             Ok(signals) => {
+                if self.base.status != STATUS_ERROR {
+                    self.as_mut().rust_mut().failed_append = false;
+                }
                 self.as_mut().dispatch(signals);
                 let more = !self.data.no_more;
                 if let Some(model) = unsafe { model_pin(self.model) } {

@@ -120,6 +120,43 @@ fn push_sudo(argv: &mut Vec<String>, helper: &str, packages: &[String], replace:
     }
 }
 
+/// Ключи сборки рецептов AUR (переменные, которые PKGBUILD читает из
+/// окружения: `: ${_build_x:=true}`): пакет из списка Rexon → что
+/// выставить `makepkg` под помощником. Помощник окружение не чистит,
+/// `makepkg` — тоже.
+///
+/// * `vala-panel-appmenu` 25.04 (AUR, pkgbase на всех `-mate`, `-xfce`,
+///   `-registrar`…) по умолчанию собирает и модуль для Budgie, а тот ищет
+///   `budgie-1.0`; budgie-desktop 10.10 даёт только `budgie-3.0` — build()
+///   падает у всех (живьём 08.11.2026: «Dependency "budgie-1.0" not
+///   found»). Rexon ставит из этого рецепта только `-mate`/`-registrar`
+///   (`system.rs`), модуль Budgie ему не нужен.
+pub const BUILD_ENV: &[(&str, &[(&str, &str)])] = &[
+    ("vala-panel-appmenu-mate", &[("_build_budgie", "false")]),
+    ("vala-panel-appmenu-registrar", &[("_build_budgie", "false")]),
+    ("vala-panel-appmenu-xfce", &[("_build_budgie", "false")]),
+];
+
+/// Окружение для команды помощника AUR из [`install_argv`]: ключи сборки
+/// ([`BUILD_ENV`]) пакетов, которые она ставит. Другая команда — пусто.
+pub fn build_env(argv: &[String]) -> Vec<(String, String)> {
+    let helper = argv.first().map(|a| a.rsplit('/').next().unwrap_or(a)).unwrap_or("");
+    if !FLAG_AWARE_HELPERS.contains(&helper) {
+        return Vec::new();
+    }
+    let mut out: Vec<(String, String)> = Vec::new();
+    for p in argv_packages(argv) {
+        for (_, vars) in BUILD_ENV.iter().filter(|(name, _)| *name == p) {
+            for (k, v) in vars.iter() {
+                if !out.iter().any(|(ok, _)| ok == k) {
+                    out.push((k.to_string(), v.to_string()));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Флаги [`install_argv`], за которыми идёт значение, — чтобы разбор
 /// командной строки не принял `pkexec` или `None` за имя пакета.
 pub const VALUE_FLAGS: &[&str] =
@@ -1237,6 +1274,93 @@ pub fn log_path(home: &str, name: &str) -> String {
     format!("{}/aur/{safe}.log", crate::appearance_cache::cache_dir(home.trim_end_matches('/')))
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// Ход сборки в окне: что из вывода помощника показать человеку
+// ════════════════════════════════════════════════════════════════════════
+
+/// Убрать цвет терминала: `ESC[1m`, `ESC[0;32m` и тот же код без ESC
+/// (`[1m … [0m` — так он доходит, когда ESC съеден по дороге).
+pub fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(c) = rest.chars().next() {
+        let after_esc = rest.strip_prefix('\u{1b}');
+        let body = after_esc.unwrap_or(rest);
+        if let Some(seq) = body.strip_prefix('[') {
+            let n = seq.chars().take_while(|c| c.is_ascii_digit() || *c == ';').count();
+            if seq[n..].starts_with('m') && (n > 0 || after_esc.is_some()) {
+                rest = &seq[n + 1..];
+                continue;
+            }
+        }
+        if let Some(b) = after_esc {
+            // Прочие ESC-последовательности (`ESC[K`, `ESC(B`) — до буквы.
+            let skip = b.char_indices().find(|(_, c)| c.is_ascii_alphabetic()).map_or(b.len(), |(i, _)| i + 1);
+            rest = &b[skip..];
+            continue;
+        }
+        out.push(c);
+        rest = &rest[c.len_utf8()..];
+    }
+    out
+}
+
+/// Вопрос помощника, на который Rexon ответил заранее (`--answerclean`,
+/// `--answerdiff`, `--noconfirm`): «Пакеты для чистой сборки?», меню
+/// «[N]one [A]ll … (1 2 3, 1-3, ^4)», эхо ответа «None», «[Y/n]».
+/// Человеку тут читать нечего — ответа он не даёт.
+fn is_answered_question(body: &str) -> bool {
+    let b = body.trim();
+    b.ends_with('?')
+        || b.contains("^4")
+        || ["[Y/n]", "[y/N]", "[Д/н]", "[д/Н]", "[J/n]", "[j/N]"].iter().any(|q| b.contains(q))
+        || matches!(b, "None" | "none" | "All" | "N" | "A")
+}
+
+/// Строка вывода помощника AUR → строка окна хода (или `None` — скрыть).
+///
+/// Цвет терминала вычищается; вопросы, на которые ответ дан заранее,
+/// скрыты; строки pacman, которые сборщик передаёт от установки
+/// зависимостей и собранного, — тем же разбором, что у установки из
+/// репозиториев ([`crate::system_plan::parse_pacman_line`]): по-русски или
+/// никак. Прочее — только стадии `makepkg` (`==>`), сообщения помощника
+/// (`::`) и переходы (` -> `), всё остальное — шум компилятора.
+pub fn progress_line(raw: &str) -> Option<String> {
+    let clean = strip_ansi(raw);
+    let line = clean.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let body = line.trim_start_matches("==>").trim_start_matches("::").trim();
+    if body.is_empty() || is_answered_question(body) {
+        return None;
+    }
+    // `-> librda-0.0.5-1 is up to date -- skipping` (yay о стоящем пакете).
+    if let Some(stem) = body.trim_start_matches("->").trim().strip_suffix(" is up to date -- skipping") {
+        let mut parts = stem.rsplitn(3, '-');
+        let name = match (parts.next(), parts.next(), parts.next()) {
+            (Some(_), Some(_), Some(n)) if !n.is_empty() => n,
+            _ => stem,
+        };
+        return Some(format!("    {}", trf("✅ already installed: %1", &[&name])));
+    }
+    if let Some(p) = crate::system_plan::parse_pacman_line(line) {
+        // Пустое сообщение разбора — «показывать нечего» (вопрос pacman,
+        // служебный заголовок); раздел «📌 …» — чужой заголовок, его
+        // показываем как есть ниже.
+        if p.stage == "nothing" {
+            return None;
+        }
+        if p.stage != "section" {
+            return (!p.message.is_empty()).then(|| format!("    {}", p.message));
+        }
+    }
+    if !crate::system_plan::AUR_PROGRESS_MARKERS.iter().any(|m| line.contains(m)) {
+        return None;
+    }
+    Some(format!("    {line}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1574,5 +1698,40 @@ mod tests {
     fn log_path_is_in_cache() {
         assert_eq!(log_path("/home/a/", "aero-git"), "/home/a/.cache/rexon/aur/aero-git.log");
         assert_eq!(log_path("/home/a", "../x"), "/home/a/.cache/rexon/aur/.._x.log");
+    }
+
+    #[test]
+    fn ход_сборки_без_цвета_и_вопросов() {
+        // Живьём 08.11.2026, «Проверить / Восстановить» MATE (yay 13.1.0, LANG=ru).
+        assert_eq!(strip_ansi("\u{1b}[1;34m::\u{1b}[0m\u{1b}[1m Проверка\u{1b}[0m"), ":: Проверка");
+        assert_eq!(strip_ansi("[1m==> [0mСборка"), "==> Сборка");
+        assert_eq!(strip_ansi("массив[1] и [x]"), "массив[1] и [x]");
+        for hidden in [
+            "\u{1b}[1;32m==>\u{1b}[0m Пакеты для чистой сборки?",
+            "==> Показать изменения?",
+            "==> [Н]ет [В]се [О]тменить [У]становленные [Н]еустановленные или (1 2 3, 1-3, ^4)",
+            "==> None",
+            ":: Proceed with installation? [Y/n]",
+            "there is nothing to do",
+            ":: Running pre-transaction hooks...",
+            "",
+        ] {
+            assert_eq!(progress_line(hidden), None, "{hidden}");
+        }
+        assert_eq!(progress_line("==> Сборка пакета librda"), Some("    ==> Сборка пакета librda".into()));
+        assert_eq!(progress_line(":: Retrieving packages..."), Some(format!("    {}", tr("⬇️  Downloading packages…"))));
+        assert_eq!(progress_line("gcc -O2 -c x.c"), None);
+        assert_eq!(
+            progress_line(" -> librda-0.0.5-1 is up to date -- skipping"),
+            Some(format!("    {}", trf("✅ already installed: %1", &[&"librda"])))
+        );
+    }
+
+    #[test]
+    fn ключи_сборки_vala_panel_appmenu() {
+        let argv = install_argv("yay", &s(&["mate-tweak", "vala-panel-appmenu-mate", "vala-panel-appmenu-registrar"]), false);
+        assert_eq!(build_env(&argv), vec![("_build_budgie".to_string(), "false".to_string())]);
+        assert!(build_env(&install_argv("yay", &s(&["mate-tweak"]), false)).is_empty());
+        assert!(build_env(&s(&["pacman", "-S", "vala-panel-appmenu-mate"])).is_empty());
     }
 }

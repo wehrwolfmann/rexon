@@ -1024,6 +1024,7 @@ pub fn readme_text(kind: ShowcaseKind, files: &[OutFile]) -> String {
             trf("Open the artwork upload page in Steam: %1 (Profile → Artwork → Upload).", &[&UPLOAD_PAGE_URL]),
             tr("Upload the files one by one, starting with number 1. Give each a clear title, for example \"Showcase — main\" and \"Showcase — side\": in Steam's picker the long pictures are hard to recognise by thumbnail."),
             tr("Tick \"I certify that I created this piece of art\" only if the picture is really yours. For someone else's art Steam may remove the upload when the author complains."),
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             tr("Open Edit Profile → Featured Showcase, add \"Artwork Showcase\" and pick the main file for the large slot and the side file for the right slot."),
         ],
         ShowcaseKind::Featured => vec![
@@ -1031,6 +1032,7 @@ pub fn readme_text(kind: ShowcaseKind, files: &[OutFile]) -> String {
             trf("Open the artwork upload page in Steam: %1 (Profile → Artwork → Upload).", &[&UPLOAD_PAGE_URL]),
             tr("Upload the file and give it a clear title."),
             tr("Tick \"I certify that I created this piece of art\" only if the picture is really yours. For someone else's art Steam may remove the upload when the author complains."),
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             tr("Open Edit Profile → Featured Showcase, add \"Featured Artwork Showcase\" and pick the uploaded file."),
         ],
     };
@@ -1038,6 +1040,7 @@ pub fn readme_text(kind: ShowcaseKind, files: &[OutFile]) -> String {
         s.push_str(&format!("{}. {}\n", i + 1, step));
     }
     s.push('\n');
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     s.push_str(&tr("Note: by default Steam may show a tall picture shrunk or with black bars. The same steps, with buttons that open the right Steam pages and a check of the result, are in Rexon: Steam → Profile Showcases."));
     s.push('\n');
     s
@@ -1535,6 +1538,7 @@ pub fn check_profile(state: &WizardState, page: &ProfilePage) -> CheckReport {
         return fail(
             "private",
             tr("The profile is private — there is nothing to read."),
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             vec![tr("Open Edit Profile → Privacy Settings in Steam and set \"My profile\" to \"Public\", then check again.")],
         );
     }

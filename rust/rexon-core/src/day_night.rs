@@ -1277,6 +1277,7 @@ fn summary_text(cfg: &Config) -> String {
 
 fn native_note(cfg: &Config, de: &str) -> String {
     match de {
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         "kde" => tr("In Plasma, Rexon hands the global theme switch to Plasma itself (System Settings → Global Theme, “Automatically”) and sets its schedule — the same “Day-night cycle” schedule that Night Light uses. The color scheme and icons then come from the global theme; Rexon switches the other parts itself."),
         "cosmic" if cfg.schedule == Schedule::Sun => tr("In COSMIC, the light and dark mode by sunrise and sunset is switched by COSMIC itself; Rexon only turns it on. Times of day COSMIC can't do — then Rexon switches it."),
         "cosmic" => tr("COSMIC switches only by sunrise and sunset; for times of day Rexon switches the mode itself."),
@@ -1372,6 +1373,12 @@ fn live_env(io: &dyn DayNightIo) -> Env<'_> {
         &env_str("DESKTOP_SESSION"),
         !env_str("WAYLAND_DISPLAY").is_empty(),
     );
+    // Раздел вкладки «Оформление» — за выбором «Текущее окружение»; запуск
+    // по таймеру (отдельный процесс) выбора не знает и берёт сеанс.
+    let de = match crate::animations::LookCtx::from_env().for_chosen(&crate::animations::chosen_desktop()).de {
+        chosen if !chosen.is_empty() && de.as_deref() != Some(chosen.as_str()) => Some(chosen),
+        _ => de,
+    };
     let entry = crate::installer::launch_entry_live();
     let program = match &entry {
         crate::installer::LaunchEntry::MainWindow(p) => Some(p.clone()),

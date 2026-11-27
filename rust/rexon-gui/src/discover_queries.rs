@@ -156,6 +156,14 @@ pub mod qobject {
                     NOTIFY = sort_key_changed)]
         #[qproperty(QStringList, tags, READ = tags, WRITE = set_tags,
                     NOTIFY = tags_changed)]
+        /// waywallen 0.6.0: исключённые теги и режим сопоставления выбранных
+        /// значений по фильтрам (карта «фильтр → any/all»).
+        #[qproperty(QStringList, excluded_tags, cxx_name = "excludedTags",
+                    READ = excluded_tags, WRITE = set_excluded_tags,
+                    NOTIFY = excluded_tags_changed)]
+        #[qproperty(QVariant, filter_match_modes, cxx_name = "filterMatchModes",
+                    READ = filter_match_modes, WRITE = set_filter_match_modes,
+                    NOTIFY = filter_match_modes_changed)]
         #[qproperty(bool, browsing_enabled, cxx_name = "browsingEnabled",
                     READ = browsing_enabled, WRITE = set_browsing_enabled,
                     NOTIFY = browsing_enabled_changed)]
@@ -190,6 +198,10 @@ pub mod qobject {
         #[qproperty(QStringList, tags, READ = tags, NOTIFY = loaded)]
         #[qproperty(QString, web_url, cxx_name = "webUrl",
                     READ = web_url, NOTIFY = loaded)]
+        /// waywallen 0.6.0: страница автора и строки «подпись — значение».
+        #[qproperty(QString, author_url, cxx_name = "authorUrl",
+                    READ = author_url, NOTIFY = loaded)]
+        #[qproperty(QList_QVariant, fields, READ = fields, NOTIFY = loaded)]
         type RemoteDetailsQuery = super::RemoteDetailsQueryRust;
 
         #[qobject]
@@ -280,6 +292,12 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "browsingEnabledChanged"]
         fn browsing_enabled_changed(self: Pin<&mut RemoteSearchQuery>);
+        #[qsignal]
+        #[cxx_name = "excludedTagsChanged"]
+        fn excluded_tags_changed(self: Pin<&mut RemoteSearchQuery>);
+        #[qsignal]
+        #[cxx_name = "filterMatchModesChanged"]
+        fn filter_match_modes_changed(self: Pin<&mut RemoteSearchQuery>);
         /// Состояние выдачи: `hasMore`, `errorText` и всё, что зависит от
         /// страницы. Один сигнал на всё — так у моста и у оригинала.
         #[qsignal]
@@ -419,6 +437,14 @@ pub mod qobject {
         fn tags(self: &RemoteSearchQuery) -> QStringList;
         #[cxx_name = "setTags"]
         fn set_tags(self: Pin<&mut RemoteSearchQuery>, value: QStringList);
+        #[cxx_name = "excludedTags"]
+        fn excluded_tags(self: &RemoteSearchQuery) -> QStringList;
+        #[cxx_name = "setExcludedTags"]
+        fn set_excluded_tags(self: Pin<&mut RemoteSearchQuery>, value: QStringList);
+        #[cxx_name = "filterMatchModes"]
+        fn filter_match_modes(self: &RemoteSearchQuery) -> QVariant;
+        #[cxx_name = "setFilterMatchModes"]
+        fn set_filter_match_modes(self: Pin<&mut RemoteSearchQuery>, value: QVariant);
         #[cxx_name = "browsingEnabled"]
         fn browsing_enabled(self: &RemoteSearchQuery) -> bool;
         #[cxx_name = "setBrowsingEnabled"]
@@ -453,6 +479,9 @@ pub mod qobject {
         fn tags(self: &RemoteDetailsQuery) -> QStringList;
         #[cxx_name = "webUrl"]
         fn web_url(self: &RemoteDetailsQuery) -> QString;
+        #[cxx_name = "authorUrl"]
+        fn author_url(self: &RemoteDetailsQuery) -> QString;
+        fn fields(self: &RemoteDetailsQuery) -> QList_QVariant;
 
         fn status(self: &RemoteDownloadQuery) -> i32;
         fn error(self: &RemoteDownloadQuery) -> QString;
@@ -491,6 +520,9 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "fetchMore"]
         fn fetch_more(self: Pin<&mut RemoteSearchQuery>, row: i32);
+        /// waywallen 0.6.0: «Повторить» после ошибки — упавший шаг заново.
+        #[qinvokable]
+        fn retry(self: Pin<&mut RemoteSearchQuery>);
         #[qinvokable]
         #[cxx_name = "deliverResponse"]
         fn deliver_response(self: Pin<&mut RemoteSearchQuery>, token: i64, frame: &QByteArray);
@@ -706,6 +738,11 @@ pub enum Request {
         sort_key: String,
         page: u32,
         required_tags: Vec<String>,
+        /// waywallen 0.6.0: исключённые теги, режим сопоставления по
+        /// фильтрам («any»/«all») и курсор продолжения (только догрузка).
+        excluded_tags: Vec<String>,
+        filter_match_modes: BTreeMap<String, String>,
+        cursor: String,
     },
     Details {
         source_id: String,
@@ -750,7 +787,22 @@ impl Request {
                 sort_key,
                 page,
                 required_tags,
-            } => we_client::remote_search(rid, query, sort_key, *page, source_id, required_tags),
+                excluded_tags,
+                filter_match_modes,
+                cursor,
+            } => we_client::remote_search(
+                rid,
+                &we_client::RemoteSearch {
+                    query,
+                    sort_key,
+                    page: *page,
+                    source_id,
+                    tags: required_tags,
+                    excluded_tags,
+                    filter_match_modes,
+                    cursor,
+                },
+            ),
             Request::Details { source_id, id } => we_client::remote_details(rid, id, source_id),
             Request::Download { source_id, id } => we_client::remote_download(rid, id, source_id),
             Request::Uninstall { source_id, id } => we_client::remote_uninstall(rid, id, source_id),
@@ -769,7 +821,32 @@ impl Request {
                 sort_key,
                 page,
                 required_tags,
+                excluded_tags,
+                filter_match_modes,
+                cursor,
             } => {
+                // Поля 0.6.0 печатаются, только когда заданы: голден снят до
+                // них, и у пустых форма кадра прежняя.
+                if !excluded_tags.is_empty() {
+                    map.insert(
+                        "excluded_tags".into(),
+                        Value::Array(excluded_tags.iter().cloned().map(Value::String).collect()),
+                    );
+                }
+                if !filter_match_modes.is_empty() {
+                    map.insert(
+                        "filter_match_modes".into(),
+                        Value::Object(
+                            filter_match_modes
+                                .iter()
+                                .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+                                .collect(),
+                        ),
+                    );
+                }
+                if !cursor.is_empty() {
+                    map.insert("cursor".into(), Value::String(cursor.clone()));
+                }
                 map.insert("source_id".into(), Value::String(source_id.clone()));
                 map.insert("query".into(), Value::String(query.clone()));
                 map.insert("sort_key".into(), Value::String(sort_key.clone()));
@@ -806,6 +883,9 @@ impl Request {
                 sort_key: s.sort_key,
                 page: s.page,
                 required_tags: s.required_tags,
+                excluded_tags: s.excluded_tags,
+                filter_match_modes: s.filter_match_modes.into_iter().collect(),
+                cursor: s.cursor,
             },
             pb::request::Payload::RemoteDetails(d) => Request::Details {
                 source_id: d.source_id,
@@ -994,6 +1074,26 @@ fn source_info(s: &pb::RemoteSourceInfo) -> Value {
         Value::String(s.owner_plugin_id.clone()),
     );
     map.insert("remoteCapability".into(), Value::from(s.remote_capability));
+    // waywallen 0.6.0: как источник листает выдачу (страницы или курсор) и
+    // кнопка скачивания — её подпись, подсказка и доступна ли она. Без
+    // описания у источника кнопка доступна, как у оригинала
+    // (`!hasDownloadAction() || enabled`).
+    map.insert("pagination".into(), Value::from(s.pagination));
+    let download = s.download_action.clone().unwrap_or_default();
+    let mut action = Map::new();
+    action.insert(
+        "enabled".into(),
+        Value::Bool(s.download_action.is_none() || download.enabled),
+    );
+    action.insert(
+        "labelText".into(),
+        plugin_message_or(download.label_text.as_ref(), &download.label),
+    );
+    action.insert(
+        "tooltipText".into(),
+        plugin_message_or(download.tooltip_text.as_ref(), &download.tooltip),
+    );
+    map.insert("downloadAction".into(), Value::Object(action));
     map.insert("remoteHint".into(), Value::String(s.remote_hint.clone()));
     map.insert(
         "remoteHintText".into(),
@@ -1042,6 +1142,20 @@ fn source_info(s: &pb::RemoteSourceInfo) -> Value {
                         "confirmation".into(),
                         Value::String(f.confirmation.clone()),
                     );
+                    // waywallen 0.6.0: режимы сопоставления выбранных тем
+                    // («любая» / «все»), режим по умолчанию и можно ли
+                    // исключать теги (`TagPickerDialog`, `RemoteFilterDialog`).
+                    item.insert(
+                        "matchModes".into(),
+                        Value::Array(
+                            f.match_modes.iter().map(|m| Value::String(m.clone())).collect(),
+                        ),
+                    );
+                    item.insert(
+                        "defaultMatchMode".into(),
+                        Value::String(f.default_match_mode.clone()),
+                    );
+                    item.insert("supportsExclusion".into(), Value::Bool(f.supports_exclusion));
                     item.insert("titleText".into(), plugin_message(f.title_text.as_ref()));
                     item.insert(
                         "descriptionText".into(),
@@ -1266,6 +1380,12 @@ fn decode_failed(state: &mut QueryState) -> Vec<Cmd> {
 // RemoteSearchQuery — выдача каталога с постраничной догрузкой
 // ============================================================================
 
+/// Сколько выданных курсоров помнить (как у оригинала).
+const MAX_SEEN_CURSORS: usize = 128;
+
+/// Текст ошибки «источник выдал тот же курсор» — ключ каталога Rexon.
+pub const REPEATED_CURSOR: &str = "The source returned a repeated continuation token.";
+
 /// Что именно спрашивала страница — токен помнит это за замыкание `_done`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PendingPage {
@@ -1288,7 +1408,23 @@ pub struct SearchState {
     /// Выдача исчерпана.
     pub no_more: bool,
     /// Текст ошибки САМОГО источника (не транспорта) — показывается плашкой.
+    /// С waywallen 0.6.0 ошибка источника — обычная ошибка запроса
+    /// (`errorText()` = `error()`), поле осталось для голдена прежних лет.
     pub error_text: String,
+    /// waywallen 0.6.0: теги, которых в выдаче быть не должно.
+    pub excluded_tags: Vec<String>,
+    /// waywallen 0.6.0: режим сопоставления выбранных значений по фильтрам.
+    pub filter_match_modes: BTreeMap<String, String>,
+    /// Курсор следующей страницы (источники с `REMOTE_PAGINATION_CURSOR`).
+    pub next_cursor: String,
+    /// Уже выданные курсоры: повтор — ошибка источника, а не вечная догрузка.
+    seen_cursors: Vec<String>,
+    /// Последняя неудача была на догрузке — «Повторить» догружает, а не
+    /// перезагружает выдачу.
+    failed_append: bool,
+    /// Условия поиска сменились, перезагрузка ждёт дебаунса: догрузка
+    /// старой выдачи до неё не уходит.
+    reload_pending: bool,
     pending: BTreeMap<i64, PendingPage>,
 }
 
@@ -1304,6 +1440,12 @@ impl Default for SearchState {
             offset: 0,
             no_more: false,
             error_text: String::new(),
+            excluded_tags: Vec::new(),
+            filter_match_modes: BTreeMap::new(),
+            next_cursor: String::new(),
+            seen_cursors: Vec::new(),
+            failed_append: false,
+            reload_pending: false,
             pending: BTreeMap::new(),
         }
     }
@@ -1322,16 +1464,68 @@ impl SearchState {
         vec![Cmd::Signal(Event::Prop(signal)), Cmd::RequestReload]
     }
 
+    /// `invalidateSearch` оригинала (без сигналов): прежняя выдача больше
+    /// не продолжается — до перезагрузки догрузка не уходит.
+    fn invalidate(&mut self) {
+        self.reload_pending = true;
+        self.failed_append = false;
+        self.next_cursor.clear();
+        self.seen_cursors.clear();
+    }
+
+    pub fn set_excluded_tags(&mut self, value: Vec<String>) -> Vec<Cmd> {
+        if self.excluded_tags == value {
+            return Vec::new();
+        }
+        self.excluded_tags = value;
+        self.invalidate();
+        vec![Cmd::Signal(Event::Prop("excludedTagsChanged")), Cmd::RequestReload]
+    }
+
+    pub fn set_filter_match_modes(&mut self, value: BTreeMap<String, String>) -> Vec<Cmd> {
+        if self.filter_match_modes == value {
+            return Vec::new();
+        }
+        self.filter_match_modes = value;
+        self.invalidate();
+        vec![Cmd::Signal(Event::Prop("filterMatchModesChanged")), Cmd::RequestReload]
+    }
+
+    /// «Повторить» (waywallen 0.6.0): только после ошибки; упала догрузка —
+    /// догружаем, иначе перезагружаем выдачу.
+    pub fn retry(&mut self, connected: bool) -> Vec<Cmd> {
+        if self.base.status != STATUS_ERROR {
+            return Vec::new();
+        }
+        if self.failed_append {
+            self.load_more(connected)
+        } else {
+            self.reload(connected)
+        }
+    }
+
     pub fn set_source_id(&mut self, value: &str) -> Vec<Cmd> {
-        Self::set_text(&mut self.source_id, value, "sourceIdChanged")
+        let out = Self::set_text(&mut self.source_id, value, "sourceIdChanged");
+        if !out.is_empty() {
+            self.invalidate();
+        }
+        out
     }
 
     pub fn set_query(&mut self, value: &str) -> Vec<Cmd> {
-        Self::set_text(&mut self.query, value, "queryChanged")
+        let out = Self::set_text(&mut self.query, value, "queryChanged");
+        if !out.is_empty() {
+            self.invalidate();
+        }
+        out
     }
 
     pub fn set_sort_key(&mut self, value: &str) -> Vec<Cmd> {
-        Self::set_text(&mut self.sort_key, value, "sortKeyChanged")
+        let out = Self::set_text(&mut self.sort_key, value, "sortKeyChanged");
+        if !out.is_empty() {
+            self.invalidate();
+        }
+        out
     }
 
     pub fn set_tags(&mut self, value: Vec<String>) -> Vec<Cmd> {
@@ -1339,6 +1533,7 @@ impl SearchState {
             return Vec::new();
         }
         self.tags = value;
+        self.invalidate();
         vec![Cmd::Signal(Event::Prop("tagsChanged")), Cmd::RequestReload]
     }
 
@@ -1349,6 +1544,7 @@ impl SearchState {
         self.browsing_enabled = value;
         let mut out = vec![Cmd::Signal(Event::Prop("browsingEnabledChanged"))];
         if value {
+            self.invalidate();
             out.push(Cmd::RequestReload);
         } else {
             out.extend(self.clear_results());
@@ -1361,6 +1557,10 @@ impl SearchState {
         self.offset = 0;
         self.no_more = true;
         self.error_text.clear();
+        self.reload_pending = false;
+        self.failed_append = false;
+        self.next_cursor.clear();
+        self.seen_cursors.clear();
         vec![
             Cmd::Model(ModelCmd::Reset {
                 rows: Vec::new(),
@@ -1376,11 +1576,16 @@ impl SearchState {
         }
         self.offset = 0;
         self.no_more = false;
+        self.next_cursor.clear();
+        self.seen_cursors.clear();
         self.fetch_page(1, false, connected, true)
     }
 
     pub fn load_more(&mut self, connected: bool) -> Vec<Cmd> {
-        if !self.browsing_enabled || self.no_more || self.base.status == we_query::STATUS_QUERYING
+        if !self.browsing_enabled
+            || self.reload_pending
+            || self.no_more
+            || self.base.status == we_query::STATUS_QUERYING
         {
             return Vec::new();
         }
@@ -1398,7 +1603,13 @@ impl SearchState {
     /// последовательность от этого не меняется, потому что пустая
     /// установка флага сигнала не даёт.
     pub fn fetch_more(&mut self, connected: bool, from_model: bool) -> Vec<Cmd> {
-        if !self.browsing_enabled || self.no_more {
+        // waywallen 0.6.0: и не во время запроса — иначе вторая страница
+        // ушла бы с тем же курсором.
+        if !self.browsing_enabled
+            || self.reload_pending
+            || self.no_more
+            || self.base.status == we_query::STATUS_QUERYING
+        {
             return Vec::new();
         }
         let page = (self.offset + 2) as u32;
@@ -1413,10 +1624,21 @@ impl SearchState {
         touch_model: bool,
     ) -> Vec<Cmd> {
         let mut out = Vec::new();
+        self.reload_pending = false;
         // Оригинал: t->setHasMore(false) ДО запроса — иначе GridView дёргает
         // fetchMore повторно, пока страница в полёте.
         if touch_model {
             out.push(Cmd::Model(ModelCmd::SetHasMore(false)));
+        }
+        // waywallen 0.6.0: прежняя ошибка снимается до нового запроса, и
+        // запоминается, ЧТО именно сейчас может не удаться.
+        self.failed_append = append;
+        if connected {
+            let cleared = we_query::set_error(&mut self.base, "");
+            if !cleared.is_empty() {
+                out.extend(base_events(cleared));
+                out.push(Cmd::Signal(Event::Prop("stateChanged")));
+            }
         }
         let (send, signals) = we_query::begin_call(&mut self.base, connected);
         out.extend(base_events(signals));
@@ -1439,6 +1661,12 @@ impl SearchState {
                 sort_key: self.sort_key.clone(),
                 page,
                 required_tags,
+                excluded_tags: localizer()
+                    .lock()
+                    .expect("переводчик не отравлен")
+                    .untranslate_tags(&self.excluded_tags, &self.source_id),
+                filter_match_modes: self.filter_match_modes.clone(),
+                cursor: if append { self.next_cursor.clone() } else { String::new() },
             },
         }));
         out
@@ -1459,13 +1687,54 @@ impl SearchState {
             Some(pb::response::Payload::RemoteSearch(sr)) => sr,
             _ => pb::RemoteSearchResponse::default(),
         };
-        let rows: Vec<RemoteRow> = sr.items.iter().map(row_from_item).collect();
-        // `has_more && rows` — так у моста: демон иногда обещает следующую
-        // страницу, не прислав ни строки, и бесконечная прокрутка зациклилась
-        // бы на пустых запросах.
-        let more = sr.has_more && !rows.is_empty();
+        // waywallen 0.6.0: ошибка источника — ошибка запроса (статус Error,
+        // текст — `errorText`), выдача остаётся прежней, «Повторить»
+        // повторяет именно упавший шаг.
+        if !sr.error.is_empty() {
+            out.extend(self.fail(&sr.error));
+            return out;
+        }
+        // Курсор, который источник уже выдавал, — замкнутый круг.
+        if sr.has_more
+            && !sr.next_cursor.is_empty()
+            && self.seen_cursors.contains(&sr.next_cursor)
+        {
+            out.extend(self.fail(&rexon_core::i18n::tr(REPEATED_CURSOR)));
+            return out;
+        }
+        let rows: Vec<RemoteRow> = sr
+            .items
+            .iter()
+            .map(|it| {
+                let mut row = row_from_item(it);
+                crate::remote_list_model::acquisition::merge(&mut row);
+                row
+            })
+            .collect();
+        // Демон иногда обещает следующую страницу, не прислав ни строки, —
+        // без курсора бесконечная прокрутка зациклилась бы на пустых
+        // запросах. С курсором пустая страница законна (0.6.0).
+        let more = sr.has_more && (!rows.is_empty() || !sr.next_cursor.is_empty());
+        self.next_cursor = sr.next_cursor.clone();
+        if !sr.next_cursor.is_empty() {
+            if self.seen_cursors.len() == MAX_SEEN_CURSORS {
+                self.seen_cursors.remove(0);
+            }
+            self.seen_cursors.push(sr.next_cursor);
+        }
+        self.failed_append = false;
         out.extend(self.apply_page(rows, more, sr.error, pending.page, pending.append));
         out.extend(finish(&mut self.base));
+        out
+    }
+
+    /// Ошибка шага выдачи: текст и статус Error, выдача не трогается.
+    fn fail(&mut self, text: &str) -> Vec<Cmd> {
+        let mut out = we_query::set_error(&mut self.base, text);
+        out.extend(we_query::set_status(&mut self.base, STATUS_ERROR));
+        let mut out = base_events(out);
+        // `errorText` = ошибка запроса и оповещается `stateChanged`.
+        out.push(Cmd::Signal(Event::Prop("stateChanged")));
         out
     }
 
@@ -1515,6 +1784,10 @@ fn row_from_item(it: &pb::RemoteItem) -> RemoteRow {
         // НАША ПРАВКА: страница работ автора — только у Мастерской Steam;
         // источники демона её не знают. Пусто прячет кнопку.
         author_url: String::new(),
+        // waywallen 0.6.0: размер ресурса, если источник его знает.
+        width: it.width.unwrap_or(0),
+        height: it.height.unwrap_or(0),
+        ..RemoteRow::default()
     }
 }
 
@@ -1545,7 +1818,40 @@ pub struct DetailsState {
     /// RemoteDetailPanel.qml:58), а прежний мост его не отдавал — кнопка
     /// была скрыта всегда.
     pub web_url: String,
+    /// waywallen 0.6.0: страница автора у источника (`authorUrl`).
+    pub author_url: String,
+    /// waywallen 0.6.0: строки «подпись — значение» панели деталей
+    /// (`RemoteDetailField`: счётчики подписчиков, лицензия и т. п.).
+    pub fields: Vec<Value>,
     pending: BTreeMap<i64, ()>,
+}
+
+/// `RemoteDetailField` → карта строки панели (`RemoteDetailFields.qml`).
+/// Ссылка кладётся, только если это настоящий адрес http(s) с хостом — как
+/// у оригинала: остальное источник мог прислать по ошибке, и щелчок по
+/// нему открыл бы неизвестно что.
+fn detail_field(f: &pb::RemoteDetailField) -> Value {
+    let mut row = Map::new();
+    row.insert("key".into(), Value::String(f.key.clone()));
+    row.insert("label".into(), Value::String(f.label.clone()));
+    row.insert("labelText".into(), plugin_message_or(f.label_text.as_ref(), &f.label));
+    row.insert("value".into(), Value::String(f.value.clone()));
+    if web_link(&f.url) {
+        row.insert("url".into(), Value::String(f.url.clone()));
+    }
+    Value::Object(row)
+}
+
+/// Адрес `http(s)://хост…` — годится в ссылку панели.
+fn web_link(url: &str) -> bool {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"));
+    rest.is_some_and(|r| {
+        let host = r.split(['/', '?', '#']).next().unwrap_or("");
+        let host = host.rsplit('@').next().unwrap_or("");
+        !host.is_empty() && !host.starts_with(':') && !host.contains(char::is_whitespace)
+    })
 }
 
 impl DetailsState {
@@ -1579,8 +1885,14 @@ impl DetailsState {
         self.height = 0;
         self.tags.clear();
         self.web_url.clear();
-        let mut out = vec![Cmd::Signal(Event::Prop("loaded"))];
+        self.author_url.clear();
+        self.fields.clear();
+        // waywallen 0.6.0: прежняя ошибка снимается сразу, без предмета
+        // запрос просто завершён.
+        let mut out = base_events(we_query::set_error(&mut self.base, ""));
+        out.push(Cmd::Signal(Event::Prop("loaded")));
         if self.item_id.is_empty() {
+            out.extend(finish(&mut self.base));
             return out;
         }
         let (send, signals) = we_query::begin_call(&mut self.base, connected);
@@ -1616,6 +1928,15 @@ impl DetailsState {
             Some(pb::response::Payload::RemoteDetails(dr)) => dr,
             _ => pb::RemoteDetailsResponse::default(),
         };
+        // waywallen 0.6.0: ошибка источника — ошибка запроса.
+        if !dr.error.is_empty() {
+            let mut fail = we_query::set_error(&mut self.base, &dr.error);
+            fail.extend(we_query::set_status(&mut self.base, STATUS_ERROR));
+            out.extend(base_events(fail));
+            return out;
+        }
+        self.author_url = dr.author_url.clone();
+        self.fields = dr.fields.iter().map(detail_field).collect();
         self.author = dr.author;
         self.author_avatar_url = dr.author_avatar_url;
         self.description = dr.description;
@@ -2095,6 +2416,40 @@ impl qobject::RemoteSearchQuery {
         self.run(&cmds);
     }
 
+    fn excluded_tags(&self) -> QStringList {
+        qstringlist(&self.state.excluded_tags)
+    }
+
+    fn set_excluded_tags(mut self: Pin<&mut Self>, value: QStringList) {
+        let cmds = self.as_mut().rust_mut().state.set_excluded_tags(strings_of(&value));
+        self.run(&cmds);
+    }
+
+    fn filter_match_modes(&self) -> QVariant {
+        let map: Map<String, Value> = self
+            .state
+            .filter_match_modes
+            .iter()
+            .map(|(k, v)| (k.clone(), Value::String(v.clone())))
+            .collect();
+        json_to_variant(&Value::Object(map))
+    }
+
+    /// Значения — `QVariant::toString()`, как у оригинала.
+    fn set_filter_match_modes(mut self: Pin<&mut Self>, value: QVariant) {
+        let modes: BTreeMap<String, String> =
+            we_client::library_settings(&crate::qvalue::variant_to_json(&value))
+                .into_iter()
+                .collect();
+        let cmds = self.as_mut().rust_mut().state.set_filter_match_modes(modes);
+        self.run(&cmds);
+    }
+
+    fn retry(mut self: Pin<&mut Self>) {
+        let cmds = self.as_mut().rust_mut().state.retry(connected());
+        self.run(&cmds);
+    }
+
     fn browsing_enabled(&self) -> bool {
         self.state.browsing_enabled
     }
@@ -2113,8 +2468,15 @@ impl qobject::RemoteSearchQuery {
         unsafe { (*model).has_more() }
     }
 
+    /// waywallen 0.6.0: `errorText()` — это `error()` запроса (ошибка
+    /// источника стала ошибкой запроса). Прежнее отдельное поле — для
+    /// старого ответа демона, который ещё кладёт ошибку без статуса.
     fn error_text(&self) -> QString {
-        QString::from(&self.state.error_text)
+        if self.state.base.error.is_empty() {
+            QString::from(&self.state.error_text)
+        } else {
+            QString::from(&self.state.base.error)
+        }
     }
 
     fn reload(mut self: Pin<&mut Self>) {
@@ -2163,6 +2525,10 @@ impl qobject::RemoteSearchQuery {
                                 "tagsChanged" => self.as_mut().tags_changed(),
                                 "browsingEnabledChanged" => {
                                     self.as_mut().browsing_enabled_changed()
+                                }
+                                "excludedTagsChanged" => self.as_mut().excluded_tags_changed(),
+                                "filterMatchModesChanged" => {
+                                    self.as_mut().filter_match_modes_changed()
                                 }
                                 "stateChanged" => self.as_mut().state_changed(),
                                 other => debug_assert!(false, "нет сигнала {other}"),
@@ -2276,6 +2642,18 @@ impl qobject::RemoteDetailsQuery {
 
     fn web_url(&self) -> QString {
         QString::from(&self.state.web_url)
+    }
+
+    fn author_url(&self) -> QString {
+        QString::from(&self.state.author_url)
+    }
+
+    fn fields(&self) -> qobject::QList_QVariant {
+        let mut out = QList::<QVariant>::default();
+        for field in &self.state.fields {
+            out.append(json_to_variant(field));
+        }
+        out
     }
 
     fn reload(mut self: Pin<&mut Self>) {
@@ -2458,6 +2836,31 @@ pub mod golden {
     /// Пока функция была видна одному `cargo test`, стенд сравнивал живой
     /// ответ 0.3.8 с эталоном Python-эпохи напрямую — и краснел не на
     /// расхождении поведения, а на новых полях протокола.
+    /// Сценарии голдена, чьё поведение waywallen 0.6.0 сменил НАМЕРЕННО
+    /// (`remote_query.cpp`): ошибка источника теперь — статус Error, а не
+    /// текст при Finished; перед новым запросом прежняя ошибка снимается.
+    /// Эталон снят с Python-моста (архив) и переснять его нечем — новое
+    /// поведение сторожит `search_errors_and_cursor_follow_0_6_0`.
+    pub const SUPERSEDED_0_6_0: &[&str] = &[
+        "поиск: текст ошибки источника показывается без статуса Error",
+        "поиск: без соединения статус сразу Error, кадр не уходит",
+    ];
+
+    /// Ключи описаний источников, появившиеся в waywallen 0.6.0, — голден
+    /// снят до них, сверка их снимает (наличие сторожит
+    /// `sources_carry_0_6_0_keys` ниже).
+    pub const KEYS_0_6_0: &[&str] = &[
+        "pagination",
+        "downloadAction",
+        "matchModes",
+        "defaultMatchMode",
+        "supportsExclusion",
+    ];
+
+    fn keep_key(k: &str) -> bool {
+        !k.ends_with("Text") && k != "groupLabel" && !KEYS_0_6_0.contains(&k)
+    }
+
     pub fn strip_message_maps(value: &Value) -> Value {
         if let Value::Object(map) = value {
             if let Some(Value::Array(options)) = map.get("options") {
@@ -2477,7 +2880,7 @@ pub mod golden {
                     }
                     out.insert(k.clone(), strip_message_maps(v));
                 }
-                out.retain(|k, _| !k.ends_with("Text") && k.as_str() != "groupLabel");
+                out.retain(|k, _| keep_key(k));
                 return Value::Object(out);
             }
         }
@@ -2485,7 +2888,7 @@ pub mod golden {
             Value::Array(items) => Value::Array(items.iter().map(strip_message_maps).collect()),
             Value::Object(map) => Value::Object(
                 map.iter()
-                    .filter(|(k, _)| !k.ends_with("Text") && k.as_str() != "groupLabel")
+                    .filter(|(k, _)| keep_key(k))
                     .map(|(k, v)| (k.clone(), strip_message_maps(v)))
                     .collect(),
             ),
@@ -2639,6 +3042,18 @@ pub mod golden {
                 sort_key: str_at(request, "sort_key"),
                 page: i64_at(request, "page") as u32,
                 required_tags: strings_at(request, "required_tags"),
+                // Голден снят до waywallen 0.6.0: этих полей в нём нет.
+                excluded_tags: strings_at(request, "excluded_tags"),
+                filter_match_modes: request
+                    .get("filter_match_modes")
+                    .and_then(Value::as_object)
+                    .map(|m| {
+                        m.iter()
+                            .map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                cursor: str_at(request, "cursor"),
             },
             "remote_details" => Request::Details {
                 source_id: str_at(request, "source_id"),
@@ -2919,8 +3334,12 @@ pub mod golden {
                         source_id: str_at(it, "sourceId"),
                         wp_type: str_at(it, "wpType"),
                         author_avatar_url: str_at(it, "authorAvatarUrl"),
+                        // Голден снят до waywallen 0.6.0: размера нет.
+                        width: None,
+                        height: None,
                     })
                     .collect(),
+                next_cursor: str_at(payload, "nextCursor"),
             }),
             "remote_details" => pb::response::Payload::RemoteDetails(pb::RemoteDetailsResponse {
                 description: str_at(payload, "description"),
@@ -2932,6 +3351,7 @@ pub mod golden {
                 web_url: str_at(payload, "webUrl"),
                 author: str_at(payload, "author"),
                 author_avatar_url: str_at(payload, "authorAvatarUrl"),
+                ..Default::default()
             }),
             "remote_download" => {
                 pb::response::Payload::RemoteDownload(pb::RemoteDownloadResponse {
@@ -3163,6 +3583,7 @@ pub mod golden {
     pub fn replay_pure(case: &Value) -> Harness {
         super::reset_tokens();
         super::reset_localizer();
+        crate::remote_list_model::acquisition::forget_in_flight();
         super::set_connected(true);
         let mut harness = Harness::default();
         for step in case
@@ -3474,6 +3895,10 @@ pub mod selftest {
             let mut object = serde_json::Map::new();
             for (key, value) in model.get(row).iter() {
                 let name = key.to_string();
+                // Эталон снят до waywallen 0.6.0: новые роли в сверку не входят.
+                if !ROLE_NAMES[..crate::remote_list_model::GOLDEN_ROLES].contains(&name.as_str()) {
+                    continue;
+                }
                 let json = if name == "acquisitionState" {
                     Value::from(value.value::<i32>().unwrap_or_default())
                 } else {
@@ -3494,6 +3919,7 @@ pub mod selftest {
     fn run_case(case: &Value, report: &mut Report) {
         super::reset_tokens();
         super::reset_localizer();
+        crate::remote_list_model::acquisition::forget_in_flight();
         super::set_connected(true);
 
         let page = Page::new();
@@ -3976,6 +4402,9 @@ pub mod selftest {
             "в эталоне нет ни одного случая — стенду нечего проверять".to_string()
         });
         for case in &cases {
+            if golden::SUPERSEDED_0_6_0.contains(&golden::str_at(case, "name").as_str()) {
+                continue;
+            }
             run_case(case, &mut report);
         }
 
@@ -4181,6 +4610,9 @@ mod tests {
         let mut sources_seen = 0usize;
         for case in cases {
             let name = golden::str_at(case, "name");
+            if golden::SUPERSEDED_0_6_0.contains(&name.as_str()) {
+                continue;
+            }
             let harness = golden::replay_pure(case);
             let expected = golden::expected_records(case);
             assert_eq!(harness.journal, expected, "{name}: последовательность сигналов");
@@ -4391,6 +4823,100 @@ mod tests {
         harness.availability.sources.len()
     }
 
+    /// waywallen 0.6.0: описание источника несёт листание, кнопку
+    /// скачивания и режимы фильтров — голден их снимает, поэтому наличие
+    /// сторожится здесь.
+    #[test]
+    fn sources_carry_0_6_0_keys() {
+        let mut src = pb::RemoteSourceInfo {
+            id: "we".into(),
+            pagination: pb::RemotePagination::Cursor as i32,
+            filters: vec![pb::RemoteFilterDef {
+                id: "tags".into(),
+                match_modes: vec!["any".into(), "all".into()],
+                default_match_mode: "any".into(),
+                supports_exclusion: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let v = source_info(&src);
+        for key in golden::KEYS_0_6_0.iter().take(2) {
+            assert!(v.get(*key).is_some(), "нет ключа {key}");
+        }
+        assert_eq!(v["pagination"], 2);
+        assert_eq!(v["downloadAction"]["enabled"], true, "без описания кнопка доступна");
+        let f = &v["filters"][0];
+        assert_eq!(f["matchModes"], serde_json::json!(["any", "all"]));
+        assert_eq!(f["defaultMatchMode"], "any");
+        assert_eq!(f["supportsExclusion"], true);
+        src.download_action = Some(pb::DownloadAction {
+            enabled: false,
+            label: "Подписаться".into(),
+            ..Default::default()
+        });
+        let v = source_info(&src);
+        assert_eq!(v["downloadAction"]["enabled"], false);
+        assert_eq!(v["downloadAction"]["labelText"], "Подписаться");
+    }
+
+    /// waywallen 0.6.0: ошибка источника — ошибка запроса; повтор курсора —
+    /// тоже ошибка; «Повторить» после упавшей догрузки догружает.
+    #[test]
+    fn search_errors_and_cursor_follow_0_6_0() {
+        let frame = |rsp: pb::RemoteSearchResponse| {
+            pb::ServerFrame {
+                kind: Some(pb::server_frame::Kind::Response(pb::Response {
+                    status: pb::Status::Ok as i32,
+                    payload: Some(pb::response::Payload::RemoteSearch(rsp)),
+                    ..Default::default()
+                })),
+            }
+            .encode_to_vec()
+        };
+        let sent = |cmds: &[Cmd]| -> Option<(i64, Request)> {
+            cmds.iter().find_map(|c| match c {
+                Cmd::Signal(Event::Sent { token, request, .. }) => Some((*token, request.clone())),
+                _ => None,
+            })
+        };
+        let item = || pb::RemoteItem { id: "1".into(), source_id: "we".into(), ..Default::default() };
+        let mut st = SearchState { source_id: "we".into(), ..Default::default() };
+        let (t1, _) = sent(&st.reload(true)).expect("первая страница ушла");
+        st.apply(
+            t1,
+            &frame(pb::RemoteSearchResponse {
+                items: vec![item()],
+                has_more: true,
+                next_cursor: "c1".into(),
+                ..Default::default()
+            }),
+        );
+        assert_eq!(st.base.status, STATUS_FINISHED);
+        let (t2, req) = sent(&st.load_more(true)).expect("догрузка ушла");
+        let Request::Search { cursor, .. } = req else { panic!("не поиск") };
+        assert_eq!(cursor, "c1", "догрузка несёт курсор");
+        // Источник выдал тот же курсор — ошибка, а не вечная догрузка.
+        st.apply(
+            t2,
+            &frame(pb::RemoteSearchResponse {
+                items: vec![item()],
+                has_more: true,
+                next_cursor: "c1".into(),
+                ..Default::default()
+            }),
+        );
+        assert_eq!(st.base.status, STATUS_ERROR);
+        // «Повторить» догружает (тот же курсор), а не начинает сначала.
+        let (t3, req) = sent(&st.retry(true)).expect("повтор ушёл");
+        let Request::Search { cursor, page, .. } = req else { panic!("не поиск") };
+        assert_eq!((cursor.as_str(), page), ("c1", 2));
+        st.apply(t3, &frame(pb::RemoteSearchResponse { error: "лимит".into(), ..Default::default() }));
+        assert_eq!(st.base.status, STATUS_ERROR);
+        assert_eq!(st.base.error, "лимит", "ошибка источника — ошибка запроса");
+        assert!(st.retry(true).iter().any(|c| matches!(c, Cmd::Signal(Event::Sent { .. }))));
+    }
+
     #[test]
     fn request_bytes_are_the_real_protocol() {
         // Сигнал уносит БАЙТЫ, а не намерение: сверяем, что собранный кадр
@@ -4404,6 +4930,10 @@ mod tests {
                 sort_key: "toplist".into(),
                 page: 2,
                 required_tags: vec!["anime".into(), "CG".into()],
+                // waywallen 0.6.0: исключения, режимы и курсор тоже уходят.
+                excluded_tags: vec!["nsfw".into()],
+                filter_match_modes: [("tags".to_string(), "all".to_string())].into(),
+                cursor: "c2".into(),
             },
             Request::Details {
                 source_id: "wallhaven".into(),

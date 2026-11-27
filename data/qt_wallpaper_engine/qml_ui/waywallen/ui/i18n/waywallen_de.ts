@@ -11,7 +11,7 @@
     <message>
         <location filename="../qml/page/AboutPage.qml" line="58"/>
         <source>Daemon version %1</source>
-        <translation type="unfinished"></translation>
+        <translation>Daemon-Version %1</translation>
     </message>
     <message>
         <location filename="../qml/page/AboutPage.qml" line="58"/>
@@ -106,7 +106,7 @@
     <name>AddToPlaylistSheetContent</name>
     <message>
         <source>No manual playlists found</source>
-        <translation type="unfinished"></translation>
+        <translation>Keine normalen Wiedergabelisten gefunden</translation>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/AddToPlaylistSheetContent.qml" line="25"/>
@@ -302,6 +302,10 @@
 </context>
 <context>
     <name>DiscoverPage</name>
+    <message>
+        <source>Retry</source>
+        <translation>Erneut versuchen</translation>
+    </message>
     <message>
         <location filename="../qml/page/DiscoverPage.qml" line="109"/>
         <source>Sort</source>
@@ -884,35 +888,35 @@
     <name>PlaylistEditPage</name>
     <message>
         <source>Smart playlist</source>
-        <translation type="unfinished"></translation>
+        <translation>Intelligente Wiedergabeliste</translation>
     </message>
     <message>
         <source>Wallpapers matching these filters are updated automatically.</source>
-        <translation type="unfinished"></translation>
+        <translation>Hintergrundbilder, die diesen Filtern entsprechen, werden automatisch aktualisiert.</translation>
     </message>
     <message>
         <source>Default order</source>
-        <translation type="unfinished"></translation>
+        <translation>Standardreihenfolge</translation>
     </message>
     <message>
         <source>Type</source>
-        <translation type="unfinished"></translation>
+        <translation>Typ</translation>
     </message>
     <message>
         <source>Size</source>
-        <translation type="unfinished"></translation>
+        <translation>Größe</translation>
     </message>
     <message>
         <source>Last modified</source>
-        <translation type="unfinished"></translation>
+        <translation>Zuletzt geändert</translation>
     </message>
     <message>
         <source>Reverse order</source>
-        <translation type="unfinished"></translation>
+        <translation>Umgekehrte Reihenfolge</translation>
     </message>
     <message>
         <source>Waiting for matching wallpapers</source>
-        <translation type="unfinished"></translation>
+        <translation>Warten auf passende Hintergrundbilder</translation>
     </message>
     <message>
         <location filename="../qml/page/PlaylistEditPage.qml" line="14"/>
@@ -1014,11 +1018,11 @@
     <name>PlaylistListSheet</name>
     <message>
         <source>Create smart playlist</source>
-        <translation type="unfinished"></translation>
+        <translation>Intelligente Wiedergabeliste erstellen</translation>
     </message>
     <message>
         <source>Smart playlist</source>
-        <translation type="unfinished"></translation>
+        <translation>Intelligente Wiedergabeliste</translation>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/PlaylistListSheet.qml" line="22"/>
@@ -1530,6 +1534,10 @@
 </context>
 <context>
     <name>RemoteFilterDialog</name>
+    <message>
+        <source>All</source>
+        <translation>Alle</translation>
+    </message>
     <message>
         <location filename="../qml/dialog/RemoteFilterDialog.qml" line="9"/>
         <source>Filters</source>
@@ -2292,10 +2300,37 @@ Betroffener Bildschirm: #%1</translation>
     </message>
 </context>
 <context>
+    <name>EditLibraryPage</name>
+    <message>
+        <source>Edit library</source>
+        <translation>Bibliothek bearbeiten</translation>
+    </message>
+    <message>
+        <source>Library name</source>
+        <translation>Bibliotheksname</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Anwenden</translation>
+    </message>
+</context>
+<context>
     <name>SourceManagePage</name>
     <message>
-        <source>Rename library</source>
-        <translation>Bibliothek umbenennen</translation>
+        <source>Apply</source>
+        <translation>Anwenden</translation>
+    </message>
+    <message>
+        <source>Auto detect libraries</source>
+        <translation>Bibliotheken automatisch erkennen</translation>
+    </message>
+    <message>
+        <source>No new libraries found</source>
+        <translation>Keine neuen Bibliotheken gefunden</translation>
+    </message>
+    <message>
+        <source>Open folder</source>
+        <translation>Ordner öffnen</translation>
     </message>
     <message>
         <source>Library name</source>
@@ -2557,6 +2592,14 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
 <context>
     <name>TagPickerDialog</name>
     <message>
+        <source>Include</source>
+        <translation>Einschließen</translation>
+    </message>
+    <message>
+        <source>Exclude</source>
+        <translation>Ausschließen</translation>
+    </message>
+    <message>
         <location filename="../qml/component/filter/TagPickerDialog.qml" line="17"/>
         <source>Select tags</source>
         <translation>Schlagwörter auswählen</translation>
@@ -2569,6 +2612,18 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
 </context>
 <context>
     <name>TweakSheet</name>
+    <message>
+        <source>Layout</source>
+        <translation>Anordnung</translation>
+    </message>
+    <message>
+        <source>Grid</source>
+        <translation>Raster</translation>
+    </message>
+    <message>
+        <source>Masonry</source>
+        <translation>Wasserfall</translation>
+    </message>
     <message>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="33"/>
         <source>Tweak</source>
@@ -2583,6 +2638,10 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="89"/>
         <source>Size</source>
         <translation>Größe</translation>
+    </message>
+    <message>
+        <source>Spacing</source>
+        <translation>Abstand</translation>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="102"/>
@@ -2622,8 +2681,20 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="160"/>
-        <source>Lower values use less memory but may increase CPU usage when playing animated thumbnails. Set to 0 to disable caching.</source>
-        <translation>Kleinere Werte sparen Speicher, können aber bei animierten Vorschaubildern die CPU-Last erhöhen. 0 schaltet den Zwischenspeicher ab.</translation>
+        <source>Lower values use less memory but may increase CPU usage when playing animated thumbnails.</source>
+        <translation>Kleinere Werte sparen Speicher, können aber bei animierten Vorschaubildern die CPU-Last erhöhen.</translation>
+    </message>
+    <message>
+        <source>Image GPU cache</source>
+        <translation>GPU-Bildcache</translation>
+    </message>
+    <message>
+        <source>256 MiB</source>
+        <translation>256 MiB</translation>
+    </message>
+    <message>
+        <source>Lower values use less GPU memory but may require more texture uploads.</source>
+        <translation>Kleinere Werte benötigen weniger GPU-Speicher, können aber häufigere Textur-Uploads verursachen.</translation>
     </message>
 </context>
 <context>
@@ -2632,6 +2703,10 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
         <location filename="../qml/page/WallpaperCard.qml" line="86"/>
         <source>Untitled</source>
         <translation>Unbenannt</translation>
+    </message>
+    <message>
+        <source>Update available</source>
+        <translation>Update verfügbar</translation>
     </message>
 </context>
 <context>
@@ -2857,12 +2932,20 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
         <source>No display connected</source>
         <translation>Kein Bildschirm angeschlossen</translation>
     </message>
+    <message>
+        <source>Update</source>
+        <translation>Update</translation>
+    </message>
+    <message>
+        <source>Update available</source>
+        <translation>Update verfügbar</translation>
+    </message>
 </context>
 <context>
     <name>WallpaperFilter</name>
     <message>
         <source>Library</source>
-        <translation type="unfinished"></translation>
+        <translation>Bibliothek</translation>
     </message>
     <message>
         <location filename="../qml/component/filter/WallpaperFilter.qml" line="25"/>
@@ -2909,11 +2992,11 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
     <name>WallpaperFilterDialog</name>
     <message>
         <source>Clear rules</source>
-        <translation type="unfinished"></translation>
+        <translation>Regeln löschen</translation>
     </message>
     <message>
         <source>Add group</source>
-        <translation type="unfinished"></translation>
+        <translation>Gruppe hinzufügen</translation>
     </message>
     <message>
         <location filename="../qml/dialog/WallpaperFilterDialog.qml" line="10"/>
@@ -3063,9 +3146,21 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
         <source>Overrides</source>
         <translation>Geänderte Eigenschaften</translation>
     </message>
+    <message>
+        <source>Update</source>
+        <translation>Update</translation>
+    </message>
+    <message>
+        <source>Update available</source>
+        <translation>Update verfügbar</translation>
+    </message>
 </context>
 <context>
     <name>WallpaperPage</name>
+    <message>
+        <source>Retry</source>
+        <translation>Erneut versuchen</translation>
+    </message>
     <message>
         <location filename="../qml/page/WallpaperPage.qml" line="39"/>
         <source>Removed %1</source>
@@ -3530,19 +3625,19 @@ Ungespeicherter Bildzustand kann verloren gehen.</translation>
     <name>LibraryFilter</name>
     <message>
         <source>includes</source>
-        <translation type="unfinished"></translation>
+        <translation>einschließen</translation>
     </message>
     <message>
         <source>excludes</source>
-        <translation type="unfinished"></translation>
+        <translation>ausschließen</translation>
     </message>
     <message>
         <source>Unavailable library #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Nicht verfügbare Bibliothek #%1</translation>
     </message>
     <message>
         <source>Select library</source>
-        <translation type="unfinished"></translation>
+        <translation>Bibliothek auswählen</translation>
     </message>
 </context>
 

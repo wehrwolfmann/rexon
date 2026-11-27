@@ -157,12 +157,18 @@ fn имена_из_ярлыка_переводятся_как_у_продукт�
 // 2. Русские надписи на кнопках самой Qt
 // ============================================================================
 
-/// Каталоги переводов самой Qt — как в эталоне, в том же порядке и без
-/// лишних.
+/// Каталоги переводов самой Qt — как в эталоне, в том же порядке, плюс
+/// НАМЕРЕННО добавленный `qtdeclarative`: эталон жил на QtWidgets, а меню
+/// правки полей QML (`TextArea`, `TextField`) Qt Quick переводит своим
+/// каталогом (08.11.2026: без него меню было английским при русском Rexon).
 #[test]
 fn qt_translation_catalogs_match_the_golden() {
     let ours: Vec<String> = cli::QT_TRANSLATION_CATALOGS.iter().map(|c| c.to_string()).collect();
-    assert_eq!(ours, strings(&golden()["qt_translation_catalogs"]));
+    let quick = "qtdeclarative";
+    let without_quick: Vec<String> = ours.iter().filter(|c| *c != quick).cloned().collect();
+    assert_eq!(without_quick, strings(&golden()["qt_translation_catalogs"]));
+    assert_eq!(ours.iter().filter(|c| *c == quick).count(), 1, "каталог Qt Quick обязан грузиться");
+    assert_eq!(ours.first().map(String::as_str), Some("qtbase"), "qtbase — первым");
 }
 
 /// Разделитель — как в эталоне. Язык отката — НАМЕРЕННО не прежний:
@@ -207,6 +213,21 @@ fn перевод_кнопок_идёт_каталогом_а_не_колбэк�
         SHIM_CPP.contains("QLibraryInfo::path"),
         "каталог обязан браться у самой Qt, а не носиться своим"
     );
+    // Меню правки полей QML: где у `qtdeclarative` перевода нет (Qt 6.12:
+    // ru, zh_CN), надписи берутся из `qtbase` (контекст `QLineEdit`).
+    for needle in ["RexonQuickEditMenuTranslator", "\"SelectAllAction\"", "\"QLineEdit\""] {
+        assert!(SHIM_CPP.contains(needle), "в шиме нет {needle}: меню правки QML снова английское");
+    }
+}
+
+/// Каталоги Qt ставит КАЖДЫЙ процесс с окном Qt — у окна о крахе тоже есть
+/// поле с отчётом и его меню правки.
+#[test]
+fn каталоги_qt_ставит_каждое_окно() {
+    const MAIN: &str = include_str!("../../rexon-gui/src/bin/main_window.rs");
+    const CRASH: &str = include_str!("../../rexon-gui/src/crash_report.rs");
+    assert!(MAIN.contains("rexon_gui::install_qt_translations("), "главное окно");
+    assert!(CRASH.contains("crate::install_qt_translations("), "окно о крахе");
 }
 
 // ============================================================================

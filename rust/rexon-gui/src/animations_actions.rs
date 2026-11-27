@@ -71,12 +71,12 @@ use rexon_core::animations::{self as anim, AnimChange, LookCtx, SystemIo};
 pub struct AnimationsActionsRust;
 
 fn apply(change: AnimChange) -> cxx_qt_lib::QString {
-    cxx_qt_lib::QString::from(&anim::apply_change(&SystemIo, &LookCtx::from_env(), &change))
+    cxx_qt_lib::QString::from(&anim::apply_change(&SystemIo, &LookCtx::for_look(), &change))
 }
 
 impl qobject::AnimationsActions {
     fn state(&self) -> cxx_qt_lib::QString {
-        let state = anim::read_state(&SystemIo, &LookCtx::from_env());
+        let state = anim::read_state(&SystemIo, &LookCtx::for_look());
         cxx_qt_lib::QString::from(&serde_json::to_string(&state).unwrap_or_default())
     }
 
@@ -100,19 +100,19 @@ impl qobject::AnimationsActions {
     }
 
     fn effects_state(&self) -> cxx_qt_lib::QString {
-        let state = anim::desktop_effects_state(&SystemIo, &LookCtx::from_env());
+        let state = anim::desktop_effects_state(&SystemIo, &LookCtx::for_look());
         cxx_qt_lib::QString::from(&serde_json::to_string(&state).unwrap_or_default())
     }
 
     fn set_effect(&self, id: &cxx_qt_lib::QString, on: bool) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&anim::set_desktop_effect(&SystemIo, &LookCtx::from_env(), &id.to_string(), on))
+        cxx_qt_lib::QString::from(&anim::set_desktop_effect(&SystemIo, &LookCtx::for_look(), &id.to_string(), on))
     }
 
     fn effects_defaults(&self) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&anim::desktop_effects_defaults(&SystemIo, &LookCtx::from_env()))
+        cxx_qt_lib::QString::from(&anim::desktop_effects_defaults(&SystemIo, &LookCtx::for_look()))
     }
 
     fn configure(&self, id: &cxx_qt_lib::QString) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&anim::configure_effect(&SystemIo, &LookCtx::from_env(), &id.to_string()))
+        cxx_qt_lib::QString::from(&anim::configure_effect(&SystemIo, &LookCtx::for_look(), &id.to_string()))
     }
 }

@@ -55,7 +55,7 @@ use rexon_core::app_widgets::{self as aw, Toolbar, WidgetsChange};
 pub struct AppWidgetsActionsRust;
 
 fn apply(change: WidgetsChange) -> cxx_qt_lib::QString {
-    cxx_qt_lib::QString::from(&aw::apply(&SystemIo, &LookCtx::from_env(), &change))
+    cxx_qt_lib::QString::from(&aw::apply(&SystemIo, &LookCtx::for_look(), &change))
 }
 
 fn toolbar(id: &cxx_qt_lib::QString) -> Option<Toolbar> {
@@ -65,7 +65,7 @@ fn toolbar(id: &cxx_qt_lib::QString) -> Option<Toolbar> {
 impl qobject::AppWidgetsActions {
     fn state(&self) -> cxx_qt_lib::QString {
         let theme = std::env::var("QT_QPA_PLATFORMTHEME").unwrap_or_default();
-        let state = aw::read_state(&SystemIo, &LookCtx::from_env(), &theme);
+        let state = aw::read_state(&SystemIo, &LookCtx::for_look(), &theme);
         cxx_qt_lib::QString::from(&serde_json::to_string(&state).unwrap_or_default())
     }
 
@@ -86,6 +86,6 @@ impl qobject::AppWidgetsActions {
     }
 
     fn defaults(&self) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&aw::apply_defaults(&SystemIo, &LookCtx::from_env()))
+        cxx_qt_lib::QString::from(&aw::apply_defaults(&SystemIo, &LookCtx::for_look()))
     }
 }

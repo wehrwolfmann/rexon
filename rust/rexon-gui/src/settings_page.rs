@@ -85,17 +85,8 @@ pub mod qobject {
                     READ = yt_modes, CONSTANT)]
         #[qproperty(QList_QVariant, font_targets, cxx_name = "fontTargets",
                     READ = font_targets, CONSTANT)]
-        #[qproperty(QList_QVariant, mate_buttons, cxx_name = "mateButtons",
-                    READ = mate_buttons, CONSTANT)]
         #[qproperty(QList_QVariant, protection_types, cxx_name = "protectionTypes",
                     READ = protection_types, CONSTANT)]
-        // Ссылки на разделы, переехавшие в «Оформление» (01.11.2026):
-        // {key, text}, ключ — раздел боковой панели «Оформления»
-        // (`categories::moved_settings_links`), и пояснение над ними.
-        #[qproperty(QList_QVariant, moved_panels, cxx_name = "movedPanels",
-                    READ = moved_panels, CONSTANT)]
-        #[qproperty(QString, moved_heading, cxx_name = "movedHeading",
-                    READ = moved_heading, CONSTANT)]
         // ── Числа, заданные ядром ─────────────────────────────────────────
         #[qproperty(i32, blur_min, cxx_name = "blurMin", READ = blur_min, CONSTANT)]
         #[qproperty(i32, blur_max, cxx_name = "blurMax", READ = blur_max, CONSTANT)]
@@ -169,14 +160,8 @@ pub mod qobject {
         fn yt_modes(self: &SettingsModel) -> QList_QVariant;
         #[cxx_name = "fontTargets"]
         fn font_targets(self: &SettingsModel) -> QList_QVariant;
-        #[cxx_name = "mateButtons"]
-        fn mate_buttons(self: &SettingsModel) -> QList_QVariant;
         #[cxx_name = "protectionTypes"]
         fn protection_types(self: &SettingsModel) -> QList_QVariant;
-        #[cxx_name = "movedPanels"]
-        fn moved_panels(self: &SettingsModel) -> QList_QVariant;
-        #[cxx_name = "movedHeading"]
-        fn moved_heading(self: &SettingsModel) -> QString;
         #[cxx_name = "blurMin"]
         fn blur_min(self: &SettingsModel) -> i32;
         #[cxx_name = "blurMax"]
@@ -400,7 +385,6 @@ fn parse_facts(raw: &str) -> (qs::SectionFacts, String) {
     (
         qs::SectionFacts::new(
             flag("onboarding"),
-            flag("mate"),
             flag("plasma"),
             flag("aeroshell"),
         ),
@@ -464,14 +448,8 @@ impl qobject::SettingsModel {
         // Краски «Да» окна операции (доустановка недостающего) — тем же
         // помощником по таблице ядра, что у «Рабочих столов» и «Сравнения».
         crate::desktops_page::insert_operation_tones(&mut out);
-        // Подложка неактивной части ползунка: та же нейтральная заливка, что
-        // у виджетных карточек, чтобы полоса читалась на любом скине.
-        // ⚠️ Через переводчик: `rgba(...)` — запись QSS, QML такой цвет
-        // читает как недопустимый и рисует ЧЁРНЫМ (см. `css_color_to_qml`).
-        out.insert(
-            QString::from("track"),
-            qstr(&ui_base::css_color_to_qml(&ui_base::neutral_rgba(0.18))),
-        );
+        // Подложка ползунка (`track`) приходит с общей палитрой
+        // (`ui_base::qml_palette`).
         // Цвет НЕОБРАТИМОГО действия («Остановить живые обои», «Остановить
         // все звуки»). Оттенок и обе прозрачности приезжают из ядра, а сама
         // кнопка — общий тип `RexonDangerButton`: третьей копии выражения
@@ -742,32 +720,6 @@ impl qobject::SettingsModel {
             ])));
         }
         out
-    }
-
-    fn mate_buttons(&self) -> QList<QVariant> {
-        let mut out = QList::<QVariant>::default();
-        for (label, action) in qs::mate_buttons() {
-            out.append(QVariant::from(&vmap(vec![
-                ("label", qstr(&label)),
-                ("action", qstr(&action)),
-            ])));
-        }
-        out
-    }
-
-    /// Переехавшие в «Оформление» разделы — для запущенного стола: те же,
-    /// что видны в его боковой панели.
-    fn moved_panels(&self) -> QList<QVariant> {
-        let mut out = QList::<QVariant>::default();
-        let de = crate::settings_actions::current_de();
-        for (key, text) in rexon_core::categories::moved_settings_links(&de) {
-            out.append(QVariant::from(&vmap(vec![("key", qstr(&key)), ("text", qstr(&text))])));
-        }
-        out
-    }
-
-    fn moved_heading(&self) -> QString {
-        QString::from(&rexon_core::categories::moved_settings_heading())
     }
 
     fn protection_types(&self) -> QList<QVariant> {

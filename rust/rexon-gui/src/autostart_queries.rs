@@ -306,12 +306,12 @@ pub fn refresh_autostart_unit() -> bool {
     let Some(written) = existing.as_deref().and_then(we_client::unit_binary) else {
         return false;
     };
-    // Движок, записанный в юнит, мог уйти вместе с обновлением пакета (с
-    // 30.10.2026 пакет Rexon не вшивает движок) — тогда юнит пересобирается
-    // на найденном сейчас; живой выбор человека не трогается.
-    let alive = we_client::DaemonFs::is_exec_file(&mut Fs, &written);
-    let found = if alive { None } else { we_env::daemon_binary() };
-    let binary = we_client::unit_refresh_binary(&written, alive, found.as_deref());
+    // Юнит обязан поднимать тот же движок, что окно: записанный мог уйти
+    // вместе с обновлением пакета (с 30.10.2026 пакет Rexon не вшивает
+    // движок) или остаться старой копией рядом с движком пакета
+    // (`we_client::unit_refresh_binary`).
+    let found = we_env::daemon_binary();
+    let binary = we_client::unit_refresh_binary(&written, found.as_deref());
     let plugin_root = we_env::engine_plugin_root_for(Some(&binary));
     match we_client::refresh_unit_plan_on(
         existing.as_deref(),
@@ -325,8 +325,17 @@ pub fn refresh_autostart_unit() -> bool {
             unit_content,
             daemon_reload_argv,
         } => {
-            if write_file(&unit_path, &unit_content).is_err() {
+            if let Err(e) = write_file(&unit_path, &unit_content) {
+                rexon_core::log_warn!("we", "юнит автозапуска {unit_path} не переписан: {e}");
                 return false;
+            }
+            if binary == written {
+                rexon_core::log_info!("we", "юнит автозапуска {unit_path} переписан по новому образцу");
+            } else {
+                rexon_core::log_info!(
+                    "we",
+                    "юнит автозапуска {unit_path} переписан: движок {written} → {binary}"
+                );
             }
             run(&daemon_reload_argv);
             true
@@ -730,8 +739,6 @@ mod tests {
             Some(корень.to_str().unwrap()),
             &we_env::home(),
         );
-        // Движок, записанный в юнит, обязан быть на диске: пропавший
-        // освежение заменяет найденным (`we_client::unit_refresh_binary`).
         let бинарь_путь = корень.join("waywallen.AppImage");
         std::fs::create_dir_all(&корень).unwrap();
         std::fs::write(&бинарь_путь, "#!/bin/sh\n").unwrap();
@@ -744,9 +751,12 @@ mod tests {
         // его у машины (`we_env::engine_plugin_root_for`), и ожидание обязано
         // брать там же — иначе сверка краснеет ровно там, где Rexon стоит
         // пакетом, и зеленеет в голом дереве разработчика.
+        // Освежённый юнит смотрит в движок, который Rexon запустил бы сейчас
+        // (`we_client::unit_refresh_binary`); на машине без движка — прежний.
+        let expected_binary = we_env::daemon_binary().unwrap_or_else(|| бинарь.to_string());
         let свежий = we_client::autostart_unit_content_with(
-            бинарь,
-            we_env::engine_plugin_root_for(Some(бинарь)).as_deref(),
+            &expected_binary,
+            we_env::engine_plugin_root_for(Some(&expected_binary)).as_deref(),
         );
         let старый: String = свежий
             .lines()

@@ -312,6 +312,60 @@ pub fn install_app_translator() -> bool {
     unsafe { rexon_install_app_translator(context.as_ptr(), lookup) }
 }
 
+unsafe extern "C" {
+    fn rexon_qt_translations_dir(buf: *mut std::ffi::c_char, len: std::ffi::c_int) -> std::ffi::c_int;
+    fn rexon_install_qt_translations(
+        paths: *const *const std::ffi::c_char,
+        count: std::ffi::c_int,
+    ) -> std::ffi::c_int;
+}
+
+/// Включить каталоги переводов самой Qt для языка Rexon `language`: кнопки
+/// диалогов и меню правки полей ввода (правый щелчок по `TextArea`) рисует
+/// сама Qt, и никакой наш перевод до них не достаёт.
+///
+/// Решение — за ядром (`cli::qt_translation_files`): какие файлы, в каком
+/// порядке, и что у английского (и у языка, которого у Qt нет) их нет
+/// вовсе. Здесь только два вызова шима — узнать каталог переводов Qt и
+/// включить названные файлы: обёрток `QTranslator` и `QLibraryInfo` в
+/// cxx-qt-lib 0.9 нет ни одной.
+///
+/// Звать в КАЖДОМ процессе с окном Qt (главное окно, окно о крахе) после
+/// создания приложения и до загрузки QML. Каталога `qtbase` для языка нет
+/// — одна строка в журнал, надписи Qt английские; молчим про сводный `qt`,
+/// его нет в большинстве сборок Qt6.
+pub fn install_qt_translations(language: &str) {
+    use rexon_core::cli;
+    let dir = qt_translations_dir();
+    let files = cli::qt_translation_files(language, std::path::Path::new(&dir), &|p| p.is_file());
+    if let Some(note) = cli::qt_translation_missing_note(language, &files) {
+        rexon_core::log_info!("lang", "{note}");
+    }
+    let owned: Vec<std::ffi::CString> = files
+        .iter()
+        .filter_map(|p| std::ffi::CString::new(p.to_string_lossy().as_bytes()).ok())
+        .collect();
+    let ptrs: Vec<*const std::ffi::c_char> = owned.iter().map(|c| c.as_ptr()).collect();
+    unsafe { rexon_install_qt_translations(ptrs.as_ptr(), ptrs.len() as std::ffi::c_int) };
+}
+
+/// Каталог переводов самой Qt (`QLibraryInfo::TranslationsPath`); пусто —
+/// шим не ответил, и тогда ни один файл не найдётся (английские кнопки).
+fn qt_translations_dir() -> String {
+    let mut buf = vec![0u8; 512];
+    loop {
+        let need = unsafe {
+            rexon_qt_translations_dir(buf.as_mut_ptr().cast(), buf.len() as std::ffi::c_int)
+        };
+        let need = usize::try_from(need).unwrap_or(0);
+        if need < buf.len() {
+            buf.truncate(need);
+            return String::from_utf8_lossy(&buf).into_owned();
+        }
+        buf.resize(need + 1, 0);
+    }
+}
+
 /// Объект побочных действий вкладки «Оформление»: магазин, обзор диска,
 /// картинки, установка, применение и удаление тем. До него страница
 /// получала `actions` только от Python.
@@ -360,6 +414,8 @@ pub mod steam_workers;
 pub mod steam_actions;
 /// Подвкладка «Витрины профиля»: нарезка картинки под витрину профиля Steam.
 pub mod steam_showcase_actions;
+/// Подвкладка «Заставка»: заставка Rexon для экрана простоя Steam Big Picture.
+pub mod steam_screensaver_actions;
 /// Вкладка «Steam» — вкладка класса B на QML.
 pub mod steam_page;
 /// Проба «64-битное целое в QML»: живой движок против мостов. Не мост

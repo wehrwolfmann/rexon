@@ -4549,6 +4549,13 @@ pub struct InstallPreview {
     /// решает список установленного ([`installed_packages_query`]), а не план
     /// транзакции.
     pub updates: Vec<String>,
+    /// Установленные пакеты набора, у которых СВОЯ сборка новее репозитория
+    /// (собранная руками или из AUR, с правкой, которой в репозитории ещё
+    /// нет). `pacman -S --needed` пропускает только ту же версию и такой
+    /// пакет ОТКАТИЛ бы к репозиторной — поэтому из транзакции он выкинут,
+    /// а обновлением не называется. Живой случай 08.11.2026: наша Caja
+    /// 1.28.0-6.100 с прозрачным фоном под живые обои против 1.28.0-6.1.
+    pub kept_local: Vec<String>,
     /// Необязательные члены групп, которые сейчас не ставятся (неразрешимая
     /// зависимость или нет в репозитории): из установки выкинуты.
     pub skipped: Vec<String>,
@@ -4783,6 +4790,30 @@ pub fn install_preview(
                 }
             }
             let (updates, new_packages) = split_installed(planned, installed.clone());
+            // Своя сборка новее репозитория: в план она попала только потому,
+            // что версия не совпала, — выкидываем и пересчитываем план.
+            let newer_local = locally_newer(&updates, run);
+            if newer_local.iter().any(|p| !preview.kept_local.contains(p)) {
+                for p in newer_local {
+                    if !preview.kept_local.contains(&p) {
+                        preview.kept_local.push(p);
+                    }
+                }
+                preview.targets = expanded
+                    .iter()
+                    .filter(|m| !preview.skipped.contains(m) && !preview.kept_local.contains(m))
+                    .cloned()
+                    .collect();
+                for e in &kernel_extras {
+                    if !preview.targets.contains(e) {
+                        preview.targets.push(e.clone());
+                    }
+                }
+                if preview.targets.is_empty() {
+                    return Some(preview);
+                }
+                continue;
+            }
             // ⚠️ `-Sp` конфликтов с установленным НЕ проверяет (замер
             // 19.10.2026: Deepin при стоящем KWin — код 0), а настоящая
             // транзакция на них падает. Спрашиваем `Conflicts With` сами.
@@ -4817,7 +4848,7 @@ pub fn install_preview(
         preview.skipped.extend(droppable);
         preview.targets = expanded
             .iter()
-            .filter(|m| !preview.skipped.contains(m))
+            .filter(|m| !preview.skipped.contains(m) && !preview.kept_local.contains(m))
             .cloned()
             .collect();
         preview.members = preview.targets.clone();
@@ -5608,6 +5639,34 @@ fn installed_names(family: PkgFamily, run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Op
     Some(parse_installed_packages(rc == 0, &stdout)).filter(|names| !names.is_empty())
 }
 
+/// Какие из установленных пакетов плана НЕ обновляются, а откатились бы:
+/// `pacman -Qu` перечисляет только те, у которых репозиторная сборка новее
+/// (сравнение версий — самого pacman), остальные установленные из плана —
+/// своя сборка новее или иная. Ответа нет — никого не выкидываем.
+pub fn locally_newer(installed_planned: &[String], run: &dyn Fn(&Cmd) -> PreviewAnswer) -> Vec<String> {
+    if installed_planned.is_empty() {
+        return Vec::new();
+    }
+    let cmd = Cmd::new(vec!["pacman".into(), "-Qu".into(), "-q".into()], None, true);
+    let Some((rc, stdout, stderr)) = run(&cmd) else {
+        return Vec::new();
+    };
+    // Код 1 без вывода и без ошибки — «обновлений нет вовсе»; иное (база
+    // заперта, ошибка чтения) — ответ не понят, никого не выкидываем.
+    if rc != 0 && !(rc == 1 && stdout.trim().is_empty() && stderr.trim().is_empty()) {
+        return Vec::new();
+    }
+    let upgradable: std::collections::HashSet<&str> = stdout
+        .lines()
+        .filter_map(|l| l.split_whitespace().next())
+        .collect();
+    installed_planned
+        .iter()
+        .filter(|p| !upgradable.contains(p.as_str()))
+        .cloned()
+        .collect()
+}
+
 /// Разделить план транзакции на (установленные — обновления, новые).
 /// Без списка установленного всё остаётся новым.
 pub fn split_installed(planned: Vec<String>, installed: Option<Vec<String>>) -> (Vec<String>, Vec<String>) {
@@ -6028,13 +6087,7 @@ pub fn log_tail_line(kind: LogTailKind, raw: &str) -> Option<(String, String)> {
                 None => ("raw".to_string(), line.to_string()),
             })
         }
-        LogTailKind::Aur => {
-            let line = raw.trim();
-            if line.is_empty() || !AUR_PROGRESS_MARKERS.iter().any(|m| line.contains(m)) {
-                return None;
-            }
-            Some(("aur".to_string(), format!("    {line}")))
-        }
+        LogTailKind::Aur => crate::aur_install::progress_line(raw).map(|line| ("aur".to_string(), line)),
         LogTailKind::Build => crate::aeroshell::rebuild_line(raw)
             .map(|line| (crate::aeroshell::REBUILD_LINE_STAGE.to_string(), line)),
         LogTailKind::Raw => {
@@ -6043,6 +6096,9 @@ pub fn log_tail_line(kind: LogTailKind, raw: &str) -> Option<(String, String)> {
         }
     }
 }
+
+/// Стадия строки «уже установлено» у `--needed` ([`parse_pacman_line`]).
+pub const LOG_STAGE_SKIP: &str = "skip";
 
 /// Живой читатель растущего журнала. Останавливается [`LogTail::stop`].
 pub struct LogTail {
@@ -6112,6 +6168,12 @@ pub fn tail_log(
             for part in raw.split(|b| *b == b'\n') {
                 let line = String::from_utf8_lossy(part);
                 if let Some((stage, message)) = log_tail_line(kind, &line) {
+                    // «✅ уже установлено: openbox» дважды — пакет пришёл и
+                    // членом группы, и именем в наборе стола: повтор журналу
+                    // ничего не добавляет (любой стол, любой путь установки).
+                    if stage == LOG_STAGE_SKIP && shown.contains(&message) {
+                        continue;
+                    }
                     shown.push(message.clone());
                     emit(&stage, &message);
                 }
@@ -10818,6 +10880,45 @@ fn skip_package(body: &str) -> Option<&str> {
 // красным. Если загрузка провалится ПО-НАСТОЯЩЕМУ, человек увидит настоящую
 // ошибку pacman и решит сам — совет про зеркала уместен там, а не здесь.
 
+/// Загрузка провалилась ПО-НАСТОЯЩЕМУ: pacman объявил, что часть файлов так
+/// и не скачалась ни с одного зеркала, и транзакцию не начинал.
+pub fn download_failed(output: &str) -> bool {
+    output.lines().any(|line| {
+        let line = line.trim().to_ascii_lowercase();
+        line.contains("failed to retrieve some files")
+            || line.starts_with("error: failed to commit transaction (failed to retrieve")
+    })
+}
+
+/// Что сказать человеку, когда пакеты не скачались: что случилось, что
+/// ничего не сломано и что делать. Сырой текст pacman остаётся в журнале.
+pub fn download_failed_message() -> String {
+    tr("Couldn't download the packages: the package servers didn't respond. \
+        The internet connection may have dropped.\n\
+        Nothing was changed — check the connection and try again.")
+}
+
+/// Итог упавшей транзакции без разобранной причины: только строки ошибок.
+///
+/// ⭐ Починка 08.11.2026: прежде в окно уходил ВЕСЬ вывод pacman — сводка
+/// пакетов, ход загрузки и «warning: … is up to date -- skipping» под
+/// красным крестом, хотя каждая строка уже показана в журнале построчно
+/// и по-человечески. Строк `error:` нет — отдаём вывод как есть, чтобы не
+/// потерять единственное объяснение.
+pub fn manager_error_lines(output: &str) -> String {
+    let errors: Vec<&str> = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.to_ascii_lowercase().starts_with("error:"))
+        .filter(|line| mirror_retrieve_failure(line["error:".len()..].trim()).is_none())
+        .collect();
+    if errors.is_empty() {
+        output.trim().to_string()
+    } else {
+        errors.join("\n")
+    }
+}
+
 /// `failed retrieving file '<файл>' from <зеркало> : <причина>` — имя зеркала.
 ///
 /// Это ПЕРЕЖИВАЕМЫЙ сбой: pacman тут же берёт следующее зеркало из списка, и
@@ -10948,6 +11049,57 @@ fn strip_version_suffix(name: &str) -> &str {
 
 /// Разобрать одну строку вывода pacman: стадия + сообщение для человека.
 /// None — строка ничего не значит для показа хода дела.
+/// Служебный заголовок транзакции pacman (`:: Running pre-transaction
+/// hooks...`, `:: Processing package changes...`): за ним идут строки хода
+/// со своим смыслом, сам он человеку ничего не говорит.
+fn is_transaction_header(body: &str) -> bool {
+    let b = body.to_lowercase();
+    [
+        "running pre-transaction hooks",
+        "running post-transaction hooks",
+        "processing package changes",
+        "synchronizing package databases",
+        "checking keys in keyring",
+        "checking package integrity",
+        "loading package files",
+        "checking for file conflicts",
+        "checking available disk space",
+    ]
+    .iter()
+    .any(|h| b.starts_with(h))
+}
+
+/// Вывод пакетов и хуков вокруг транзакции, который окну не нужен (см.
+/// [`parse_pacman_line`]). `raw` — строка с ведущим отступом.
+fn is_package_chatter(raw: &str) -> bool {
+    let line = raw.trim();
+    if line.starts_with("Optional dependencies for ") || line.starts_with("===>") {
+        return true;
+    }
+    // `==> root: 1488` (snap-pac: конфиг и номер снимка).
+    if let Some(rest) = line.strip_prefix("==> ") {
+        if let Some((cfg, num)) = rest.split_once(": ") {
+            if !cfg.is_empty() && !cfg.contains(' ') && !num.is_empty() && num.chars().all(|c| c.is_ascii_digit()) {
+                return true;
+            }
+        }
+    }
+    let lower = line.to_lowercase();
+    if lower.starts_with("performing snapper ") || lower.starts_with("waiting for limine-snapper-sync") {
+        return true;
+    }
+    // Строка необязательной зависимости: отступ, имя пакета, дальше
+    // «: описание» и/или «[installed]»/«[pending]».
+    if raw.starts_with("    ") {
+        let head = line.split([':', ' ']).next().unwrap_or("");
+        let name_ok = !head.is_empty()
+            && head.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '+' | '@'));
+        let rest = line[head.len()..].trim_start();
+        return name_ok && (rest.is_empty() || rest.starts_with(':') || rest.starts_with('['));
+    }
+    false
+}
+
 pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
     let line = raw.trim();
     if line.is_empty() {
@@ -10970,7 +11122,9 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
                 return Some(PacmanLine {
                     stage: (if check { "check" } else { "pkg_install" }).to_string(),
                     message: if check {
-                        format!("🔍 ({}/{}) {} {}", cur, total, action, pkg)
+                        // Что именно сверяет pacman (ключи, конфликты, место)
+                        // — по-английски и человеку не нужно; счётчик — да.
+                        trf("🔍 (%1/%2) Checking the packages…", &[&cur, &total])
                     } else {
                         format!("📦 ({}/{}) {}: {}", cur, total, label, pkg)
                     },
@@ -11067,6 +11221,16 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
             if is_self_answered_question(body) {
                 return Some(PacmanLine::plain("prompt", String::new()));
             }
+            // Служебные заголовки транзакции — не английским «📌 …»:
+            // загрузка — своей строкой, остальное человеку не нужно (ход
+            // пакетов и хуков идёт своими строками следом). Живьём 08.11.2026,
+            // «Проверить / Восстановить» MATE.
+            if body.to_lowercase().starts_with("retrieving packages") {
+                return Some(PacmanLine::plain("download", tr("⬇️  Downloading packages…")));
+            }
+            if is_transaction_header(body) {
+                return Some(PacmanLine::plain("prompt", String::new()));
+            }
             if !body.is_empty() {
                 return Some(PacmanLine::plain("section", format!("📌 {}", body)));
             }
@@ -11160,7 +11324,13 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
         if let Some(hook) = strip_ellipsis(rest) {
             return Some(PacmanLine {
                 stage: "hook".to_string(),
-                message: format!("🔧 ({}/{}) {}", cur, total, hook),
+                // Имя хука — английская фраза чужого пакета («Checking the
+                // local deepin-session-treeland build…», «Arming
+                // ConditionNeedsUpdate»): в окно — счётчик, имя — в журнал.
+                message: {
+                    crate::log_info!("pkg", "хук pacman ({cur}/{total}): {hook}");
+                    trf("🔧 (%1/%2) Finishing the installation…", &[&cur, &total])
+                },
                 current: Some(cur),
                 total: Some(total),
                 action: None,
@@ -11171,8 +11341,48 @@ pub fn parse_pacman_line(raw: &str) -> Option<PacmanLine> {
         }
     }
 
-    if line.starts_with("resolving ") || line.starts_with("looking for ") {
-        return Some(PacmanLine::plain("check", format!("🔍 {}", line)));
+    // Ход транзакции без счётчика (вывод не в терминал): «installing x...»
+    // — по-русски; «checking keyring...», «resolving dependencies...» и
+    // прочие проверки — скрыть (живьём 08.11.2026, lxqt-wayland-session).
+    if let Some(payload) = strip_ellipsis(line) {
+        if let Some((action, pkg)) = operation_action(payload) {
+            if !(action.starts_with("checking") || action.starts_with("loading")) {
+                let label = match action.as_str() {
+                    "installing" => trc("pacman action", "Installing"),
+                    "upgrading" => trc("pacman action", "Upgrading"),
+                    "removing" => trc("pacman action", "Removing"),
+                    "reinstalling" => trc("pacman action", "Reinstalling"),
+                    "downgrading" => trc("pacman action", "Downgrading"),
+                    other => other.to_string(),
+                };
+                let mut ev = PacmanLine::plain("pkg_install", format!("📦 {label}: {pkg}"));
+                ev.action = Some(action);
+                ev.package = Some(pkg);
+                return Some(ev);
+            }
+        }
+    }
+    if line.starts_with("resolving ")
+        || line.starts_with("looking for ")
+        || (strip_ellipsis(line).is_some() && (line.starts_with("checking ") || line.starts_with("loading ")))
+    {
+        return Some(PacmanLine::plain("check", String::new()));
+    }
+    // «Optional dependencies for x» и его строки «    labwc [installed]»,
+    // «    river: описание»; сообщения установочных скриптов пакетов
+    // («===> For a working … please install …»); болтовня хуков snapper и
+    // limine («Performing snapper pre snapshots…», «==> root: 1488»,
+    // «Waiting for limine-snapper-sync to finish»). Человеку не нужны и
+    // часто вводят в заблуждение (просят поставить уже стоящее) — только в
+    // журнал Rexon.
+    if is_package_chatter(raw) {
+        crate::log_info!("pkg", "{line}");
+        return Some(PacmanLine::plain("chatter", String::new()));
+    }
+    // «there is nothing to do» (`--needed`, всё уже стоит): итог скажет это
+    // по-русски сам (`system_de_exec::main_already_installed`).
+    if line.eq_ignore_ascii_case("there is nothing to do") {
+        return Some(PacmanLine::plain("nothing", String::new()));
     }
     if line.to_lowercase().contains("retrieving packages") {
         return Some(PacmanLine::plain(
@@ -11612,14 +11822,22 @@ pub fn batch_main_result(
         }
         // Конфликт с установленным (pacman с `--noconfirm` ответил «N» и ничего
         // не удалил) — объяснить, а не показывать сырой английский текст.
-        let conflicts = parse_transaction_conflicts(&format!("{stdout}\n{stderr}"));
+        let both = format!("{stdout}\n{stderr}");
+        let conflicts = parse_transaction_conflicts(&both);
         if !conflicts.is_empty() {
             return fail(conflict_explanation(&conflicts));
+        }
+        // Ни одно зеркало не отдало файл (пропала сеть или DNS): pacman
+        // ничего не поставил. Человеку — что случилось и что делать, а не
+        // английская простыня (живой случай 08.11.2026, «Проверить /
+        // Восстановить» Budgie при обрыве сети).
+        if download_failed(&both) {
+            return fail(download_failed_message());
         }
         return fail(if err.is_empty() {
             tr("Installation failed")
         } else {
-            err.to_string()
+            manager_error_lines(err)
         });
     }
     if steamos {
@@ -12094,7 +12312,7 @@ pub const MATE_EXTRA_PACKAGES: &[(&str, &str, &[&str])] = &[
     ),
     (
         "ayatana",
-        n_("🔔 Checking the Ayatana indicator stack…"),
+        n_("🔔 Checking the status icons in the panel (Ayatana)…"),
         &[
             "ayatana-indicator-application",
             "ayatana-indicator-session",
@@ -12105,7 +12323,7 @@ pub const MATE_EXTRA_PACKAGES: &[(&str, &str, &[&str])] = &[
     ),
     (
         "vala-panel-appmenu",
-        n_("📋 Checking vala-panel-appmenu (global menu)…"),
+        n_("📋 Checking the global menu in the panel (vala-panel-appmenu)…"),
         // Не общий `vala-panel-appmenu` — он тянет budgie-desktop и vala-panel.
         &["vala-panel-appmenu-mate", "vala-panel-appmenu-registrar"],
     ),
@@ -13948,6 +14166,42 @@ mod install_preview_tests {
         assert_eq!(p.missing_members(), names(&["mate-panel"]));
         assert_eq!(p.installed_members(), 2);
         assert_eq!(p.dependency_count(), 1);
+    }
+
+    /// Своя сборка новее репозитория (живой случай 08.11.2026: Caja
+    /// 1.28.0-6.100 с прозрачным фоном против 1.28.0-6.1): `pacman -Qu` её не
+    /// называет, значит `-S --needed` ОТКАТИЛ бы её. Из транзакции она
+    /// выкинута, группа раскрыта в члены без неё, обновлением не названа.
+    #[test]
+    fn own_build_newer_than_repo_is_kept_not_downgraded() {
+        let run = |cmd: &Cmd| -> PreviewAnswer {
+            let has = |n: &str| cmd.argv.iter().any(|a| a == n);
+            match cmd.argv[1].as_str() {
+                "-Sg" => Some((0, "mate caja\nmate mate-panel\nmate mate-applets\n".into(), String::new())),
+                "-Qq" => Some((0, "caja\nmate-applets\nglibc\n".into(), String::new())),
+                "-Qu" => Some((0, "mate-applets\n".into(), String::new())),
+                // Первый проход идёт по группе — в план попадает и своя Caja;
+                // после раскрытия группы без неё — только остальные.
+                _ if has("mate") || has("caja") => Some((0, "caja\nmate-applets\nmate-panel\n".into(), String::new())),
+                _ => Some((0, "mate-applets\nmate-panel\n".into(), String::new())),
+            }
+        };
+        let p = install_preview(PkgFamily::Arch, &names(&["mate"]), &run).unwrap();
+        assert_eq!(p.kept_local, names(&["caja"]));
+        assert!(!p.targets.contains(&"caja".to_string()), "в транзакцию не идёт: {:?}", p.targets);
+        assert_eq!(p.updates, names(&["mate-applets"]));
+        assert_eq!(p.new_packages, names(&["mate-panel"]));
+    }
+
+    /// `pacman -Qu` не ответил — никого не выкидываем (прежнее поведение).
+    #[test]
+    fn locally_newer_without_answer_keeps_nothing() {
+        let none = |_: &Cmd| -> PreviewAnswer { None };
+        assert!(locally_newer(&names(&["caja"]), &none).is_empty());
+        let nothing = |_: &Cmd| -> PreviewAnswer { Some((1, String::new(), String::new())) };
+        assert_eq!(locally_newer(&names(&["caja"]), &nothing), names(&["caja"]));
+        let broken = |_: &Cmd| -> PreviewAnswer { Some((1, String::new(), "error: db".into())) };
+        assert!(locally_newer(&names(&["caja"]), &broken).is_empty());
     }
 
     /// Список установленного не получен — прежнее поведение: всё, что

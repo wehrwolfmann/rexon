@@ -528,6 +528,9 @@ fn entry_of(value: &Value) -> pb::WallpaperEntry {
         supports_item_unsubscribe: bool_at(value, "supportsItemUnsubscribe"),
         // waywallen 0.4.4: скрытых записей в сценариях нет.
         hidden: false,
+        // waywallen 0.6.0: сценарии сняты раньше — обычные записи.
+        update_available: false,
+        sub_type: 0,
     }
 }
 
@@ -1047,6 +1050,9 @@ pub fn expected_rows_v044(rows: &Value) -> Value {
                 let mut row = row.clone();
                 if let Value::Object(map) = &mut row {
                     map.entry("hidden").or_insert(Value::Bool(false));
+                    // waywallen 0.6.0: дописаны в конец так же, как `hidden`.
+                    map.entry("updateAvailable").or_insert(Value::Bool(false));
+                    map.entry("subType").or_insert(Value::from(0));
                     if let Some(Value::Object(layout)) = map.get_mut("wallpaperLayoutOverride") {
                         layout.entry("flip").or_insert(Value::from(0));
                     }
@@ -1069,8 +1075,11 @@ pub fn expected_rows_v044(rows: &Value) -> Value {
 /// дописываем к эталону (см. [`expected_rows_v044`]).
 pub fn entry_keys(doc: &Value) -> Vec<String> {
     let mut keys = strings_at(doc, "ключи_записи");
-    if !keys.iter().any(|k| k == "hidden") {
-        keys.push("hidden".to_string());
+    // waywallen 0.6.0: `updateAvailable` и `subType` — тоже в конец.
+    for key in ["hidden", "updateAvailable", "subType"] {
+        if !keys.iter().any(|k| k == key) {
+            keys.push(key.to_string());
+        }
     }
     keys
 }

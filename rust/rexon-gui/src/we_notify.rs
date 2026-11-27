@@ -357,12 +357,28 @@ impl qobject::Notify {
                     id,
                     state,
                     error,
-                } => self.as_mut().remote_download_progress(
-                    QString::from(source_id),
-                    QString::from(id),
-                    *state,
-                    QString::from(error),
-                ),
+                    transfer,
+                } => {
+                    // Как `Notify` оригинала: состояние и ход передачи —
+                    // сначала в общий склад (карточка выдачи и панель
+                    // деталей), потом сигнал странице.
+                    let transfer = transfer.map_or_else(Default::default, |(received, total)| {
+                        crate::remote_list_model::acquisition::Transfer {
+                            active: true,
+                            received,
+                            total,
+                        }
+                    });
+                    crate::remote_list_model::acquisition::set_progress(
+                        source_id, id, *state, transfer,
+                    );
+                    self.as_mut().remote_download_progress(
+                        QString::from(source_id),
+                        QString::from(id),
+                        *state,
+                        QString::from(error),
+                    )
+                }
                 NotifySignal::PlaylistChanged => self.as_mut().playlist_changed(),
                 NotifySignal::PluginChanged => self.as_mut().plugin_changed(),
                 NotifySignal::PluginUpdateChanged => self.as_mut().plugin_update_changed(),

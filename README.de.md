@@ -1,4 +1,4 @@
-[English](README.md) | [Русский](README.ru.md) | Deutsch | [简体中文](README.zh-CN.md)
+[English](README.md) | [Русский](README.ru.md) | Deutsch | [简体中文](README.zh-CN.md) | [Français](README.fr.md)
 
 # Rexon
 
@@ -31,7 +31,7 @@ Plattform für Entwicklung und Tests ist Arch Linux / CachyOS.
 
 Eine Schritt-für-Schritt-Anleitung zu allen Reitern — Desktops,
 Erscheinungsbild, Erweiterungen, Wallpaper Engine, Steam und Einstellungen —
-auf Deutsch, Englisch und Russisch: [guide/](guide/README.md).
+auf Deutsch, Englisch, Russisch, Chinesisch und Französisch: [guide/](guide/README.md).
 
 ## Funktionen
 
@@ -64,7 +64,8 @@ auf Deutsch, Englisch und Russisch: [guide/](guide/README.md).
   speichern…“, um das aktuelle Aussehen als Design zu sichern), Farbschemata mit
   Schema-Editor, Akzentfarbe, zeitgesteuerter Wechsel zwischen hellem und dunklem
   Design, Anwendungsstil, Fensterdekorationen und Knöpfe der Titelleiste,
-  Schriftarten und eine Schriftverwaltung mit Schriftgruppen.
+  Schriftarten und eine Schriftverwaltung mit Schriftgruppen, Weichzeichnen des
+  Hintergrunds, Systemklänge und Hintergrundgeräusche.
 - GTK-Designs werden auch auf GTK-4-/libadwaita-Anwendungen übertragen, sofern das
   Design eine Version für GTK 4 mitbringt, und die Design-Kacheln zeigen echte
   Bedienelemente, die in diesem Design gezeichnet sind.
@@ -77,7 +78,8 @@ auf Deutsch, Englisch und Russisch: [guide/](guide/README.md).
 - Conky-Widgets mit Vorschau.
 - Bildschirmeffekte (Bildzeilen, Röhrenbildschirm, Videokassette, Filmstreifen und weitere) mit
   Live-Vorschau. Rexon schaltet sie unter Hyprland, GNOME und Cinnamon auf dem ganzen
-  Bildschirm ein; in anderen Umgebungen sagt der Abschnitt ehrlich, was der Compositor dort
+  Bildschirm ein, unter KDE Plasma, Pantheon und COSMIC den eingebauten Schwarz-Weiß-Filter; in
+  anderen Umgebungen sagt der Abschnitt ehrlich, was der Compositor dort
   erlaubt.
 - Sicherungen der Desktop-Einstellungen und ein Notfall-Menüeintrag
   „Erscheinungsbild des Desktops wiederherstellen“ (KDE) für den Fall, dass ein
@@ -113,8 +115,7 @@ auf Deutsch, Englisch und Russisch: [guide/](guide/README.md).
 **Einstellungen**
 
 - Sprache und Aussehen des Rexon-Fensters, Symbol im Systembereich, eine
-  Hintergrund-Bibliothek mit Unschärfe und Umgebungsklängen, Ereignisklänge und
-  Systemschriften.
+  Hintergrund-Bibliothek.
 - Gesicherte Kopien der KDE-Plasma-Leiste, der Schalter für den Schutz der
   Standardanwendungen und der Import von Windows-Designs.
 
@@ -371,7 +372,7 @@ Rettungs-Units für die Anmeldung entfernt (es sind Dateien, die zum Paket gehö
 Die Oberfläche wird mit GNU gettext übersetzt: ein Katalog für den Rust-Code und die
 QML-Seiten zugleich. Die Vorlage ist [`po/rexon.pot`](po/rexon.pot), jede Sprache ist
 eine Datei in [`po/`](po/). Die Basissprache ist Englisch; Übersetzungen gibt es auf
-Russisch und Deutsch. Wie man eine Sprache hinzufügt, steht in
+Russisch, Deutsch, vereinfachtem Chinesisch und Französisch. Wie man eine Sprache hinzufügt, steht in
 [`po/README.md`](po/README.md) – Änderungen am Code sind dafür nicht nötig.
 
 ## Danksagungen

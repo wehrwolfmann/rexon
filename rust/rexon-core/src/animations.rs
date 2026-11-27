@@ -240,6 +240,52 @@ impl LookCtx {
     pub fn cfg(&self, rel: &str) -> String {
         format!("{}/{rel}", self.config_home.trim_end_matches('/'))
     }
+
+    /// Контекст для окружения `chosen`, выбранного в «Текущее окружение»
+    /// вкладки «Оформление»: пусто, «определить автоматически» или тот же
+    /// стол — контекст как есть; другой — его имя и ЕГО род сеанса
+    /// ([`crate::screen_effects::KNOWN_DESKTOPS`]; незнакомый — род прежний).
+    pub fn for_chosen(self, chosen: &str) -> Self {
+        let chosen = chosen.trim();
+        if chosen.is_empty() || chosen == crate::appearance_page::DE_AUTO_ID || chosen == self.de {
+            return self;
+        }
+        let mut ctx = self;
+        if let Some((_, wayland)) = crate::screen_effects::KNOWN_DESKTOPS.iter().find(|(de, _)| *de == chosen) {
+            ctx.wayland = *wayland;
+        }
+        ctx.de = chosen.to_string();
+        ctx
+    }
+
+    /// Контекст разделов вкладки «Оформление»: окружение процесса, но стол —
+    /// выбранный в «Текущее окружение» ([`set_chosen_desktop`]). Раньше разделы
+    /// («Анимация», «Кнопки заголовка окна», «Эффекты экрана», «Акцент»…)
+    /// брали стол сеанса, и при выбранном вручную другом столе говорили и
+    /// писали про запущенный (08.11.2026: «Tiling and Wayfire» в сеансе KDE —
+    /// предупреждение про KWin). Вне вкладки выбор не ставится — там это
+    /// ровно [`LookCtx::from_env`].
+    pub fn for_look() -> Self {
+        Self::from_env().for_chosen(&chosen_desktop())
+    }
+}
+
+/// Стол, выбранный в «Текущее окружение» вкладки «Оформление» (пусто — не
+/// выбирали, берётся сеанс). Один на процесс: его ставит страница, читают
+/// разделы через [`LookCtx::for_look`].
+static CHOSEN_DESKTOP: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
+
+/// Запомнить выбор «Текущее окружение» (идентификатор ядра либо
+/// [`crate::appearance_page::DE_AUTO_ID`]).
+pub fn set_chosen_desktop(de: &str) {
+    if let Ok(mut slot) = CHOSEN_DESKTOP.write() {
+        *slot = de.trim().to_string();
+    }
+}
+
+/// Выбор «Текущее окружение» (пусто — не выбирали).
+pub fn chosen_desktop() -> String {
+    CHOSEN_DESKTOP.read().map(|s| s.clone()).unwrap_or_default()
 }
 
 /// Один возможный конфиг композитора и наш файл рядом.
@@ -1584,6 +1630,16 @@ pub fn read_settings(io: &dyn LookIo, ctx: &LookCtx) -> AnimSettings {
     s
 }
 
+/// Есть ли у оконного менеджера стола анимации окон, которые Rexon
+/// настраивает. Где их нет (Marco, xfwm4 и столы, у которых своих настроек
+/// анимации нет вовсе — [`note`]), от раздела «Анимация» остаётся одна
+/// галочка «Без анимаций» для программ: такого раздела в боковой панели
+/// нет, а галочка — вид «⚙️ Настройки» раздела «GTK-темы»
+/// (`categories::SECTION_SETTINGS`, решение Wehrwolfmann 08.11.2026).
+pub fn has_window_animations(de: &str) -> bool {
+    matches!(de, "kde" | "gnome" | "budgie" | "pantheon" | "cinnamon-mint" | "cinnamon" | "hyprland" | "niri")
+}
+
 /// Есть ли ползунок скорости.
 pub fn has_speed(de: &str) -> bool {
     matches!(de, "kde" | "cinnamon-mint" | "hyprland" | "niri")
@@ -1793,6 +1849,24 @@ pub fn apply_change(io: &dyn LookIo, ctx: &LookCtx, change: &AnimChange) -> Stri
 
 #[cfg(test)]
 mod tests {
+
+    /// Выбор «Текущее окружение» ведёт разделы «Оформления»: стол и род
+    /// сеанса — выбранного; «авто», пусто и тот же стол — сеанс как есть.
+    #[test]
+    fn chosen_desktop_leads_the_look_sections() {
+        let mut kde = LookCtx::new("kde", "/h", None);
+        kde.wayland = true;
+        let mate = kde.clone().for_chosen("mate");
+        assert_eq!((mate.de.as_str(), mate.wayland, mate.home.as_str()), ("mate", false, "/h"));
+        for same in ["", "auto", "kde"] {
+            assert_eq!(kde.clone().for_chosen(same), kde, "{same:?}");
+        }
+        set_chosen_desktop(" wayfire ");
+        assert_eq!(chosen_desktop(), "wayfire");
+        assert_eq!(LookCtx::for_look().de, "wayfire");
+        set_chosen_desktop("");
+        assert_eq!(LookCtx::for_look(), LookCtx::from_env());
+    }
     use super::*;
     use std::cell::RefCell;
     use std::collections::HashMap;

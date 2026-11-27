@@ -23,7 +23,17 @@
 #   * низший приоритет по процессору и диску (nice 19, ionice idle) и
 #     отдельная группа systemd с потолком памяти — рабочему столу всегда
 #     достаётся первым;
-#   * 4 потока на сборку (4 × 4 = 16), общий потолок памяти среза.
+#   * 4 потока на сборку (4 × 4 = 16), общий потолок памяти среза;
+#   * git worktree (14.11.2026, решение Wehrwolfmann): очередь ОДНА на все
+#     копии — замки и билеты лежат в основном дереве, а не в корне копии
+#     (раньше у каждой копии была своя очередь, и 14.11 шло до десяти
+#     сборок разом, давление ввода-вывода 90 %). Каталог сборки у копии
+#     СВОЙ — <копия>/target-wt: общий target-shared на несколько копий давал
+#     чужие бинари (cargo судит о свежести по времени файлов, и тесты одной
+#     копии запускали сборку другой). Новый target-wt — reflink-копия
+#     target-shared без отметок свежести наших крейтов: чужие пакеты берутся
+#     готовыми, наши пересобираются из своих исходников. Удаляется вместе с
+#     копией (`git worktree remove --force`), брошенные — rexon-build-clean.
 #
 # Использование (из любого каталога, аргументы — как у cargo в rust/):
 #   scripts/build-queue check -p rexon-core       # быстрая проверка без сборки
@@ -36,11 +46,19 @@
 # Переменные (необязательно): BUILD_QUEUE_SLOTS (1), BUILD_QUEUE_JOBS (2),
 # BUILD_QUEUE_MEM_HIGH (8G) и BUILD_QUEUE_MEM_MAX (12G) на одну сборку,
 # BUILD_QUEUE_SLICE_HIGH (18G) и BUILD_QUEUE_SLICE_MAX (22G) на все разом,
-# BUILD_QUEUE_TARGET (свой каталог сборки; место всё равно занимается).
+# BUILD_QUEUE_TARGET (свой каталог сборки; место всё равно занимается;
+# в git worktree общий target-shared подменяется на target-wt копии).
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Основное дерево: у git worktree общий каталог git — <основное>/.git.
+QROOT="$ROOT"
+common="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ -n "$common" ] && [ "${common##*/}" = ".git" ] && [ -d "${common%/.git}" ]; then
+    QROOT="${common%/.git}"
+fi
+SHARED="$QROOT/target-shared"
 # Одно место, пока стоит Crucial P2: 24–25.10 четыре сборки разом доводили
 # давление ввода-вывода до 82 % (24.10 — жёсткие сбросы). После замены диска
 # можно вернуть 4.
@@ -69,7 +87,7 @@ fi
 # на него (~/.local/bin/heavy-run) по-прежнему считаются занятым местом.
 # Само место держит замок flock на дескрипторе 9; он переходит к cargo и
 # снимается ядром, когда сборка кончилась или умерла.
-lock_of() { if [ "$1" -eq 0 ]; then echo "$ROOT/.build-queue.lock"; else echo "$ROOT/.build-queue.lock.$1"; fi; }
+lock_of() { if [ "$1" -eq 0 ]; then echo "$QROOT/.build-queue.lock"; else echo "$QROOT/.build-queue.lock.$1"; fi; }
 
 # Очередь — билеты в .build-queue.d: номер берётся под замком из счётчика,
 # каждый ждущий держит flock на своём билете (дескриптор 8). Билет живого
@@ -77,7 +95,7 @@ lock_of() { if [ "$1" -eq 0 ]; then echo "$ROOT/.build-queue.lock"; else echo "$
 # стирают. Пробовать места может только первый живой билет, поэтому места
 # раздаются строго по порядку прихода; при нескольких местах первый, получив
 # место, уходит из очереди, и следующий сразу пробует свободное.
-QDIR="$ROOT/.build-queue.d"
+QDIR="$QROOT/.build-queue.d"
 mkdir -p "$QDIR"
 ticket_file=""
 drop_ticket() { if [ -n "$ticket_file" ]; then rm -f "$ticket_file"; ticket_file=""; fi; }
@@ -170,28 +188,50 @@ if [ "$RAW" -eq 1 ]; then
     exec nice -n 15 ionice -c 3 "$@"
 fi
 
-if [ -n "${BUILD_QUEUE_TARGET:-}" ]; then
-    TARGET="$BUILD_QUEUE_TARGET"
-elif [ "$slot" -eq 0 ]; then
-    TARGET="$ROOT/target-shared"
-else
-    TARGET="$ROOT/target-slot$slot"
-    if [ ! -d "$TARGET" ] && [ -d "$ROOT/target-shared" ]; then
-        # cxx-qt кладёт в out/ АБСОЛЮТНЫЕ ссылки на свой каталог сборки:
-        # в копии они смотрели бы в target-shared, и build-app падал бы с
-        # «Conflicting include_prefixes for cxx-qt» (10.10.2026, места 2 и 3).
-        # Поэтому после копии ссылки перенаправляем в новый каталог.
-        if cp -a --reflink=always "$ROOT/target-shared" "$TARGET.tmp" 2>/dev/null; then
-            find "$TARGET.tmp" -type l -lname "$ROOT/target-shared/*" -print0 |
-                while IFS= read -r -d '' l; do
-                    dst=$(readlink "$l")
-                    ln -sfn "$TARGET${dst#"$ROOT/target-shared"}" "$l"
-                done
-            mv "$TARGET.tmp" "$TARGET"
+# Новый каталог сборки — reflink-копия target-shared (Btrfs делит блоки,
+# места почти не берёт). cxx-qt кладёт в out/ АБСОЛЮТНЫЕ ссылки на свой
+# каталог сборки: в копии они смотрели бы в target-shared, и build-app падал
+# бы с «Conflicting include_prefixes for cxx-qt» (10.10.2026, места 2 и 3),
+# поэтому ссылки перенаправляются в новый каталог. Для копии дерева ещё и
+# стираются отметки свежести наших крейтов (`.fingerprint/rexon*`): иначе
+# cargo сверял бы время с исходниками ОСНОВНОГО дерева и брал его бинари.
+seed_target() {
+    local t="$1" forget_ours="$2"
+    [ ! -d "$t" ] && [ -d "$SHARED" ] || return 0
+    if cp -a --reflink=always "$SHARED" "$t.tmp" 2>/dev/null; then
+        find "$t.tmp" -type l -lname "$SHARED/*" -print0 |
+            while IFS= read -r -d '' l; do
+                dst=$(readlink "$l")
+                ln -sfn "$t${dst#"$SHARED"}" "$l"
+            done
+        if [ "$forget_ours" = 1 ]; then
+            find "$t.tmp" -mindepth 3 -maxdepth 3 -path '*/.fingerprint/rexon*' \
+                -exec rm -rf {} + 2>/dev/null || true
+        fi
+        mv "$t.tmp" "$t"
+    else
+        rm -rf "$t.tmp"
+    fi
+}
+
+if [ "$ROOT" != "$QROOT" ]; then
+    # Копия дерева (git worktree): свой каталог сборки, общий — никогда.
+    TARGET="$ROOT/target-wt"
+    if [ -n "${BUILD_QUEUE_TARGET:-}" ]; then
+        if [ "$(realpath -m "$BUILD_QUEUE_TARGET")" = "$(realpath -m "$SHARED")" ]; then
+            echo "build-queue: копия дерева собирает в свой $TARGET, а не в общий target-shared" >&2
         else
-            rm -rf "$TARGET.tmp"
+            TARGET="$BUILD_QUEUE_TARGET"
         fi
     fi
+    [ "$TARGET" != "$ROOT/target-wt" ] || seed_target "$TARGET" 1
+elif [ -n "${BUILD_QUEUE_TARGET:-}" ]; then
+    TARGET="$BUILD_QUEUE_TARGET"
+elif [ "$slot" -eq 0 ]; then
+    TARGET="$SHARED"
+else
+    TARGET="$ROOT/target-slot$slot"
+    seed_target "$TARGET" 0
 fi
 mkdir -p "$TARGET"
 

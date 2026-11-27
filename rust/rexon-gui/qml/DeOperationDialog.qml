@@ -157,8 +157,74 @@ Item {
                         font.weight: Font.DemiBold
                     }
 
+                    // Варианты с пояснением (сеанс стола: X11 / Wayland /
+                    // оба) — карточками друг под другом: подпись-кнопка и
+                    // под ней пояснение. Недоступный вариант виден, но
+                    // нажать его нельзя — почему, сказано в пояснении.
+                    readonly property bool described: choiceRow.modelData.options.length > 0
+                        && choiceRow.modelData.options[0].description !== undefined
+                        && choiceRow.modelData.options[0].description !== ""
+
+                    Repeater {
+                        model: choiceRow.described ? choiceRow.modelData.options : []
+
+                        delegate: Rectangle {
+                            id: choiceCard
+                            required property var modelData
+                            readonly property bool picked: choiceRow.modelData.current === choiceCard.modelData.value
+                            readonly property bool available: choiceCard.modelData.enabled !== false
+                            Layout.fillWidth: true
+                            implicitHeight: cardColumn.implicitHeight + 16
+                            radius: 6
+                            color: "transparent"
+                            border.width: choiceCard.picked ? 2 : 1
+                            border.color: choiceCard.picked ? root.pal.accent : root.pal.border
+                            opacity: choiceCard.available ? 1.0 : 0.6
+
+                            ColumnLayout {
+                                id: cardColumn
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                anchors.margins: 8
+                                spacing: 4
+
+                                RexonButton {
+                                    id: cardButton
+                                    objectName: "desktopsOperationChoice_" + choiceCard.modelData.value
+                                    Layout.fillWidth: true
+                                    pal: root.pal
+                                    checkable: true
+                                    enabled: choiceCard.available
+                                    checked: choiceCard.picked
+                                    checkedTone: root.primaryTone
+                                    text: (choiceCard.picked ? "◉  " : "○  ") + choiceCard.modelData.label
+                                    onClicked: {
+                                        // Выбранное — от карты, а не от щелчка.
+                                        cardButton.checked = Qt.binding(function () {
+                                            return choiceCard.picked;
+                                        });
+                                        if (root.actions && root.actions.setOperationChoice)
+                                            root.actions.setOperationChoice(choiceRow.modelData.name,
+                                                                            choiceCard.modelData.value);
+                                    }
+                                }
+
+                                RexonText {
+                                    Layout.fillWidth: true
+                                    text: choiceCard.modelData.description
+                                    textFormat: Text.RichText
+                                    wrapMode: Text.WordWrap
+                                    color: root.pal.text_secondary
+                                    font.pointSize: 10
+                                }
+                            }
+                        }
+                    }
+
                     Flow {
                         Layout.fillWidth: true
+                        visible: !choiceRow.described
                         spacing: 8
 
                         Repeater {

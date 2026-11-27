@@ -1,4 +1,4 @@
-English | [Русский](../ru/desktops.md) | [Deutsch](../de/desktops.md)
+English | [Русский](../ru/desktops.md) | [Deutsch](../de/desktops.md) | [简体中文](../zh-CN/desktops.md) | [Français](../fr/desktops.md)
 
 # Desktops
 

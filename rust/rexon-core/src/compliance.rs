@@ -590,6 +590,12 @@ pub struct Compliance<'a, IO: ComplianceIo> {
     pkg_note_done: bool,
     /// Строка об отложенном лечении уже выдана в этом прогоне.
     deferred_note_done: bool,
+    /// Терминал (`.desktop`), выбранный человеком для проверяемого стола во
+    /// вкладке «Настройки» — из списка своего стола с пометкой «выбрано
+    /// человеком» ([`crate::defaults::chosen_terminal_in_list`]). Выбор
+    /// человека главнее родного терминала (решение Wehrwolfmann 08.11.2026):
+    /// проверка терминала ставит в родное место стола его, а не родной.
+    chosen_terminal: Option<String>,
 }
 
 impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
@@ -633,6 +639,32 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
             stage_helper_available,
             pkg_note_done: false,
             deferred_note_done: false,
+            chosen_terminal: None,
+        }
+    }
+
+    /// Выбор человека из `<стол>-xdg-terminals.list` (`desktop` — сырое
+    /// `XDG_CURRENT_DESKTOP` или идентификатор Rexon).
+    fn read_chosen_terminal(&mut self, desktop: &str) -> Option<String> {
+        let name = crate::appdefaults::terminals_list_filename(desktop)?;
+        let path = self.expand(&format!("~/.config/{name}"));
+        let text = self.io.read_text(&path)?;
+        crate::defaults::chosen_terminal_in_list(&text)
+    }
+
+    /// Какой терминал должен стоять в родном месте стола: выбранный человеком
+    /// (если установлен) или родной `native`. Выбранный, но не установленный
+    /// — родной, и это сказано в журнале.
+    fn wanted_terminal(&mut self, native: &str, log: &mut Vec<String>) -> (String, bool) {
+        let Some(chosen) = self.chosen_terminal.clone() else {
+            return (native.to_string(), false);
+        };
+        let exec = crate::defaults::terminal_exec_name(&chosen);
+        if self.io.which(&exec) {
+            (exec, true)
+        } else {
+            log.push(l4(trf("ℹ️ Terminal: %1 (%2 isn't installed)", &[&native, &exec])));
+            (native.to_string(), false)
         }
     }
 
@@ -1112,21 +1144,22 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         match current_term {
             Some(ct) => {
                 let ct = strip_chars(&ct, "'");
-                if ct == "mate-terminal" {
-                    log.push(l4(trf("✅ Terminal: %1", &[&"mate-terminal"])));
+                let (want, _) = self.wanted_terminal("mate-terminal", log);
+                if ct == want {
+                    log.push(l4(trf("✅ Terminal: %1", &[&want])));
                     put(&mut results, "mate_terminal", "ok");
-                } else if self.io.which("mate-terminal") {
+                } else if self.io.which(&want) {
+                    self.gsettings_set("org.mate.applications-terminal", "exec", &want);
                     self.gsettings_set(
                         "org.mate.applications-terminal",
-                        "exec",
-                        "mate-terminal",
+                        "exec-arg",
+                        crate::defaults::terminal_exec_arg(&want),
                     );
-                    self.gsettings_set("org.mate.applications-terminal", "exec-arg", "-x");
                     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-                    log.push(l4(trf("✅ Fixed: %1 → %2", &[&ct, &"mate-terminal"])));
+                    log.push(l4(trf("✅ Fixed: %1 → %2", &[&ct, &want])));
                     put(&mut results, "mate_terminal", "fixed");
                 } else {
-                    log.push(l4(trf("ℹ️ Terminal: %1 (%2 isn't installed)", &[&ct, &"mate-terminal"])));
+                    log.push(l4(trf("ℹ️ Terminal: %1 (%2 isn't installed)", &[&ct, &want])));
                     put(&mut results, "mate_terminal", "ok");
                 }
             }
@@ -1441,12 +1474,17 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
 
         log.push(l2(trf("🖥️ Checking the %1 terminal...", &[&"KDE"])));
         let kdeglobals = self.expand("~/.config/kdeglobals");
+        let (want, by_choice) = self.wanted_terminal("konsole", log);
+        let want_service = match (&self.chosen_terminal, by_choice) {
+            (Some(c), true) => c.clone(),
+            _ => "org.kde.konsole.desktop".to_string(),
+        };
         if self.io.exists(&kdeglobals) {
             let content = self.io.read_text(&kdeglobals).unwrap_or_default();
-            if content.contains("TerminalApplication=konsole") {
-                log.push(l4(trf("✅ Terminal: %1", &[&"konsole"])));
+            if content.contains(&format!("TerminalApplication={want}")) {
+                log.push(l4(trf("✅ Terminal: %1", &[&want])));
                 put(&mut results, "kde_terminal", "ok");
-            } else if self.io.which("konsole") {
+            } else if self.io.which(&want) {
                 if self.io.which("kwriteconfig6") {
                     self.io.run(
                         &[
@@ -1457,7 +1495,7 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
                             "General".to_string(),
                             "--key".to_string(),
                             "TerminalApplication".to_string(),
-                            "konsole".to_string(),
+                            want.clone(),
                         ],
                         None,
                     );
@@ -1470,19 +1508,19 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
                             "General".to_string(),
                             "--key".to_string(),
                             "TerminalService".to_string(),
-                            "org.kde.konsole.desktop".to_string(),
+                            want_service.clone(),
                         ],
                         None,
                     );
                     // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-                    log.push(l4(trf("✅ Fixed: terminal → %1", &[&"konsole"])));
+                    log.push(l4(trf("✅ Fixed: terminal → %1", &[&want])));
                     put(&mut results, "kde_terminal", "fixed");
                 } else {
                     log.push(l4(trf("⚠️ %1 not found", &[&"kwriteconfig6"])));
                     put(&mut results, "kde_terminal", "failed");
                 }
             } else {
-                log.push(l4(trf("ℹ️ %1 isn't installed", &[&"konsole"])));
+                log.push(l4(trf("ℹ️ %1 isn't installed", &[&want])));
                 put(&mut results, "kde_terminal", "ok");
             }
         } else {
@@ -1527,8 +1565,22 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         match term_val {
             Some(tv) => {
                 let tv = strip_chars(&tv, "'");
+                let (chosen, by_choice) = self.wanted_terminal("gnome-terminal", log);
                 let gnome_terms = ["gnome-terminal", "kgx", "org.gnome.Console"];
-                if gnome_terms.contains(&tv.as_str()) {
+                if by_choice {
+                    // Выбор человека: в схеме должен стоять он.
+                    if tv == chosen {
+                        log.push(l4(trf("✅ Terminal: %1", &[&tv])));
+                        put(&mut results, "gnome_terminal", "ok");
+                    } else {
+                        let schema = "org.gnome.desktop.default-applications.terminal";
+                        self.gsettings_set(schema, "exec", &chosen);
+                        self.gsettings_set(schema, "exec-arg", crate::defaults::terminal_exec_arg(&chosen));
+                        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
+                        log.push(l4(trf("✅ Fixed: %1 → %2", &[&tv, &chosen])));
+                        put(&mut results, "gnome_terminal", "fixed");
+                    }
+                } else if gnome_terms.contains(&tv.as_str()) {
                     log.push(l4(trf("✅ Terminal: %1", &[&tv])));
                     put(&mut results, "gnome_terminal", "ok");
                 } else {
@@ -1926,7 +1978,12 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         log: &mut Vec<String>,
     ) -> Results {
         match detect_current_de(xdg_current_desktop) {
-            Some(de_id) => self.run_for_de(&de_id, log),
+            Some(de_id) => {
+                self.chosen_terminal = self.read_chosen_terminal(xdg_current_desktop);
+                let results = self.run_for_de(&de_id, log);
+                self.chosen_terminal = None;
+                results
+            }
             None => {
                 log.push(msg_unknown_de());
                 Vec::new()
@@ -1944,7 +2001,9 @@ impl<'a, IO: ComplianceIo> Compliance<'a, IO> {
         for de_id in installed_de_ids {
             if Self::has_handler(de_id) {
                 log.extend(de_banner_lines(de_id));
+                self.chosen_terminal = self.read_chosen_terminal(de_id);
                 let results = self.run_for_de(de_id, log);
+                self.chosen_terminal = None;
                 all_results.push((de_id.clone(), results));
             }
         }

@@ -65,6 +65,7 @@
 //!    выхода. Замер: SIGTERM одному главному PID — чистый выход, SIGTERM всей
 //!    cgroup — `status=7/BUS` (воспроизведено 2026-08-22).
 
+use std::collections::HashMap;
 use serde::Serialize;
 use prost::Message;
 
@@ -1286,18 +1287,25 @@ pub fn refresh_unit_plan_with(
     refresh_unit_plan_on(existing, &binary, xdg_config_home, home, plugin_root)
 }
 
-/// Бинарь, на котором пересобрать юнит: записанный в нём, пока он на диске;
-/// пропал — найденный сейчас ([`find_daemon_binary`]); не нашлось ничего —
-/// прежний (юнит без движка всё равно не поднимется, а чужой выбор не
-/// затираем).
+/// Бинарь, на котором пересобрать юнит: тот, что Rexon запустил бы сейчас
+/// ([`find_daemon_binary`]); не нашлось ничего — прежний (юнит без движка
+/// всё равно не поднимется, а чужой выбор не затираем).
 ///
 /// Зачем: 30.10.2026 пакет Rexon перестал вшивать движок
 /// (`/usr/lib/rexon/engine/waywallen.AppImage` ушёл вместе с обновлением), и
 /// юнит, записанный на этот путь, после обновления пакета смотрел бы в
 /// пустоту — обои пропали бы со следующего входа.
-pub fn unit_refresh_binary(written: &str, written_alive: bool, found: Option<&str>) -> String {
+///
+/// ⚠️ «Записанный ещё лежит на диске» юнит НЕ оправдывает: 08.11.2026 живой
+/// юнит смотрел в управляемый AppImage `~/.local/share/waywallen/` от 23.10
+/// (побайтно равный тогдашнему пакетному), а Rexon стоял пакетом с движком
+/// `/usr/lib/rexon/engine/`. Окно запускает движок пакета, служба при входе —
+/// старую копию, и после следующего обновления пакета при входе поднялся бы
+/// прежний демон. Управляемый AppImage, который НОВЕЕ пакетного, поиск демона
+/// выбирает сам ([`prefer_managed_over_bundled`]) — его юнит и сохранит.
+pub fn unit_refresh_binary(written: &str, found: Option<&str>) -> String {
     match found {
-        Some(f) if !written_alive && !f.is_empty() => f.to_string(),
+        Some(f) if !f.is_empty() => f.to_string(),
         _ => written.to_string(),
     }
 }
@@ -2707,13 +2715,47 @@ fn library_name(name: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
+/// Значения настроек библиотеки так, как их шлёт вендорный интерфейс
+/// waywallen 0.6.0: карта страницы (`QVariantMap`) → `map<string, string>`
+/// запроса, каждое значение — `QVariant::toString()`. Целое число,
+/// пришедшее из QML дробным (`3.0`), пишется без хвоста — как у Qt; `null`
+/// и вложенные значения дают пустую строку (у `QVariant` они тоже ничего
+/// не печатают). Не карта — настроек нет.
+pub fn library_settings(value: &serde_json::Value) -> HashMap<String, String> {
+    use serde_json::Value;
+    let Value::Object(map) = value else {
+        return HashMap::new();
+    };
+    map.iter()
+        .map(|(key, value)| {
+            let text = match value {
+                Value::String(s) => s.clone(),
+                Value::Bool(b) => b.to_string(),
+                Value::Number(n) => match (n.as_i64(), n.as_u64(), n.as_f64()) {
+                    (Some(i), _, _) => i.to_string(),
+                    (_, Some(u), _) => u.to_string(),
+                    (_, _, Some(f)) if f.fract() == 0.0 && f.abs() < 1e15 => {
+                        (f as i64).to_string()
+                    }
+                    (_, _, Some(f)) => f.to_string(),
+                    _ => String::new(),
+                },
+                _ => String::new(),
+            };
+            (key.clone(), text)
+        })
+        .collect()
+}
+
 /// Тело `library_add` — или `None`, если запрос не должен уйти: без пути
 /// или без плагина оригинал молча выходит. Имя — по [`library_name`]
-/// (waywallen 0.5.0, необязательное поле `LibraryAddRequest.name`).
+/// (waywallen 0.5.0, необязательное поле `LibraryAddRequest.name`);
+/// настройки библиотеки (0.6.0, `librarySettings` плагина) — как есть.
 pub fn library_add_request(
     path: &str,
     plugin_name: &str,
     name: &str,
+    settings: HashMap<String, String>,
 ) -> Option<pb::LibraryAddRequest> {
     if path.is_empty() || plugin_name.is_empty() {
         return None;
@@ -2722,6 +2764,7 @@ pub fn library_add_request(
         path: path.to_string(),
         plugin_name: plugin_name.to_string(),
         name: library_name(name),
+        settings,
     })
 }
 
@@ -2734,30 +2777,43 @@ pub fn library_add(request_id: u64, path: &str, plugin_name: &str, name: &str) -
             path: path.to_string(),
             plugin_name: plugin_name.to_string(),
             name: library_name(name),
+            settings: HashMap::new(),
         }),
     )
 }
 
-/// Тело `library_rename` (waywallen 0.5.0) — или `None`, если запрос не
-/// должен уйти: номер библиотеки не положительный или имя после среза
-/// пробелов пусто. Так же молча выходит оригинал; ответ демона — `Empty`.
-pub fn library_rename_request(library_id: i64, name: &str) -> Option<pb::LibraryRenameRequest> {
+/// Тело `library_edit` (waywallen 0.6.0: имя и настройки библиотеки одним
+/// запросом; прежний `library_rename` вендорный интерфейс больше не шлёт) —
+/// или `None`: номер не положительный или имя пусто после среза пробелов,
+/// оригинал тогда молча выходит.
+pub fn library_edit_request(
+    library_id: i64,
+    name: &str,
+    settings: HashMap<String, String>,
+) -> Option<pb::LibraryEditRequest> {
     if library_id <= 0 {
         return None;
     }
-    Some(pb::LibraryRenameRequest {
+    Some(pb::LibraryEditRequest {
         id: library_id,
         name: library_name(name)?,
+        settings,
     })
 }
 
-/// `library_rename` — новое имя библиотеки (пробелы по краям срезаны).
-pub fn library_rename(request_id: u64, library_id: i64, name: &str) -> Vec<u8> {
+/// `library_edit` — новое имя и настройки библиотеки.
+pub fn library_edit(
+    request_id: u64,
+    library_id: i64,
+    name: &str,
+    settings: HashMap<String, String>,
+) -> Vec<u8> {
     encode(
         request_id,
-        pb::request::Payload::LibraryRename(pb::LibraryRenameRequest {
+        pb::request::Payload::LibraryEdit(pb::LibraryEditRequest {
             id: library_id,
             name: name.trim().to_string(),
+            settings,
         }),
     )
 }
@@ -2856,25 +2912,39 @@ pub fn remote_availability(request_id: u64) -> Vec<u8> {
     )
 }
 
-/// `remote_search`. v0.2.3+: источник задаётся `source_id` (из
-/// `RemoteAvailability.sources`), `sort_key` — строковый ключ из
-/// `RemoteSourceInfo.sorts`.
-pub fn remote_search(
-    request_id: u64,
-    query: &str,
-    sort_key: &str,
-    page: u32,
-    source_id: &str,
-    tags: &[String],
-) -> Vec<u8> {
+/// Условия запроса `remote_search`. v0.2.3+: источник задаётся
+/// `source_id` (из `RemoteAvailability.sources`), `sort_key` — строковый
+/// ключ из `RemoteSourceInfo.sorts`. waywallen 0.6.0: исключённые теги,
+/// режим сопоставления по фильтрам и курсор продолжения (пустой — первая
+/// страница либо источник листает номерами).
+pub struct RemoteSearch<'a> {
+    pub query: &'a str,
+    pub sort_key: &'a str,
+    pub page: u32,
+    pub source_id: &'a str,
+    pub tags: &'a [String],
+    pub excluded_tags: &'a [String],
+    pub filter_match_modes: &'a std::collections::BTreeMap<String, String>,
+    pub cursor: &'a str,
+}
+
+/// `remote_search`.
+pub fn remote_search(request_id: u64, search: &RemoteSearch<'_>) -> Vec<u8> {
     encode(
         request_id,
         pb::request::Payload::RemoteSearch(pb::RemoteSearchRequest {
-            source_id: source_id.to_string(),
-            query: query.to_string(),
-            sort_key: sort_key.to_string(),
-            page,
-            required_tags: tags.to_vec(),
+            source_id: search.source_id.to_string(),
+            query: search.query.to_string(),
+            sort_key: search.sort_key.to_string(),
+            page: search.page,
+            required_tags: search.tags.to_vec(),
+            cursor: search.cursor.to_string(),
+            filter_match_modes: search
+                .filter_match_modes
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            excluded_tags: search.excluded_tags.to_vec(),
         }),
     )
 }

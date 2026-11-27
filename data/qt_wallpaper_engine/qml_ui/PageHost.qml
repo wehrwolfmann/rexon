@@ -8,6 +8,7 @@ import QtQml
 import QtQuick.Layouts
 import Qcm.Material as MD
 import waywallen.ui as W
+import QExtra as QE
 
 Item {
     id: root
@@ -315,7 +316,25 @@ Item {
     // ставятся, как только окно появилось, и переставляются, если оно
     // сменилось.
     readonly property var hostWindow: root.Window.window
-    onHostWindowChanged: root._installWindowApi()
+    onHostWindowChanged: {
+        root._installWindowApi();
+        root._applyTextureCache();
+    }
+
+    // waywallen 0.6.0: потолок кэша ТЕКСТУР миниатюр задаётся окну — так
+    // делает вендорный `Window.qml` (при создании и при смене настройки).
+    // Наше окно — хозяин вкладки, поэтому то же самое здесь. У QML-подмены
+    // QExtra вызов ничего не делает.
+    function _applyTextureCache() {
+        if (root.hostWindow)
+            QE.ImageCache.setTextureCapacityMiB(root.hostWindow, W.Global.imageTextureCacheMiB);
+    }
+    Connections {
+        target: W.Global
+        function onImageTextureCacheMiBChanged() {
+            root._applyTextureCache();
+        }
+    }
 
     readonly property alias popupPresenter: m_popup_presenter
 

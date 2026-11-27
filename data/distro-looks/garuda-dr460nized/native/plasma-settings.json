@@ -86,6 +86,7 @@
     "en": "Some parts (menu fonts, KRunner in the middle of the screen) take effect after you log in again.",
     "ru": "Часть изменений (шрифты меню, KRunner посередине экрана) заработает после повторного входа.",
     "de": "Einige Teile (Menüschriften, KRunner in der Bildschirmmitte) wirken erst nach erneuter Anmeldung.",
-    "zh_CN": "部分更改（菜单字体、屏幕中央的 KRunner）需重新登录后生效。"
+    "zh_CN": "部分更改（菜单字体、屏幕中央的 KRunner）需重新登录后生效。",
+    "fr": "Une partie des modifications (polices des menus, KRunner au milieu de l'écran) prendra effet après une nouvelle connexion."
   }
 }

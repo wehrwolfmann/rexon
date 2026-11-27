@@ -6,13 +6,15 @@
     "en": "Like Garuda Linux (Dr460nized)",
     "ru": "Как в Garuda Linux (Dr460nized)",
     "de": "Wie Garuda Linux (Dr460nized)",
-    "zh_CN": "Garuda Linux 风格（Dr460nized）"
+    "zh_CN": "Garuda Linux 风格（Dr460nized）",
+    "fr": "Comme Garuda Linux (Dr460nized)"
   },
   "description": {
     "en": "The dark Dr460nized look of Garuda Linux for Plasma: Sweet colours and window frames, BeautyLine icons, a top panel with a dock, wobbly windows. Only the look is taken: Garuda's system settings, shell, browser and login screen stay as they are. On other desktops Rexon applies what they understand — GTK theme, window frames, icons, cursors, fonts, wallpaper, the Kvantum style and Sweet colours for Qt programs — and builds the panels and window settings close to Garuda's from the desktop's own parts.",
     "ru": "Тёмный вид Dr460nized из Garuda Linux для Plasma: цвета и рамки окон Sweet, значки BeautyLine, верхняя панель с доком, «желейные» окна. Берётся только внешний вид: системные настройки Garuda, командная оболочка, браузер и экран входа не меняются. На других рабочих столах Rexon применяет то, что они понимают, — тему GTK, рамки окон, значки, курсоры, шрифты, обои, стиль Kvantum и цвета Sweet для Qt-программ, — а панели и настройки окон собирает близко к Garuda из частей самого стола.",
     "de": "Der dunkle Dr460nized-Look von Garuda Linux für Plasma: Sweet-Farben und -Fensterrahmen, BeautyLine-Symbole, eine obere Leiste mit Dock, wabbelnde Fenster. Übernommen wird nur das Aussehen: Garudas Systemeinstellungen, Shell, Browser und Anmeldebildschirm bleiben unverändert. Auf anderen Arbeitsflächen wendet Rexon an, was sie verstehen — GTK-Thema, Fensterrahmen, Symbole, Mauszeiger, Schriften, Hintergrundbild, den Kvantum-Stil und die Sweet-Farben für Qt-Programme — und baut Leisten und Fenstereinstellungen aus den eigenen Teilen der Arbeitsfläche nah an Garuda nach.",
-    "zh_CN": "Garuda Linux 适用于 Plasma 的深色 Dr460nized 外观：Sweet 配色和窗口边框、BeautyLine 图标、带停靠栏的顶部面板、果冻窗口效果。只采用外观：Garuda 的系统设置、命令行外壳、浏览器和登录界面保持不变。在其他桌面上，Rexon 会应用它们能识别的部分——GTK 主题、窗口边框、图标、光标、字体、壁纸、Kvantum 风格以及适用于 Qt 应用的 Sweet 配色——并用该桌面自身的组件搭建接近 Garuda 的面板和窗口设置。"
+    "zh_CN": "Garuda Linux 适用于 Plasma 的深色 Dr460nized 外观：Sweet 配色和窗口边框、BeautyLine 图标、带停靠栏的顶部面板、果冻窗口效果。只采用外观：Garuda 的系统设置、命令行外壳、浏览器和登录界面保持不变。在其他桌面上，Rexon 会应用它们能识别的部分——GTK 主题、窗口边框、图标、光标、字体、壁纸、Kvantum 风格以及适用于 Qt 应用的 Sweet 配色——并用该桌面自身的组件搭建接近 Garuda 的面板和窗口设置。",
+    "fr": "L'apparence sombre Dr460nized de Garuda Linux pour Plasma : couleurs et bordures de fenêtres Sweet, icônes BeautyLine, panneau supérieur avec dock, fenêtres « gélatineuses ». Seule l'apparence est reprise : les réglages système de Garuda, le shell en ligne de commande, le navigateur et l'écran de connexion ne changent pas. Sur les autres environnements de bureau, Rexon applique ce qu'ils comprennent — thème GTK, bordures de fenêtres, icônes, curseurs, polices, fond d'écran, style Kvantum et couleurs Sweet pour les applications Qt — et compose les panneaux et les réglages des fenêtres au plus près de Garuda à partir des éléments du bureau lui-même."
   },
   "authors": [{"name": "Wehrwolfmann"}],
   "license": "Apache-2.0",
@@ -166,7 +168,8 @@
          "en": "Plasma's libplasma has been replaced here by another build (a fork such as AeroShell). Plasma looks do not apply on top of it: put the regular libplasma back first.",
          "ru": "Здесь libplasma из Plasma заменена другой сборкой (форком вроде AeroShell). Оформление Plasma поверх неё не применяется: сначала верните обычную libplasma.",
          "de": "Die libplasma von Plasma wurde hier durch einen anderen Build ersetzt (einen Fork wie AeroShell). Plasma-Designs greifen darauf nicht: Stellen Sie zuerst die normale libplasma wieder her.",
-         "zh_CN": "此处 Plasma 的 libplasma 已被其他构建（例如 AeroShell 这类分支版本）替换。Plasma 外观无法在其上应用：请先恢复常规的 libplasma。"
+         "zh_CN": "此处 Plasma 的 libplasma 已被其他构建（例如 AeroShell 这类分支版本）替换。Plasma 外观无法在其上应用：请先恢复常规的 libplasma。",
+         "fr": "Ici, la libplasma de Plasma a été remplacée par une autre version (un fork comme AeroShell). Les apparences Plasma ne s'appliquent pas par-dessus : remettez d'abord la libplasma ordinaire."
        }}]
   }
 }

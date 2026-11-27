@@ -80,6 +80,11 @@ pub mod qobject {
         /// свойством, чтобы делегат мог спросить.
         #[qproperty(bool, selection_enabled, cxx_name = "selectionEnabled",
                     READ = selection_enabled, NOTIFY = selection_enabled_changed)]
+        /// waywallen 0.6.0: `hasMore` модели (`QMetaListModel` QExtra) —
+        /// сетка `WallpaperView` подписана на `hasMoreChanged` и по нему
+        /// заново спрашивает догрузку (`notifyFetchStateChanged`).
+        #[qproperty(bool, has_more, cxx_name = "hasMore", READ = has_more,
+                    NOTIFY = has_more_changed)]
         type WallpaperListModel = super::WallpaperListModelRust;
     }
 
@@ -96,6 +101,12 @@ pub mod qobject {
         #[qsignal]
         #[cxx_name = "selectionEnabledChanged"]
         fn selection_enabled_changed(self: Pin<&mut WallpaperListModel>);
+
+        /// Несёт значение, как `hasMoreChanged(bool)` QExtra и наша
+        /// модель выдачи Discover.
+        #[qsignal]
+        #[cxx_name = "hasMoreChanged"]
+        fn has_more_changed(self: Pin<&mut WallpaperListModel>, value: bool);
 
         /// `selectionChanged` оригинала: «набор выбранного стал другим».
         /// Отдельно от `selectedCountChanged`, потому что состав может
@@ -195,6 +206,8 @@ pub mod qobject {
         fn selected_count(self: &WallpaperListModel) -> i32;
         #[cxx_name = "selectionEnabled"]
         fn selection_enabled(self: &WallpaperListModel) -> bool;
+        #[cxx_name = "hasMore"]
+        fn has_more(self: &WallpaperListModel) -> bool;
     }
 
     // ── Инвокаблы (имена — из оригинала, менять нельзя) ───────────────────
@@ -326,6 +339,10 @@ pub const ENTRY_KEYS: &[&str] = &[
     // v0.4.4: обоина скрыта (`wallpaper_hide`). В КОНЦЕ списка — номера
     // ролей прежних ключей не сдвигаются.
     "hidden",
+    // v0.6.0: обновление в источнике и подтип записи (1 — таймлайн). Тоже
+    // в конце — номера ролей прежних ключей не сдвигаются.
+    "updateAvailable",
+    "subType",
 ];
 
 /// `Qt::UserRole`. Роль выбора у оригинала — ровно она
@@ -334,6 +351,12 @@ pub const SELECTED_ROLE: i32 = 0x0100;
 
 /// Роль первого поля записи.
 pub const FIRST_ENTRY_ROLE: i32 = SELECTED_ROLE + 1;
+
+/// waywallen 0.6.0 (`GridListModel`): ключ строки (`itemKey`) и строка
+/// целиком (`item`) — их читает `MD.ItemModelSource` сетки. Номера — те же,
+/// что у оригинала (`Qt::UserRole + 0x10000` и следующий).
+pub const ITEM_KEY_ROLE: i32 = SELECTED_ROLE + 0x10000;
+pub const ITEM_ROLE: i32 = ITEM_KEY_ROLE + 1;
 
 /// Что модель обязана сообщить Qt после изменения состояния.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -643,8 +666,11 @@ impl WallpaperRows {
 
 /// Номер роли по имени. `selected` — роль выбора, остальные — поля записи.
 pub fn role_of(name: &str) -> Option<i32> {
-    if name == "selected" {
-        return Some(SELECTED_ROLE);
+    match name {
+        "selected" => return Some(SELECTED_ROLE),
+        "itemKey" => return Some(ITEM_KEY_ROLE),
+        "item" => return Some(ITEM_ROLE),
+        _ => {}
     }
     ENTRY_KEYS
         .iter()
@@ -704,6 +730,10 @@ impl qobject::WallpaperListModel {
         self.rows.selection_enabled()
     }
 
+    pub fn has_more(&self) -> bool {
+        self.rows.has_more()
+    }
+
     pub fn row_count(&self, parent: &QModelIndex) -> i32 {
         if parent.is_valid() {
             0
@@ -725,6 +755,8 @@ impl qobject::WallpaperListModel {
                 cxx_qt_lib::QByteArray::from(*key),
             );
         }
+        names.insert(ITEM_KEY_ROLE, cxx_qt_lib::QByteArray::from("itemKey"));
+        names.insert(ITEM_ROLE, cxx_qt_lib::QByteArray::from("item"));
         names
     }
 
@@ -735,6 +767,20 @@ impl qobject::WallpaperListModel {
         }
         if role == SELECTED_ROLE {
             return QVariant::from(&self.rows.is_selected(row));
+        }
+        if role == ITEM_KEY_ROLE {
+            // Ключ обязан быть СТРОКОЙ: иначе `ItemModelSource` отвергает
+            // модель целиком («Key and reuse type must be strings»).
+            let key = self.rows.row(row).and_then(|m| m.get(KEY_FIELD));
+            let text = match key {
+                Some(Value::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => String::new(),
+            };
+            return QVariant::from(&QString::from(&text));
+        }
+        if role == ITEM_ROLE {
+            return QVariant::from(&self.item(row));
         }
         let Some(key) = key_of(role) else {
             return QVariant::default();
@@ -841,6 +887,7 @@ impl qobject::WallpaperListModel {
     // pub: догрузку дёргает стенд QML так же, как это делает сетка.
     pub fn fetch_more(mut self: Pin<&mut Self>, parent: &QModelIndex) {
         if self.as_mut().rust_mut().rows.fetch_more(!parent.is_valid()) {
+            self.as_mut().has_more_changed(false);
             let rows = self.count();
             self.req_fetch_more(rows);
         }
@@ -850,7 +897,11 @@ impl qobject::WallpaperListModel {
 
     /// Флаг «есть следующая страница» (`setHasMore` оригинала).
     pub fn set_page_has_more(mut self: Pin<&mut Self>, value: bool) {
+        if self.rows.has_more() == value {
+            return;
+        }
         self.as_mut().rust_mut().rows.set_has_more(value);
+        self.has_more_changed(value);
     }
 
     /// Строк в модели — запрос дописывает ей только недостающий хвост.

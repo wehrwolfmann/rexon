@@ -829,9 +829,22 @@ fn orphan_advice_for(f: &Finding, audience: Audience) -> Option<String> {
         // TRANSLATORS: About a package that no longer gets updates; the window has a button to remove it.
         Audience::Window { removable: true, .. } => Some(tr("If you don't use it, Rexon can remove it.")),
         Audience::Window { removable: false, .. } => None,
-        // TRANSLATORS: In a desktop notification about a package that no longer gets updates.
-        Audience::Notification => Some(tr("If you don't use it, open Rexon to remove it.")),
+        // Окно с кнопкой «Удалить» само при запуске не открывается
+        // ([`window_should_show`]) — уведомление называет кнопку, которой
+        // человек сам о нём попросит, теми же словами, что на ней.
+        Audience::Notification => Some(trf(
+            // TRANSLATORS: In a desktop notification about a package that no longer gets updates; %1 is the label of the “Check Now” button in Rexon settings.
+            "If you don't use it, remove it in Rexon settings with “%1”.",
+            &[&check_now_label()],
+        )),
     }
+}
+
+/// Подпись кнопки «Проверить сейчас» настроек Rexon без значка — так, как её
+/// видит человек.
+fn check_now_label() -> String {
+    let button = crate::qt_settings::text("aero.check_now", &[]).unwrap_or_default();
+    button.trim_start_matches(|c: char| !c.is_alphanumeric()).to_string()
 }
 
 /// Сироты находок — имена пакетов, по порядку, без повторов.
@@ -1801,13 +1814,26 @@ pub fn window_mark_live(fingerprint: &str) {
     notice_mark_live(fingerprint);
 }
 
-/// Показывать ли окно при запуске (`manual` — по кнопке, всегда). В окне
-/// есть кнопка (`actionable`: удалить сироту либо вернуть прежние версии) —
-/// смотрим отпечаток ОКНА: после уведомления «откройте Rexon» окно обязано
-/// показаться. Иначе — общий с уведомлением: показанное уведомлением окно
-/// не повторяет.
-pub fn window_should_show(manual: bool, actionable: bool, notified: bool, window_seen: bool) -> bool {
-    manual || if actionable { !window_seen } else { !notified }
+/// Показывать ли окно (`manual` — по кнопке «Проверить сейчас», всегда).
+///
+/// Без просьбы человека — только:
+///   * откат (`rollback`): набор УЖЕ разошёлся, после перезагрузки грозит
+///     чёрный экран, — по отпечатку ОКНА (после уведомления «откройте Rexon,
+///     чтобы вернуть» окно обязано показаться);
+///   * сообщение без кнопки — по общему с уведомлением отпечатку.
+///
+/// ⛔ Предложение УДАЛИТЬ пакет (`removal`, сирота вроде `kwin-x11`) само не
+/// всплывает никогда: 08.11.2026 окно «Remove kwin-x11» выскочило на стенде
+/// при первом открытии «Оформления», без всякого действия человека. О сироте
+/// говорит уведомление и называет кнопку настроек; окно — по ней.
+pub fn window_should_show(manual: bool, rollback: bool, removal: bool, notified: bool, window_seen: bool) -> bool {
+    if manual {
+        return true;
+    }
+    if rollback {
+        return !window_seen;
+    }
+    !removal && !notified
 }
 
 /// argv уведомления: `notify-send` (важное — не гаснет само), без него —
@@ -2444,9 +2470,9 @@ mod tests {
         assert_eq!(orphan.orphans(), ["kwin-x11"]);
         assert!(removable_orphans(&orphan.findings, true).is_empty(), "SteamOS: удалить нельзя");
         assert_eq!(orphan_remove_button(&orphan.orphans()), "Remove kwin-x11");
-        // Уведомлению — «откройте Rexon»; на SteamOS (кнопки нет) — молчим.
+        // Уведомлению — какой кнопкой настроек удалить; на SteamOS (кнопки нет) — молчим.
         let notice = orphan.text_for(Audience::Notification);
-        assert!(notice.contains("open Rexon to remove it"), "{notice}");
+        assert!(notice.contains("remove it in Rexon settings with “Check Now”"), "{notice}");
         let steamos = orphan.text_for(Audience::Window { removable: false, rollback: false });
         assert!(steamos.contains("kwin-x11 has been removed from the repositories") && !steamos.contains("remove it"), "{steamos}");
         for t in [&text, &notice, &steamos] {
@@ -2581,18 +2607,24 @@ mod tests {
         }
     }
 
-    /// Когда окно показывается: сирота с кнопкой — по отпечатку окна (после
-    /// уведомления «откройте Rexon» — непременно), прочее — по общему.
+    /// Когда окно показывается: по кнопке — всегда; откат — по отпечатку
+    /// окна (после уведомления «откройте Rexon» — непременно); сообщение без
+    /// кнопки — по общему; предложение удалить сироту само — никогда.
     #[test]
     fn window_after_notice_only_when_it_can_act() {
-        assert!(window_should_show(true, false, true, true));
-        assert!(window_should_show(false, true, true, false));
-        assert!(!window_should_show(false, true, true, true));
-        assert!(!window_should_show(false, false, true, false));
-        assert!(window_should_show(false, false, false, true));
-        // Кнопка отката — тоже «окну есть что сделать»: после уведомления
-        // «откройте Rexon, чтобы вернуть» окно показывается.
-        assert!(window_should_show(false, true, true, false));
+        assert!(window_should_show(true, false, true, true, true));
+        assert!(window_should_show(true, false, false, true, true));
+        // Откат: после уведомления — да, уже показанное — нет.
+        assert!(window_should_show(false, true, false, true, false));
+        assert!(!window_should_show(false, true, false, true, true));
+        // Сообщение без кнопки — один раз на двоих с уведомлением.
+        assert!(!window_should_show(false, false, false, true, false));
+        assert!(window_should_show(false, false, false, false, true));
+        // Удалить сироту без просьбы — ни до, ни после уведомления.
+        assert!(!window_should_show(false, false, true, false, false));
+        assert!(!window_should_show(false, false, true, true, false));
+        // Откат и сирота вместе — окно отката (сирота — после его итога).
+        assert!(window_should_show(false, true, true, true, false));
         assert_eq!(window_stamp_path("/h/.cache/"), "/h/.cache/rexon/update-guard-shown");
         assert_ne!(window_stamp_path("/h/.cache"), stamp_path("/h/.cache"));
     }

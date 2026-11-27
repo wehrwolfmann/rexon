@@ -721,6 +721,11 @@ async fn engine_install(
         (true, false, true) => eu::appimage_install_quit_message(&env.managed_appimage()),
         _ => imsg,
     };
+    // Новый движок — и плагин обоев KDE, если он уже стоит, в ногу с бандлом
+    // (дефект 12.11.2026). Не установленный не ставится.
+    if ok {
+        crate::we_socket::refresh_installed_kde_plugin("обновление движка");
+    }
     let out = ww::after_install_appimage(ok, &imsg);
     if out.remove_tmp {
         drop_tmp(&tmp);

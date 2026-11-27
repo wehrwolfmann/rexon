@@ -333,6 +333,18 @@ fn py_int_base16(s: &str) -> Result<i64, ImpError> {
 /// клал прямо в `data/gtk/` без своей папки. Если латиницы нет и после этого
 /// (иероглифы, арабица), id — `theme-` + 8 hex sha256 имени: стабилен для того
 /// же имени и не совпадает у разных.
+/// Имя каталога импортированной темы значков или курсоров: набор, названный
+/// `hicolor`/`locolor`, встал бы на место общего набора всех программ и его
+/// `index.theme` перекрыл бы системный (дефект 09.11.2026,
+/// [`crate::icon_hygiene`]) — такому имени добавляется `-imported`.
+fn icon_set_dir(slug: String) -> String {
+    if crate::icon_hygiene::is_reserved_icon_set(&slug) {
+        format!("{slug}-imported")
+    } else {
+        slug
+    }
+}
+
 pub(crate) fn slug60(s: &str) -> String {
     let lowered = s.to_lowercase();
     let mut out = String::new();
@@ -2191,6 +2203,10 @@ pub struct CursorSource {
 /// перевести заново из их же оригиналов.
 pub const CURSOR_CONVERTER_VERSION: u32 = 2;
 
+/// Ключ `index.theme` темы курсоров, переведённой из Windows (значение
+/// `windows`); его читает плитка установленного.
+pub const WINDOWS_CURSOR_ORIGIN_KEY: &str = "X-Rexon-Source";
+
 /// Автор по умолчанию (manifest требует непустое поле).
 const DEFAULT_CURSOR_AUTHOR: &str = "Windows Cursors";
 
@@ -2556,10 +2572,10 @@ fn cursor_inner(
         .to_string();
 
     // ── 3. Перевод в Xcursor ──
-    let safe_id = match source.id.strip_prefix("wincur-").unwrap_or(&source.id) {
+    let safe_id = icon_set_dir(match source.id.strip_prefix("wincur-").unwrap_or(&source.id) {
         "" => slug60(&theme_name),
         id => id.to_string(),
-    };
+    });
     // Тема пишется прямо в data/ будущего .rxn: копия через copy_tree
     // превратила бы ссылки-синонимы в полные копии анимаций.
     let rxn_dir = join(work_dir, "rxn");
@@ -2610,10 +2626,13 @@ fn cursor_inner(
     // ── 4. index.theme ──
     // Недостающее — из распространённых тем (не «default»: стол пишет
     // ~/.icons/default с Inherits на НАШУ тему, и вышел бы круг).
+    // `X-Rexon-Source=windows` — пометка для плитки установленной темы
+    // («🪟 из Windows», [`crate::installed_scan`]): manifest `.rxn` после
+    // установки рядом с темой не лежит.
     io.write_file(
         &join(&theme_root, "index.theme"),
         &format!(
-            "[Icon Theme]\nName={theme_name}\nComment=Imported from Windows cursors ({} cursors)\nInherits=breeze_cursors,Adwaita\n",
+            "[Icon Theme]\nName={theme_name}\nComment=Imported from Windows cursors ({} cursors)\nInherits=breeze_cursors,Adwaita\n{WINDOWS_CURSOR_ORIGIN_KEY}=windows\n",
             done.len()
         ),
     );
@@ -2852,7 +2871,7 @@ fn icon_inner(
     }
 
     // ── 2. Конвертация .ico → PNG (мультиразмерная) ──
-    let safe_id = slug60(&theme_name);
+    let safe_id = icon_set_dir(slug60(&theme_name));
     let theme_base = join(&join(work_dir, "theme"), &safe_id);
 
     // Структура размеров × контекстов.
@@ -4068,6 +4087,8 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
         let theme = std::fs::read_to_string(u.join("data/blue-trans/index.theme")).unwrap();
         assert!(theme.contains("Name=Blue Trans\n"), "{theme}");
         assert!(!theme.contains("Inherits=default"), "{theme}");
+        // Плитка установленной темы узнаёт по этой строке «🪟 из Windows».
+        assert!(theme.contains("\nX-Rexon-Source=windows\n"), "{theme}");
     }
 
     #[test]
@@ -4259,11 +4280,19 @@ work = \"Work in Progress.ani\"\r\nbusy = \"\"\r\ncross = \"Pointer.ani\"\r\n";
 
 #[cfg(test)]
 mod slug_tests {
-    use super::slug60;
+    use super::{icon_set_dir, slug60};
 
     #[test]
     fn slug60_latin_unchanged() {
         assert_eq!(slug60("The Witcher 3 — Geralt Theme"), "the-witcher-3-geralt-theme");
+    }
+
+    /// Набор из Windows, названный как общий `hicolor`, встаёт своей папкой.
+    #[test]
+    fn imported_icon_set_never_takes_shared_name() {
+        assert_eq!(icon_set_dir(slug60("HiColor")), "hicolor-imported");
+        assert_eq!(icon_set_dir("locolor".into()), "locolor-imported");
+        assert_eq!(icon_set_dir(slug60("Aero Icons")), "aero-icons");
     }
 
     #[test]

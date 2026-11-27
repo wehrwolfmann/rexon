@@ -246,12 +246,14 @@ pub fn treeland_session_live() -> bool {
 
 /// Отказ «в Treeland это задаёт только Центр управления».
 pub fn treeland_message() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("In the Deepin Wayland session (Treeland) this is set only by Deepin's Control Center — Rexon can't change it there yet: use Control Center → Personalization.")
 }
 
 /// Отказ в любом сеансе Deepin не на Treeland (X11 с deepin-kwin и прочие):
 /// одна фраза и путь перехода.
 pub fn not_treeland_message() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("Rexon supports Deepin only on Treeland. To switch, open Rexon → Desktops → Deepin → “Switch to Deepin on Treeland”, then log in with “Treeland User”.")
 }
 
@@ -296,6 +298,7 @@ pub fn wallpaper_handed_message() -> String {
 
 /// Центр управления не принял обои.
 pub fn control_center_failed_message() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("Deepin's Control Center didn't take the wallpaper — set it in Control Center → Personalization → Wallpaper.")
 }
 

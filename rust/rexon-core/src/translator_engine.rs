@@ -55,11 +55,11 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::appearance_cache::LiveCache;
 use crate::translator::{
-    detect_lang_heuristic, drop_invented_repeats, invented_latin_word, is_prose_segment,
-    is_soft_guarded_name, mask_names, mask_only, plan_translate_text, probe_text,
-    render_segments_with_flags, segment_html, split_sentence_edges, translatable_flags_by_sentence,
-    translation_cache_key, unmask_tech_names, user_lang_from_locale, MaskedNames, Segment,
-    TranslatePlan,
+    detect_lang_heuristic, drop_invented_repeats, fold_name_links, invented_latin_word,
+    is_prose_segment, is_soft_guarded_name, mask_names, mask_only, plan_translate_text,
+    probe_text, render_folded, segment_html, split_sentence_edges, translatable_flags_with_links,
+    translation_cache_key, unmask_tech_names, user_lang_from_locale, MaskedNames, NameLinkRun,
+    Segment, TranslatePlan,
 };
 
 // ============================================================================
@@ -531,6 +531,8 @@ pub fn translate_live_batch_guarded(
     // Уникальные тексты к переводу под каждой парой: описания и комментарии
     // повторяют друг друга, и дважды платить за одну строку незачем.
     let mut wanted: Vec<Vec<String>> = Vec::new();
+    // Имена из ссылок-имён всего пакета ([`fold_name_links`]).
+    let mut link_names: Vec<String> = Vec::new();
 
     for text in texts {
         let probe = probe_text(text);
@@ -555,11 +557,21 @@ pub fn translate_live_batch_guarded(
         // есть в тексте НЕТ ни тегов, ни сущностей, — а на таком тексте
         // `segment_html` даёт ровно один переводимый узел. Поведение то же,
         // ветки на одну меньше.
-        let segments = segment_html(text);
+        // Ссылка-имя (`my <a href=…/p/1253385/>Sweet</a> theme`) склеивается с
+        // соседними узлами в одну фразу: движок видит предложение целиком, а
+        // не «Sweet» и «theme» поодиночке ([`fold_name_links`]).
+        let (segments, runs) = fold_name_links(segment_html(text));
+        for run in runs.iter().flatten() {
+            for name in run.names() {
+                if !link_names.iter().any(|n| n == name) {
+                    link_names.push(name.to_string());
+                }
+            }
+        }
         // Проза решается ПО ПРЕДЛОЖЕНИЯМ теми же границами, какими текст потом
         // уезжает движку: узел «hddtemp shows only the first digit. here is a
         // screenshot http://…» отдаётся не целиком и не отвергается целиком.
-        let flags = translatable_flags_by_sentence(&segments, &sentence_texts);
+        let flags = translatable_flags_with_links(&segments, &sentence_texts);
 
         let pair = match pairs.iter().position(|(s, t)| *s == src && *t == tgt) {
             Some(at) => at,
@@ -576,8 +588,14 @@ pub fn translate_live_batch_guarded(
                 }
             }
         }
-        prepared.push(Some(Prepared { segments, flags, pair }));
+        prepared.push(Some(Prepared { segments, flags, runs, pair }));
     }
+
+    // Имена из ссылок охраняются наравне с названием товара: «Sweet» в
+    // «…to fit my Sweet theme» — имя соседней темы, а не «сладкий».
+    let guarded_all: Vec<&str> =
+        guarded.iter().copied().chain(link_names.iter().map(String::as_str)).collect();
+    let guarded = guarded_all.as_slice();
 
     // Кеш — ДО движка; движок — на остаток, и ЗАПИСЬ в кеш сразу за ним.
     let mut ready: Vec<HashMap<String, String>> = vec![HashMap::new(); pairs.len()];
@@ -615,7 +633,7 @@ pub fn translate_live_batch_guarded(
             continue;
         };
         let done = &ready[prep.pair];
-        let rendered = render_segments_with_flags(&prep.segments, &prep.flags, |s| {
+        let rendered = render_folded(&prep.segments, &prep.flags, &prep.runs, |s| {
             done.get(s).cloned().unwrap_or_default()
         });
         out.push(LiveTranslation {
@@ -651,6 +669,8 @@ pub fn translation_may_follow(text: &str, locale: &str) -> bool {
 struct Prepared {
     segments: Vec<Segment>,
     flags: Vec<bool>,
+    /// Склейки через ссылки-имена — на месте своего узла ([`fold_name_links`]).
+    runs: Vec<Option<NameLinkRun>>,
     pair: usize,
 }
 

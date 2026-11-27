@@ -491,6 +491,11 @@ pub const ID_MAP: &[(&str, PkgFamily)] = &[
     ("redos", PkgFamily::Fedora),
     ("rosa", PkgFamily::Fedora),
     ("calculate", PkgFamily::Gentoo),
+    // openKylin: `ID=openkylin` без `ID_LIKE` (base-files openKylin) —
+    // семейство пишем явно, не дожидаясь пробы бинарников. Kylin OS
+    // (`ID=kylin`) здесь намеренно НЕТ: тот же ID у настольной редакции на
+    // Debian и у серверной на RPM, семейство решают бинарники (`family`).
+    ("openkylin", PkgFamily::Debian),
 ];
 
 /// `_DE_DATABASE`: id DE → пакеты по семействам / AUR / проверка /
@@ -1544,7 +1549,41 @@ pub const XDG_TOKEN_TO_DE: &[(&str, &str)] = &[
     // отдельная таблица движка обоев, а здесь они проходили лишь на Wayland
     // «первым токеном как есть» — и по имени сеанса не опознавались вовсе.
     ("labwc", "labwc"),
+    // UKUI (стол Kylin): `XDG_CURRENT_DESKTOP=UKUI` ставит сам `ukui-session`
+    // (`sessionapplication.cpp`), у Ubuntu Kylin приходит `ubuntukylin:UKUI`.
+    // Имена сеансов — `ukui` (X11, `ukui.desktop`) и `kylin-wlcom` (Wayland,
+    // файл сеанса композитора kylin-wlcom). ⚠️ Только распознавание: стола
+    // нет в каталоге (`DE_DATABASE`, `de_customization::de_from_id`), и
+    // Rexon ведёт себя как на любом незнакомом столе, честно говоря, что его
+    // пока не поддерживает ([`unsupported_desktop_notice`]). Без этой строки
+    // сеанс UKUI на X11 не опознавался вовсе, а на Wayland проходил лишь
+    // «первым токеном как есть».
+    ("ukui", "ukui"),
+    ("kylin-wlcom", "ukui"),
 ];
+
+/// Столы, которые Rexon узнаёт в сеансе, но пока не поддерживает: в каталоге
+/// (`DE_DATABASE`) их нет — ни установки, ни своих настроек.
+/// Идентификатор → имя для человека (имя собственное, не переводится).
+pub const RECOGNIZED_UNSUPPORTED_DES: &[(&str, &str)] = &[("ukui", "UKUI")];
+
+/// Имя стола, который Rexon узнаёт, но пока не поддерживает; `None` — стол
+/// поддерживается или вовсе незнаком.
+pub fn unsupported_desktop_name(de_id: &str) -> Option<&'static str> {
+    RECOGNIZED_UNSUPPORTED_DES.iter().find(|(id, _)| *id == de_id).map(|(_, name)| *name)
+}
+
+/// Честная строка для человека в сеансе такого стола; `None` — говорить
+/// нечего. Работает Rexon там как на любом незнакомом столе: обои, темы,
+/// курсоры и шрифты ставятся общим путём.
+pub fn unsupported_desktop_notice(de_id: &str) -> Option<String> {
+    let name = unsupported_desktop_name(de_id)?;
+    Some(crate::i18n::trf(
+        // TRANSLATORS: %1 is a desktop environment name (UKUI). Rexon recognizes the session but can't install this desktop or change its own settings yet.
+        "Rexon doesn't support the %1 desktop yet: it can't install it or change its own settings. Wallpapers, themes, cursors and fonts work as on any other desktop.",
+        &[&name],
+    ))
+}
 
 /// Какое окружение запущено СЕЙЧАС: по `XDG_CURRENT_DESKTOP`, при неудаче —
 /// по `DESKTOP_SESSION`, при неудаче — первый токен как есть, если сеанс
@@ -2224,6 +2263,52 @@ impl SessionKind {
     }
 }
 
+/// Что человек выбрал в окне «Установить?» у стола с двумя сеансами.
+///
+/// Пакеты различаются только добавкой Wayland ([`Self::install_kind`]):
+/// сеанс X11 лежит в основных пакетах стола и встаёт всегда, поэтому
+/// «Wayland» и «Оба» ставят одно и то же, а разнятся тем, какой сеанс
+/// Rexon советует выбрать на экране входа.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionPick {
+    X11,
+    Wayland,
+    Both,
+}
+
+impl SessionPick {
+    /// Все варианты — в порядке показа.
+    pub const ALL: [SessionPick; 3] = [SessionPick::X11, SessionPick::Wayland, SessionPick::Both];
+
+    /// Значение для переключателя окна вопроса.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SessionPick::X11 => "x11",
+            SessionPick::Wayland => "wayland",
+            SessionPick::Both => "both",
+        }
+    }
+
+    /// Обратно к [`Self::as_str`]; незнакомое → `None`.
+    pub fn from_value(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|p| p.as_str() == s)
+    }
+
+    /// Какой набор ставит исполнитель: с добавкой Wayland — у «Wayland» и
+    /// «Оба».
+    pub fn install_kind(self) -> SessionKind {
+        match self {
+            SessionPick::X11 => SessionKind::X11,
+            SessionPick::Wayland | SessionPick::Both => SessionKind::Wayland,
+        }
+    }
+
+    /// Нужна ли добавка Wayland (у MATE — из AUR).
+    pub fn needs_wayland(self) -> bool {
+        self.install_kind() == SessionKind::Wayland
+    }
+}
+
 /// Насколько готов сеанс Wayland стола. От этого — выбор по умолчанию
 /// ([`SessionVariants::default_session`]) и подписи в окне и «Сравнении».
 /// Пересматривать, когда проект снимает с Wayland пометку «experimental».
@@ -2254,6 +2339,9 @@ pub struct SessionVariants {
     pub maturity: WaylandMaturity,
     pub x11_session_name: &'static str,
     pub wayland_session_name: &'static str,
+    /// Файл сеанса X11 (кладут основные пакеты стола) — по нему и
+    /// [`X11_SERVER_BINARY`] видно, что войти в X11 можно.
+    pub x11_session_file: &'static str,
     /// Кто в сеансе Wayland управляет окнами вместо привычного оконного
     /// менеджера стола (пусто — тот же, что в X11).
     pub wayland_compositor: &'static str,
@@ -2273,6 +2361,7 @@ pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
         remove_with_desktop: &[],
         maturity: WaylandMaturity::Experimental,
         x11_session_name: "Cinnamon",
+        x11_session_file: "/usr/share/xsessions/cinnamon.desktop",
         wayland_session_name: "Cinnamon (Wayland)",
         wayland_compositor: "",
         wayland_session_file: "/usr/share/wayland-sessions/cinnamon-wayland.desktop",
@@ -2285,6 +2374,7 @@ pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
         remove_with_desktop: &[],
         maturity: WaylandMaturity::Experimental,
         x11_session_name: "Xfce Session",
+        x11_session_file: "/usr/share/xsessions/xfce.desktop",
         wayland_session_name: "Xfce Session (Wayland)",
         wayland_compositor: "labwc",
         wayland_session_file: "/usr/share/wayland-sessions/xfce-wayland.desktop",
@@ -2298,6 +2388,7 @@ pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
         remove_with_desktop: &["lxqt-wayland-session"],
         maturity: WaylandMaturity::Mature,
         x11_session_name: "LXQt Desktop",
+        x11_session_file: "/usr/share/xsessions/lxqt.desktop",
         wayland_session_name: "LXQt (Wayland)",
         wayland_compositor: "labwc",
         wayland_session_file: "/usr/share/wayland-sessions/lxqt-wayland.desktop",
@@ -2311,6 +2402,7 @@ pub const SESSION_VARIANTS: &[(&str, SessionVariants)] = &[
         remove_with_desktop: &["mate-wayland-session"],
         maturity: WaylandMaturity::ExperimentalAur,
         x11_session_name: "MATE",
+        x11_session_file: "/usr/share/xsessions/mate.desktop",
         wayland_session_name: "MATE (Wayland)",
         wayland_compositor: "Wayfire",
         wayland_session_file: "/usr/share/wayland-sessions/MATE.desktop",
@@ -2331,6 +2423,43 @@ impl SessionVariants {
     /// Wayland у стола ещё экспериментальный.
     pub fn wayland_experimental(&self) -> bool {
         self.maturity != WaylandMaturity::Mature
+    }
+
+    /// Рекомендованный вариант окна «Установить?» — тот же выбор по
+    /// зрелости, что [`Self::default_session`].
+    pub fn default_pick(&self) -> SessionPick {
+        match self.default_session() {
+            SessionKind::X11 => SessionPick::X11,
+            SessionKind::Wayland => SessionPick::Wayland,
+        }
+    }
+}
+
+/// X-сервер, без которого сеанс X11 не стартует (у LightDM и SDDM он в
+/// зависимостях, но экран входа бывает и другой).
+pub const X11_SERVER_BINARY: &str = "Xorg";
+
+/// Какие сеансы установленного стола уже работают: (X11, Wayland).
+/// `None` — выбора сеанса у стола нет.
+pub fn installed_sessions(
+    de_id: &str,
+    family: PkgFamily,
+    file_exists: &dyn Fn(&str) -> bool,
+    in_path: &dyn Fn(&str) -> bool,
+) -> Option<(bool, bool)> {
+    let v = session_variants(de_id, family)?;
+    let x11 = file_exists(v.x11_session_file) && in_path(X11_SERVER_BINARY);
+    let wayland = wayland_session_ready(de_id, family, file_exists, in_path)?;
+    Some((x11, wayland))
+}
+
+/// Какой сеанс можно добавить установленному столу: нет Wayland — его
+/// (как и раньше, что бы ни было с X11), есть только Wayland — X11.
+pub fn missing_session(sessions: (bool, bool)) -> Option<SessionKind> {
+    match sessions {
+        (_, false) => Some(SessionKind::Wayland),
+        (false, true) => Some(SessionKind::X11),
+        (true, true) => None,
     }
 }
 

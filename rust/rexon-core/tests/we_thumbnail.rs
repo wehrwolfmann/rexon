@@ -270,3 +270,50 @@ fn video_frame_is_extracted_by_ffmpeg() {
     assert!(!std::path::Path::new(&job.cache_path).exists());
     let _ = std::fs::remove_dir_all(dir);
 }
+
+// ── waywallen 0.6.0: решение `ThumbnailRequest::submit` ─────────────────
+
+#[test]
+fn plan_follows_vendor_0_6_0() {
+    use th::Plan;
+    let cwd = "/home/u";
+    // Выключен или пуст — покой.
+    assert_eq!(th::plan("/p.gif", "", "scene", false, false, cwd), Plan::Idle);
+    assert_eq!(th::plan("", "", "video", false, true, cwd), Plan::Idle);
+    // Готовое превью — адресом как есть (анимация сохраняется).
+    assert_eq!(
+        th::plan("/w/preview.gif", "/w/scene.pkg", "scene", false, true, cwd),
+        Plan::Direct("file:///w/preview.gif".into())
+    );
+    assert_eq!(
+        th::plan("https://x.invalid/p.jpg", "", "scene", false, true, cwd),
+        Plan::Direct("https://x.invalid/p.jpg".into())
+    );
+    // Картинка без превью — сама картинка.
+    assert_eq!(
+        th::plan("", "img/a.png", "image", false, true, cwd),
+        Plan::Direct("file:///home/u/img/a.png".into())
+    );
+    // Сцена без превью — отказ; ролик без превью — кадр из файла.
+    assert_eq!(
+        th::plan("", "/w/s.pkg", "scene", false, true, cwd),
+        Plan::Failed(th::ERR_NO_PREVIEW.into())
+    );
+    assert_eq!(th::plan("", "/v/a.mp4", "video", false, true, cwd), Plan::Generate);
+    assert_eq!(
+        th::plan("", "https://x.invalid/a.mp4", "video", false, true, cwd),
+        Plan::Failed(th::ERR_NOT_LOCAL.into())
+    );
+    // Таймлайн: превью есть — оно, нет — честный отказ.
+    assert_eq!(
+        th::plan("/t/day.jpg", "/t/meta.json", "image", true, true, cwd),
+        Plan::Direct("file:///t/day.jpg".into())
+    );
+    assert_eq!(
+        th::plan("", "/t/meta.json", "image", true, true, cwd),
+        Plan::Failed(th::ERR_TIMELINE.into())
+    );
+    // Ресурс Qt и чистка пути.
+    assert_eq!(th::input_url(":/img/x.png", cwd), "qrc:/img/x.png");
+    assert_eq!(th::input_url("/a/./b/../c//d.png", cwd), "file:///a/c/d.png");
+}

@@ -1,4 +1,4 @@
-English | [Русский](../ru/settings.md) | [Deutsch](../de/settings.md)
+English | [Русский](../ru/settings.md) | [Deutsch](../de/settings.md) | [简体中文](../zh-CN/settings.md) | [Français](../fr/settings.md)
 
 # Settings
 
@@ -6,8 +6,8 @@ This tab sets up Rexon itself (language, window look, tray icon) and a few
 things for the whole computer: which file manager opens folders, which
 programs open files by default, wallpapers from a picture or a video, ambient
 sounds and event sounds. The sections run top to bottom in one list; some of
-them only appear where they make sense (for example, the desktop icons
-section only in MATE).
+them only appear where they make sense (for example, panel protection only
+with KDE Plasma).
 
 ![The Settings tab: language, interface skin, tour](../images/settings-top.png)
 
@@ -25,17 +25,14 @@ section only in MATE).
 | 🎬 **Wallpaper (image / video / YouTube / web)** | Wallpaper from a file, a YouTube or Vimeo video, a web page |
 | 📚 **Wallpaper Library** | Rexon wallpaper packs (.rxn) |
 | 🪟 **Import Windows Themes** | Bring over the look of your old Windows PC |
-| 🌫️ **Wallpaper Blur** | Blur a picture wallpaper so text on the desktop reads easier |
-| 🔊 **Ambient Sounds** | Rain, wind, music on a loop |
-| 🔔 **Event Sounds** | System sound theme: clicks, notifications, errors |
-| 🌽 **MATE: Desktop Icons** | MATE only: show or hide icons on the desktop |
 | 🔒 **Default App Protection** | Keep a new desktop from replacing your programs |
 | 🛡️ **KDE Plasma Panel Protection** | With Plasma only: copies of the panel, widgets and shortcuts |
 | 🪟 **Desktop Appearance** | Only with a Plasma look fork installed (AeroShell and similar) |
 
-At the very bottom are links "Appearance → …". Animation, fonts, window title
-bar buttons, launch feedback and icons in applications have moved to the
-Appearance tab — where KDE System Settings keeps them too.
+Animation, fonts, window title bar buttons, launch feedback, icons in
+applications, wallpaper blur, ambient sounds and event sounds are in the
+Appearance tab — where KDE System Settings keeps
+them too.
 
 If you have already entered your password, a strip "🔓 Rexon can change the
 system until the window is closed" shows at the top. **"Revoke Now"** takes
@@ -158,12 +155,6 @@ of it are left.
 
   ![The Wallpaper section](../images/settings-wallpaper.png)
 
-- **🌫️ Wallpaper Blur** — blurs a picture wallpaper; the original is kept and
-  the blur comes off with one click.
-- **🔊 Ambient Sounds** — **"➕ Add File…"** plays a sound on a loop;
-  **"⏹️ Stop All"** turns them all off.
-- **🔔 Event Sounds** — the sound theme, turning event sounds on, and buttons
-  to test the sounds.
 - **🪟 Import Windows Themes** — **"📥 Choose Theme File…"**: themes
   (.themepack, .theme), visual styles (.msstyles), icons, cursors and
   DreamScene video wallpapers. The finished theme shows up on the Extensions

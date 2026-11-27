@@ -78,7 +78,7 @@ pub struct MatePanelActionsRust;
 
 impl qobject::MatePanelActions {
     fn state(&self) -> cxx_qt_lib::QString {
-        let state = mate_panel::read_state(&SystemIo, &PanelCtx::from_env());
+        let state = mate_panel::read_state(&SystemIo, &PanelCtx::for_look());
         cxx_qt_lib::QString::from(&serde_json::to_string(&state).unwrap_or_default())
     }
 
@@ -91,12 +91,12 @@ impl qobject::MatePanelActions {
     }
 
     fn apply(&self, id: &cxx_qt_lib::QString) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&mate_panel::apply(&SystemIo, &PanelCtx::from_env(), &id.to_string()))
+        cxx_qt_lib::QString::from(&mate_panel::apply(&SystemIo, &PanelCtx::for_look(), &id.to_string()))
     }
 
     fn parts_question(&self, id: &cxx_qt_lib::QString) -> cxx_qt_lib::QString {
         let id = id.to_string();
-        let offer = mate_panel::live_parts_offer(&SystemIo, &PanelCtx::from_env(), &id);
+        let offer = mate_panel::live_parts_offer(&SystemIo, &PanelCtx::for_look(), &id);
         let json = match mate_panel::parts_question(&id, &offer) {
             Some((title, question)) => serde_json::json!({ "title": title, "question": question }),
             None => serde_json::json!({}),
@@ -108,7 +108,7 @@ impl qobject::MatePanelActions {
         let id = id.to_string();
         let handle = self.as_mut().qt_thread();
         std::thread::spawn(move || {
-            let ctx = PanelCtx::from_env();
+            let ctx = PanelCtx::for_look();
             let offer = mate_panel::live_parts_offer(&SystemIo, &ctx, &id);
             let offer = if install { offer } else { offer.repo_only() };
             let text = mate_panel::apply_with_parts(&SystemIo, &ctx, &id, &offer, &mut |o| {
@@ -129,7 +129,7 @@ impl qobject::MatePanelActions {
     fn restore_async(mut self: Pin<&mut Self>) {
         let handle = self.as_mut().qt_thread();
         std::thread::spawn(move || {
-            let text = mate_panel::restore(&SystemIo, &PanelCtx::from_env());
+            let text = mate_panel::restore(&SystemIo, &PanelCtx::for_look());
             let _ = handle.queue(move |mut object| {
                 object.as_mut().restored(cxx_qt_lib::QString::from(&text));
             });

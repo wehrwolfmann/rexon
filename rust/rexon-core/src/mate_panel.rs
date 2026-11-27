@@ -621,6 +621,14 @@ impl PanelCtx {
         PanelCtx { de: de.to_string(), data_home, layout_dirs, applet_dirs }
     }
 
+    /// Раздел «Раскладка панели» вкладки «Оформление»: стол — выбранный в
+    /// «Текущее окружение» ([`crate::animations::LookCtx::for_look`]).
+    pub fn for_look() -> Self {
+        let mut ctx = Self::from_env();
+        ctx.de = crate::animations::LookCtx::for_look().de;
+        ctx
+    }
+
     /// Из окружения процесса (окно, стенд).
     pub fn from_env() -> Self {
         let env = |n: &str| std::env::var(n).unwrap_or_default();

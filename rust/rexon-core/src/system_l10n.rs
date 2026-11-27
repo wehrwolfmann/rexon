@@ -26,6 +26,9 @@
 //! [`LANG_MARKER`]: помощник прежней версии (без неё) отказал бы на лишнем
 //! аргументе, а так он просто продолжит говорить по-своему.
 
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
 use crate::i18n::n_;
 
 /// Отметка в тексте помощника: «понимаю `--lang=<код>`».
@@ -402,6 +405,48 @@ fn unquote(s: &str) -> Option<String> {
 /// Перевод `msgid` из текста `.po`: только запись без `msgctxt`, без
 /// `fuzzy`, с непустым `msgstr`. `None` — перевода нет.
 pub fn po_lookup(po: &str, msgid: &str) -> Option<String> {
+    let mut found = None;
+    po_scan(po, |id, msg| {
+        if id == msgid {
+            found = Some(msg.to_string());
+        }
+        found.is_some()
+    });
+    found
+}
+
+/// Все годные записи `.po` (те же правила, что у [`po_lookup`]) словарём
+/// `msgid → msgstr`; при повторе `msgid` остаётся первая запись — её же
+/// вернул бы и `po_lookup`.
+///
+/// ЗАЧЕМ. Блок языка помощника спрашивает перевод каждого своего ключа на
+/// каждом языке. Поиском по тексту это полный разбор каталога (~1 МБ) на
+/// КАЖДЫЙ вопрос: `steamos_sysext::helper_script()` выходил в сотни разборов,
+/// и в отладочной сборке под нагрузкой сеанс помощника не укладывался в
+/// тайм-аут сверки (14.11.2026, `steamos_*` в `privilege::helper`).
+fn po_index(po: &str) -> HashMap<String, String> {
+    let mut index = HashMap::new();
+    po_scan(po, |id, msg| {
+        index.entry(id.to_string()).or_insert_with(|| msg.to_string());
+        false
+    });
+    index
+}
+
+/// Словари вшитых каталогов — разбираются один раз на процесс.
+fn embedded_index(code: &str) -> Option<&'static HashMap<String, String>> {
+    static INDEX: OnceLock<Vec<(&'static str, HashMap<String, String>)>> = OnceLock::new();
+    INDEX
+        .get_or_init(|| embedded::HELPER_CATALOGS.iter().map(|(c, po)| (*c, po_index(po))).collect())
+        .iter()
+        .find(|(c, _)| *c == code)
+        .map(|(_, index)| index)
+}
+
+/// Разбор `.po` по записям: `found(msgid, msgstr)` для каждой годной записи
+/// (без `msgctxt`, без `fuzzy`, не множественной, не битой, с непустым
+/// `msgstr`). `found` вернул `true` — разбор останавливается.
+fn po_scan(po: &str, mut found: impl FnMut(&str, &str) -> bool) {
     #[derive(PartialEq)]
     enum F {
         None,
@@ -422,16 +467,13 @@ pub fn po_lookup(po: &str, msgid: &str) -> Option<String> {
     let mut e = fresh();
     let mut field = F::None;
     let mut seen_str = false;
-    let done = |e: &Entry| -> Option<String> {
-        (!e.fuzzy && !e.ctx && !e.plural && !e.broken && e.id == msgid && !e.msg.is_empty())
-            .then(|| e.msg.clone())
-    };
+    let good = |e: &Entry| !e.fuzzy && !e.ctx && !e.plural && !e.broken && !e.msg.is_empty();
     for line in po.lines() {
         let t = line.trim();
         let starts_entry = t.starts_with("#,") || t.starts_with("msgctxt") || t.starts_with("msgid ");
         if starts_entry && seen_str {
-            if let Some(m) = done(&e) {
-                return Some(m);
+            if good(&e) && found(&e.id, &e.msg) {
+                return;
             }
             e = fresh();
             seen_str = false;
@@ -481,10 +523,9 @@ pub fn po_lookup(po: &str, msgid: &str) -> Option<String> {
         }
         field = target;
     }
-    if seen_str {
-        return done(&e);
+    if seen_str && good(&e) {
+        found(&e.id, &e.msg);
     }
-    None
 }
 
 /// Вставки `%1`..`%9` текста — отсортированный набор цифр.
@@ -511,12 +552,11 @@ pub fn translation_ok(msgid: &str, msgstr: &str) -> bool {
 
 /// Перевод сообщения на язык `code` из вшитого каталога (или `None`).
 pub fn translated(code: &str, msgid: &str) -> Option<String> {
-    translated_in(embedded::HELPER_CATALOGS, code, msgid)
+    translated_from(embedded_index(code)?, msgid)
 }
 
-fn translated_in(catalogs: &[(&str, &str)], code: &str, msgid: &str) -> Option<String> {
-    let (_, po) = catalogs.iter().find(|(c, _)| *c == code)?;
-    po_lookup(po, msgid).filter(|m| translation_ok(msgid, m))
+fn translated_from(index: &HashMap<String, String>, msgid: &str) -> Option<String> {
+    index.get(msgid).filter(|m| translation_ok(msgid, m)).cloned()
 }
 
 // ============================================================================
@@ -560,16 +600,35 @@ pub fn keys_used(script: &str) -> Vec<&str> {
 /// Паникует на ключе без текста в [`MESSAGES`]: это ошибка программиста,
 /// и сверки ловят её раньше, чем текст уйдёт в систему.
 pub fn bash_block(name: &str, script: &str) -> String {
-    bash_block_in(embedded::HELPER_CATALOGS, name, script)
+    // Вшитые каталоги разобраны один раз на процесс.
+    bash_block_with(&languages(), &|code, en| translated(code, en), name, script)
 }
 
+/// То же на своих каталогах (сверки): каждый разбирается один раз на блок.
+#[cfg(test)]
 fn bash_block_in(catalogs: &[(&str, &str)], name: &str, script: &str) -> String {
+    let langs = languages_in(catalogs);
+    let local: Vec<(&str, HashMap<String, String>)> =
+        catalogs.iter().filter(|(c, _)| langs.contains(c)).map(|(c, po)| (*c, po_index(po))).collect();
+    let lookup = |code: &str, en: &str| {
+        local.iter().find(|(c, _)| *c == code).and_then(|(_, index)| translated_from(index, en))
+    };
+    bash_block_with(&langs, &lookup, name, script)
+}
+
+/// Блок языка: `langs` — коды белого списка, `lookup(код, msgid)` — годный
+/// перевод или `None`.
+fn bash_block_with(
+    langs: &[&str],
+    lookup: &dyn Fn(&str, &str) -> Option<String>,
+    name: &str,
+    script: &str,
+) -> String {
     assert!(
         name.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
         "имя помощника {name} требует кавычек"
     );
     let keys = keys_used(script);
-    let langs = languages_in(catalogs);
     let mut out = String::new();
     out.push_str(
         "# ── Язык сообщений ─────────────────────────────────────────────────\n\
@@ -587,7 +646,7 @@ fn bash_block_in(catalogs: &[(&str, &str)], name: &str, script: &str) -> String 
          \x20   --lang=*)\n\
          \x20       case \"${1#--lang=}\" in\n",
     );
-    for code in &langs {
+    for code in langs {
         out.push_str(&format!("            {code}) rx_lang={code} ;;\n"));
     }
     out.push_str(
@@ -599,8 +658,8 @@ fn bash_block_in(catalogs: &[(&str, &str)], name: &str, script: &str) -> String 
     );
     for key in &keys {
         let en = message(key).unwrap_or_else(|| panic!("нет текста сообщения помощника {key}"));
-        for code in &langs {
-            if let Some(tr) = translated_in(catalogs, code, en) {
+        for code in langs {
+            if let Some(tr) = lookup(code, en) {
                 out.push_str(&format!("        {code}:{key}) rx_t={} ;;\n", bash_quote(&tr)));
             }
         }
@@ -747,6 +806,29 @@ mod tests {
         }
         for bad in ["", "RU", "ru;id", "ru ru", "$(id)", "`id`", "ru'", "../x", "-x", "ru\n"] {
             assert!(!is_valid_code(bad), "{bad:?}");
+        }
+    }
+
+    /// Словарь каталога отвечает ровно то же, что поиск по тексту, — на
+    /// каждом сообщении помощников и на каждом вшитом каталоге.
+    #[test]
+    fn po_index_answers_like_po_lookup() {
+        assert!(!embedded::HELPER_CATALOGS.is_empty());
+        for (code, po) in embedded::HELPER_CATALOGS {
+            let index = po_index(po);
+            for (key, en) in MESSAGES {
+                assert_eq!(index.get(*en).cloned(), po_lookup(po, en), "{code}:{key}");
+                assert_eq!(
+                    translated(code, en),
+                    po_lookup(po, en).filter(|m| translation_ok(en, m)),
+                    "{code}:{key}"
+                );
+            }
+        }
+        let ru = embedded::HELPER_CATALOGS.iter().find(|(c, _)| *c == "ru").map(|(_, po)| *po);
+        if let Some(po) = ru {
+            let en = message("de_args").unwrap();
+            assert!(po_lookup(po, en).is_some(), "в вшитом ru.po нет «{en}»: {} байт", po.len());
         }
     }
 

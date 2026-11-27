@@ -1,4 +1,4 @@
-English | [Русский](../ru/appearance.md) | [Deutsch](../de/appearance.md)
+English | [Русский](../ru/appearance.md) | [Deutsch](../de/appearance.md) | [简体中文](../zh-CN/appearance.md) | [Français](../fr/appearance.md)
 
 # Appearance
 
@@ -165,7 +165,13 @@ Each desktop has its own window borders: in KDE **Window Decorations
 (Aurorae)**, in XFCE, MATE and LXQt (Openbox, labwc) **Window Borders**. In
 Cinnamon the borders are drawn by the GTK theme.
 
-Right after the borders comes **Window title bar buttons**:
+Window title bar buttons are set up right there, in the borders section:
+the **⚙️ Settings** button at its top (like the “Titlebar Buttons” tab of
+the KDE “Window Decorations” module), and **←  Back to Catalog** to return.
+In Cinnamon it is the **Cinnamon Theme** section; on desktops without a
+borders section of their own (GNOME, Budgie, Pantheon, COSMIC, Deepin,
+tiling ones) it is **GTK Themes**: there title bars are drawn by the GTK
+theme or by GTK apps themselves. In the settings:
 
 - **Buttons position:** — “On the right (like Windows)” or “On the left
   (like macOS)”;
@@ -180,7 +186,7 @@ Right after the borders comes **Window title bar buttons**:
 
 If your desktop's window manager has no such button, Rexon says so.
 
-![The Window title bar buttons section](../images/appearance-windowbuttons.png)
+![Window title bar buttons in the settings of the borders section](../images/appearance-windowbuttons.png)
 
 ### Application Style
 
@@ -191,32 +197,41 @@ ready-made Qt styles (Darkly, Lightly, Klassy) from the AUR.
 
 ### Icons, cursors, launch feedback
 
-- **Icons** and **Cursors** — icon and pointer themes. The cursors section
+- **Icons** and **Cursors** — icon and pointer themes. The **⚙️ Settings**
+  button at the top of the Icons section opens, right there, icons in menus
+  and on buttons and toolbar labels in applications (“Icons only”, “Text
+  only”, “Text beside icons”, “Text below icons”); **←  Back to Catalog**
+  returns to the themes. The cursors section
   has the **Size:** field — pointer size in pixels. Rexon applies it in the
   desktop's own settings, in GTK and Qt apps, and in the config of sway,
   niri or Hyprland.
-- **Launch feedback** — how the pointer and the task bar show that an
+- **Launch feedback** (KDE only) — the **⚙️ Settings** button at the top
+  of the Cursors section: how the pointer and the task bar show that an
   application is starting: pointer “No feedback”, “Static”, “Blinking” or
-  “Bouncing”, task bar button animation, and when to stop it.
-- **Icons and toolbars in applications** — icons in menus and on buttons,
-  and toolbar labels (“Icons only”, “Text only”, “Text beside icons”, “Text
-  below icons”).
+  “Bouncing”, task bar button animation, and when to stop it. Where the
+  desktop has no such setting, there is no button.
 
 ### GTK Themes
 
 Themes for GTK apps (Firefox, GIMP, most GNOME, XFCE, MATE and Cinnamon
 apps). GNOME, Cinnamon, MATE and XFCE also have their own sections next to
 it: **GNOME Shell Theme**, **Cinnamon Theme**, **LXQt Theme** and others.
+On desktops without window animations, the **⚙️ Settings** button at the
+top of the section opens the **No animations** check box — animations
+inside applications.
 
 ### Fonts and font management
 
-**System Fonts** — fonts of the interface, the terminal, small captions,
-toolbars, menus and window titles. Press a font's button to choose its
+The **Fonts** section (with the 🔤 icon in the “For all apps” group) holds
+fonts from the KDE Store. The **⚙️ Settings** button at its top opens, right
+there, the system fonts: fonts of the interface, the terminal, small
+captions, toolbars, menus and window titles; **←  Back to Catalog** returns
+to the store. Press a font's button to choose its
 family and size, or **🔤 Change All Fonts…** to set one font for all of
 them. Below are **Text smoothing** (anti-aliasing, sub-pixel rendering,
 hinting) and **Force font DPI:**.
 
-![The System Fonts section](../images/appearance-fonts.png)
+![Settings of the Fonts section](../images/appearance-fonts.png)
 
 **🗂️ Manage Fonts…** opens the list of all fonts on the computer:
 
@@ -230,34 +245,44 @@ hinting) and **Force font DPI:**.
 - your own font groups (**➕ New Group…**), turning a whole group on or off,
   exporting a group to a ZIP archive.
 
-The **Fonts** section (with the 🔤 icon in the “For all apps” group) holds
-fonts from the KDE Store.
-
 ### Wallpapers and sounds
 
-- **HD Wallpapers** — desktop pictures from the store.
+- **HD Wallpapers** — desktop pictures from the store. The **⚙️ Settings**
+  button at the top of the section is **🌫️ Wallpaper Blur**: it blurs a
+  picture wallpaper so icons and windows on top read easier (the
+  **Strength** slider, **Blur Wallpaper**, **Remove Blur**); the original is
+  kept.
 - **Wallpaper Plugins** (KDE only) — live Plasma wallpapers.
 - **Sounds** — sound themes. You can listen to a theme's sounds before
   installing it (**🔊 Preview Before Installing**): the theme is downloaded
   to a temporary folder and nothing is installed. If system sounds are off,
-  Rexon offers to **Turn on** them.
+  Rexon offers to **Turn on** them. The **⚙️ Settings** button at the top of
+  the section holds **🔔 Event Sounds** (the desktop's sound theme, turning
+  event sounds on, testing the sound) and **🔊 Ambient Sounds** (**➕ Add
+  File…** plays a sound on a loop, volume, **⏹️ Stop All**, the list of
+  what is playing). Ambient sounds keep playing after you leave the section.
 
 Moving wallpapers live in the Wallpaper Engine tab.
 
-### Animation, screen effects, desktop effects
+### Animation and screen effects
 
 These are the last sections of the desktop group.
 
 - **Animation** — **No animations** or **Animation speed:** from “Slow” to
   “Fast”, plus a choice of effects: opening and closing windows,
-  minimizing, switching virtual desktops, popups and so on.
+  minimizing, switching virtual desktops, popups and so on. Where the
+  window manager has no window animations (MATE, Xfce, LXQt, Deepin, sway
+  and other tiling ones except Hyprland and niri), there is no such
+  section: the **No animations** check box for applications is the
+  **⚙️ Settings** button in the GTK Themes section.
 - **Screen effects** — the screen as an old tube monitor, a worn video tape
   or a film print: “Scanlines”, “CRT screen”, “Green monitor”, “Amber
   monitor”, “VHS tape”, “Analog TV”, “Film”, “Black and white”. Sliders
   **Strength:** and **Motion speed:**. How the section works on your desktop
-  and what it needs is written at the top (the “Needs: …” line).
-- **Desktop effects** (KDE only) — effects of the KWin window manager, with
-  search and a “Configure…” button for each.
+  and what it needs is written at the top (the “Needs: …” line). Where the
+  effects can't be turned on at all (sway, river, labwc, niri, Budgie,
+  Deepin), there is no such section; in MATE, Xfce and LXQt it is missing in
+  a Wayland session — there the effects work only on X11.
 
 ![The Screen effects section in MATE](../images/appearance-screeneffects.png)
 
@@ -292,7 +317,10 @@ Machine) these sections are closed, and Rexon explains why right away.
 ### Sections of particular desktops
 
 - KDE: **Plasma Styles**, **Window Switcher (Alt+Tab)**, **KWin Scripts**,
-  **KWin Effects**.
+  **KWin Effects** — new effects from the KDE Store; the **⚙️ Settings**
+  button at the top of the section turns on and sets up the effects KWin
+  already has (Magic Lamp, translucency, blur and others), with search and a
+  “Configure…” button for each.
 - GNOME: **GNOME Shell Theme**, **GNOME Extensions**.
 - MATE: **Panel Layout** — ready-made panel layouts with one button.
 

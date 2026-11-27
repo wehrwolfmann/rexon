@@ -33,6 +33,11 @@
 //! от края пишутся якорями; где якорь не годится — `RexonArrows.placeX`;
 //! прочие `x:` вне физических зон — поимённо в `MANUAL_X` с причиной.
 //!
+//! Подстановки `%1`, которые собирает сам QML, идут через `RexonBidi`
+//! (изолят FSI/PDI, как `i18n::fill` в ядре), а каждая строка каталога со
+//! стрелкой ← → несёт пометку переводчику — стрелку пишут так, как она
+//! смотрит на его языке.
+//!
 //! ЧЕГО СВЕРКА НЕ МЕРИТ: как окно выглядит при `-reverse`. Это — снимок на
 //! стенде.
 //!
@@ -1015,4 +1020,93 @@ fn content_width_does_not_subtract_the_scrollbar() {
     let fine = "ScrollBar { id: bar }\nText { anchors.rightMargin: bar.visible ? bar.width : 0 }\n\
                 Item { x: (c.availableWidth - h.width) }\n";
     assert!(offences(fine).is_empty());
+}
+
+/// Подстановки `%1`, которые собирает сам QML, — только через `RexonBidi`.
+///
+/// Ядро подставляет через `i18n::fill`, и при языке справа налево каждая
+/// подстановка встаёт в изолят FSI/PDI. `String.arg` в QML изолятов не
+/// ставит: имя файла или число в конце арабской фразы перетасует порядок
+/// слов вокруг себя. Поэтому `.arg(` в нашем QML пишется только в
+/// `RexonBidi.qml`, а сам `RexonBidi` обязан ставить изолят по направлению
+/// приложения.
+#[test]
+fn qml_substitutions_go_through_rexon_bidi() {
+    let bidi = squash_code(&source("rust/rexon-gui/qml/RexonBidi.qml"));
+    for need in [
+        "readonlypropertyboolrtl:Qt.application.layoutDirection===Qt.RightToLeft",
+        "\"\\u2068\"+s+\"\\u2069\"",
+    ] {
+        assert!(bidi.contains(need), "RexonBidi.qml потерял «{need}»");
+    }
+    for name in qml_names() {
+        if name == "RexonBidi.qml" {
+            continue;
+        }
+        let text = source(&format!("rust/rexon-gui/qml/{name}"));
+        assert!(
+            !text.contains("bidi.arg(") || squash_code(&text).contains("RexonBidi{id:bidi}"),
+            "{name}: `bidi.arg(` без `RexonBidi {{ id: bidi }}` в файле"
+        );
+        for (no, line) in text.lines().enumerate() {
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            assert!(
+                !line.replace("bidi.arg(", "").contains(".arg("),
+                "{name}:{}: подстановка `.arg()` мимо RexonBidi — при языке справа налево \
+                 она останется без изолята. Писать `bidi.arg(qsTranslate(…), значение)` \
+                 (`RexonBidi {{ id: bidi }}` в корне файла)",
+                no + 1
+            );
+        }
+    }
+}
+
+/// Каждая строка каталога со стрелкой ← → несёт пометку переводчику.
+///
+/// Правило одно на весь продукт (`RexonArrows.keyHint`): переводчик пишет
+/// стрелку так, как она смотрит на его языке, — справа налево «затем»,
+/// «вперёд» и путь меню «Настройки → Экран» пишутся через ←. Без пометки
+/// переводчик перепишет стрелку как в английском исходнике, и путь меню в
+/// арабском интерфейсе покажет назад. Пометку `TRANSLATORS:` ставят над
+/// вызовом `tr`/`n_`; xgettext вешает её на ПЕРВЫЙ вызов в строке кода,
+/// поэтому две переводимые строки в одной строке кода разносятся по разным.
+#[test]
+fn arrows_in_catalog_carry_a_translator_note() {
+    let pot = source("po/rexon.pot");
+    let mut missing = Vec::new();
+    let mut total = 0;
+    for entry in pot.split("\n\n") {
+        let mut msgid = String::new();
+        let mut in_id = false;
+        for line in entry.lines() {
+            if let Some(rest) =
+                line.strip_prefix("msgid ").or_else(|| line.strip_prefix("msgid_plural "))
+            {
+                in_id = true;
+                msgid.push_str(rest.trim_matches('"'));
+            } else if in_id && line.starts_with('"') {
+                msgid.push_str(line.trim_matches('"'));
+            } else {
+                in_id = false;
+            }
+        }
+        if !msgid.contains(['←', '→']) {
+            continue;
+        }
+        total += 1;
+        // Общая пометка «arrows ← → point the way…» либо своя, как у справки
+        // `.rxn`: «<pre> stay left-to-right…, so keep their arrows ← as they are».
+        if !entry.lines().any(|l| l.starts_with("#.") && l.contains("arrows")) {
+            missing.push(msgid);
+        }
+    }
+    assert!(total > 40, "строк со стрелками в каталоге подозрительно мало ({total}) — сломан разбор?");
+    assert!(
+        missing.is_empty(),
+        "строки со стрелкой без пометки переводчику («// TRANSLATORS: arrows ← → point the way \
+         they should in your language: …» над вызовом перевода):\n{}",
+        missing.join("\n")
+    );
 }

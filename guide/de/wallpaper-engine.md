@@ -1,4 +1,4 @@
-[English](../en/wallpaper-engine.md) | [Русский](../ru/wallpaper-engine.md) | Deutsch
+[English](../en/wallpaper-engine.md) | [Русский](../ru/wallpaper-engine.md) | Deutsch | [简体中文](../zh-CN/wallpaper-engine.md) | [Français](../fr/wallpaper-engine.md)
 
 # Wallpaper Engine
 
@@ -55,7 +55,12 @@ einzurichten ist nichts:
   Erweiterung ein und melden Sie sich neu an.
 - **MATE, Xfce, Cinnamon, Budgie, LXQt, LXDE, Pantheon, Deepin und andere
   Arbeitsflächen in einer X11-Sitzung** — der eigene Hintergrund-Player von
-  Rexon zeigt ihn. Ein Teil der Engine-Funktionen kann hier fehlen.
+  Rexon zeigt ihn. Ein Teil der Engine-Funktionen kann hier fehlen. In MATE
+  bleiben die Arbeitsflächensymbole über dem Live-Hintergrund, wenn Caja einen
+  durchsichtigen Arbeitsflächenhintergrund kann — Rexon schaltet ihn selbst
+  ein. Kann Caja das nicht, sind die Symbole ausgeblendet, solange der
+  Live-Hintergrund läuft (der Reiter sagt das in einer Zeile), und kommen
+  zurück, sobald er angehalten wird.
 
 Auf einem Wayland-Compositor, den Rexon nicht kennt, gibt es keine
 Live-Hintergründe.

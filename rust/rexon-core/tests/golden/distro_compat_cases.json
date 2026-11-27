@@ -86,9 +86,29 @@
     "name": "Ubuntu Kylin",
     "family": "debian",
     "country": "CN",
-    "notes": "Официальный флейвор Ubuntu. ID=ubuntu. Рабочий стол UKUI.",
+    "notes": "Официальный флейвор Ubuntu. ID=ubuntu, узнаётся по NAME=\"Ubuntu Kylin\". Рабочий стол UKUI.",
     "has_de_repos": true,
     "warnings": []
+   },
+   "openkylin": {
+    "name": "openKylin",
+    "family": "debian",
+    "country": "CN",
+    "notes": "ID=openkylin без ID_LIKE. apt/dpkg, но репозиторий свой (не Debian). Рабочий стол UKUI.",
+    "has_de_repos": true,
+    "warnings": [
+     "This distribution builds its own packages: some desktop environments may be missing from its repositories."
+    ]
+   },
+   "kylin": {
+    "name": "Kylin OS",
+    "family": "unknown",
+    "country": "CN",
+    "notes": "ID=kylin у двух редакций: настольная на Debian/Ubuntu, серверная на RPM. Семейство — по менеджеру пакетов. Рабочий стол UKUI.",
+    "has_de_repos": true,
+    "warnings": [
+     "This distribution builds its own packages: some desktop environments may be missing from its repositories."
+    ]
    },
    "boss": {
     "name": "BOSS Linux (Bharat OS)",
@@ -263,6 +283,8 @@
    "redos",
    "calculate",
    "ubuntukylin",
+   "openkylin",
+   "kylin",
    "boss",
    "nixos",
    "steamos"
@@ -410,6 +432,22 @@
     "has_warnings": false
    },
    {
+    "id": "openkylin",
+    "name": "openKylin",
+    "family": "debian",
+    "country": "CN",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
+    "id": "kylin",
+    "name": "Kylin OS",
+    "family": "unknown",
+    "country": "CN",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
     "id": "boss",
     "name": "BOSS Linux (Bharat OS)",
     "family": "debian",
@@ -426,6 +464,22 @@
     "country": "CN",
     "has_de_repos": true,
     "has_warnings": false
+   },
+   {
+    "id": "openkylin",
+    "name": "openKylin",
+    "family": "debian",
+    "country": "CN",
+    "has_de_repos": true,
+    "has_warnings": true
+   },
+   {
+    "id": "kylin",
+    "name": "Kylin OS",
+    "family": "unknown",
+    "country": "CN",
+    "has_de_repos": true,
+    "has_warnings": true
    }
   ],
   "in": [
@@ -1631,7 +1685,7 @@
      "name": "Ubuntu Kylin",
      "family": "debian",
      "country": "CN",
-     "notes": "Официальный флейвор Ubuntu. ID=ubuntu. Рабочий стол UKUI.",
+     "notes": "Официальный флейвор Ubuntu. ID=ubuntu, узнаётся по NAME=\"Ubuntu Kylin\". Рабочий стол UKUI.",
      "has_de_repos": true,
      "warnings": []
     },
@@ -1708,6 +1762,596 @@
       "check_install_possible": [
        false,
        "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "ubuntukylin-by-name",
+   "detector": {
+    "distro_id": "ubuntu",
+    "family": "debian",
+    "pretty_name": "Ubuntu Kylin 24.04 LTS",
+    "variant_id": "",
+    "name": "Ubuntu Kylin"
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "Ubuntu Kylin",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "Ubuntu Kylin",
+     "family": "debian",
+     "country": "CN",
+     "notes": "Официальный флейвор Ubuntu. ID=ubuntu, узнаётся по NAME=\"Ubuntu Kylin\". Рабочий стол UKUI.",
+     "has_de_repos": true,
+     "warnings": []
+    },
+    "get_warnings": [],
+    "get_compatibility_badge": "✅ Ubuntu Kylin (debian)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "ubuntu-plain-not-kylin",
+   "detector": {
+    "distro_id": "ubuntu",
+    "family": "debian",
+    "pretty_name": "Ubuntu 24.04 LTS",
+    "variant_id": "",
+    "name": "Ubuntu"
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "Ubuntu 24.04 LTS",
+    "is_known": false,
+    "has_de_repos": true,
+    "get_info": null,
+    "get_warnings": [],
+    "get_compatibility_badge": "ℹ️ Ubuntu 24.04 LTS",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "known:openkylin",
+   "detector": {
+    "distro_id": "openkylin",
+    "family": "debian",
+    "pretty_name": "openKylin 3.0",
+    "variant_id": "",
+    "name": "openKylin"
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "openKylin",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "openKylin",
+     "family": "debian",
+     "country": "CN",
+     "notes": "ID=openkylin без ID_LIKE. apt/dpkg, но репозиторий свой (не Debian). Рабочий стол UKUI.",
+     "has_de_repos": true,
+     "warnings": [
+      "This distribution builds its own packages: some desktop environments may be missing from its repositories."
+     ]
+    },
+    "get_warnings": [
+     "This distribution builds its own packages: some desktop environments may be missing from its repositories."
+    ],
+    "get_compatibility_badge": "⚠️ openKylin (debian)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "kylin-desktop-debian",
+   "detector": {
+    "distro_id": "kylin",
+    "family": "debian",
+    "pretty_name": "Kylin V10 SP1",
+    "variant_id": "",
+    "name": "Kylin"
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "Kylin OS",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "Kylin OS",
+     "family": "unknown",
+     "country": "CN",
+     "notes": "ID=kylin у двух редакций: настольная на Debian/Ubuntu, серверная на RPM. Семейство — по менеджеру пакетов. Рабочий стол UKUI.",
+     "has_de_repos": true,
+     "warnings": [
+      "This distribution builds its own packages: some desktop environments may be missing from its repositories."
+     ]
+    },
+    "get_warnings": [
+     "This distribution builds its own packages: some desktop environments may be missing from its repositories."
+    ],
+    "get_compatibility_badge": "⚠️ Kylin OS (debian)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       false,
+       "COSMIC доступен на Arch, Fedora, openSUSE, Gentoo (через cosmic-overlay), Void и Alpine.\nНа Debian/Ubuntu/Solus/Clear/ALT пакетов пока нет."
+      ]
+     },
+     "cinnamon": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "unknown-de": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     }
+    }
+   }
+  },
+  {
+   "label": "kylin-server-rpm",
+   "detector": {
+    "distro_id": "kylin",
+    "family": "fedora",
+    "pretty_name": "Kylin Linux Advanced Server V10 (Lance)",
+    "variant_id": "",
+    "name": "Kylin Linux Advanced Server"
+   },
+   "zps": false,
+   "expected": {
+    "is_russian_distro": false,
+    "distro_name": "Kylin OS",
+    "is_known": true,
+    "has_de_repos": true,
+    "get_info": {
+     "name": "Kylin OS",
+     "family": "unknown",
+     "country": "CN",
+     "notes": "ID=kylin у двух редакций: настольная на Debian/Ubuntu, серверная на RPM. Семейство — по менеджеру пакетов. Рабочий стол UKUI.",
+     "has_de_repos": true,
+     "warnings": [
+      "This distribution builds its own packages: some desktop environments may be missing from its repositories."
+     ]
+    },
+    "get_warnings": [
+     "This distribution builds its own packages: some desktop environments may be missing from its repositories."
+    ],
+    "get_compatibility_badge": "⚠️ Kylin OS (fedora)",
+    "per_de": {
+     "kde": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "gnome": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "xfce": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "mate": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cinnamon-mint": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "budgie": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "hyprland": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "lxqt": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
+      ]
+     },
+     "cosmic": {
+      "get_de_packages": null,
+      "get_rosa_branding": [],
+      "check_install_possible": [
+       true,
+       "OK"
       ]
      },
      "cinnamon": {

@@ -62,12 +62,15 @@ fn segments_match_python() {
         vec![
             ("splash", "🎬 Видеозаставка".to_string()),
             ("bg", "🖼️ Steam-фоны".to_string()),
-            ("showcase", "🖼️ Витрины профиля".to_string())
+            ("showcase", "🖼️ Витрины профиля".to_string()),
+            ("screensaver", "🌙 Заставка".to_string())
         ]
     );
     assert_eq!(qs::segment_index(qs::SEG_SPLASH), 0);
     assert_eq!(qs::segment_index(qs::SEG_BG), 1);
     assert_eq!(qs::segment_index(qs::SEG_SHOWCASE), 2);
+    assert_eq!(qs::segment_index(qs::SEG_SCREENSAVER), 3);
+    assert!(qs::is_segment(qs::SEG_SCREENSAVER));
     assert!(qs::is_segment(qs::SEG_SHOWCASE) && !qs::is_segment("что-то ещё"));
     // Незнакомый ключ ведёт себя как в оригинале: `0 if key == "splash" else 1`.
     assert_eq!(qs::segment_index("что-то ещё"), 1);

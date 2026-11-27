@@ -897,6 +897,16 @@ fn safe_install_into(
             installed_names.push(name.clone());
             continue;
         }
+        // Общий набор значков (`hicolor`, `locolor`) темой не ставится: его
+        // каталог делят все программы, а `index.theme` пакета перекрыл бы
+        // системный (дефект 09.11.2026, [`crate::icon_hygiene`]).
+        if matches!(ext_type.as_str(), "theme-icons" | "theme-cursors")
+            && crate::icon_hygiene::is_reserved_icon_set(name)
+        {
+            steps.push(shared_icon_set_notice(name));
+            pfs.skipped += 1;
+            continue;
+        }
         let dest = join(&target_base, name);
         // Копии подпапок комплекта (`~/.local/share/rexon/bundles/<подпапка>`)
         // и Conky (`~/.config/conky/<подпапка>`) лежат под ОБЩИМИ именами —
@@ -1658,6 +1668,14 @@ fn put_owned_copy(
 
 /// Заметка установки: тема `name` не поставлена — на её месте `dest` стоит
 /// каталог, положенный не этим пакетом (как пропуск у магазина).
+/// Заметка установки: подпапка пакета названа как общий набор значков
+/// (`hicolor`, `locolor`) и не ставится.
+fn shared_icon_set_notice(name: &str) -> ExtStep {
+    ExtStep::Notice {
+        text: trf("“%1” skipped: this is the shared icon set of all programs, a theme must not replace it", &[&name]),
+    }
+}
+
 fn taken_by_other_notice(name: &str, dest: &str) -> ExtStep {
     ExtStep::Notice {
         text: trf(
@@ -2030,6 +2048,7 @@ pub fn deepin_greeter_background_step() -> ExtStep {
             DEEPIN_GREETER_BG_SCRIPT.into(),
         ],
         timeout_secs: Some(30),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         failed: tr("Deepin's account service didn't take the login screen background — set it in Control \
                     Center → Personalization → Wallpaper."),
     }

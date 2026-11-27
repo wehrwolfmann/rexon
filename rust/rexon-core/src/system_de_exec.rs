@@ -162,6 +162,114 @@ fn install_intro(main: usize, aur: usize) -> String {
     }
 }
 
+/// Вступление «Проверить / Восстановить»: стол уже стоит, пакетный менеджер
+/// только сверит набор и доставит недостающее — «Установка» тут неправда.
+fn check_intro(main: usize, aur: usize) -> String {
+    let head = ntr("🔍 Checking: %n package", "🔍 Checking: %n packages", main as u64);
+    if aur > 0 {
+        trf("%1 + %2 from the AUR", &[&head, &aur])
+    } else {
+        head
+    }
+}
+
+/// Итог главного шага, когда pacman ответил «there is nothing to do».
+fn main_already_installed() -> String {
+    tr("✅ The main packages are all in place — nothing to install")
+}
+
+/// Итог «Проверить / Восстановить»: ничего не понадобилось.
+fn checked_message(display: &str) -> String {
+    // TRANSLATORS: %1 is a desktop environment name.
+    trf("✅ %1 checked — everything is in place", &[&display])
+}
+
+/// Итог «Проверить / Восстановить»: недостающее доставлено.
+fn repaired_message(display: &str) -> String {
+    // TRANSLATORS: %1 is a desktop environment name.
+    trf("✅ %1 checked — the missing parts are installed", &[&display])
+}
+
+/// Итог «Проверить / Восстановить»: не всё удалось доставить (почему —
+/// строками выше).
+fn repair_incomplete_message(display: &str) -> String {
+    // TRANSLATORS: %1 is a desktop environment name.
+    trf("⚠️ %1 checked, but not everything could be installed — see above", &[&display])
+}
+
+/// Приложения по умолчанию под стол записаны (подробности — в журнал Rexon).
+fn defaults_set_message(display: &str) -> String {
+    // TRANSLATORS: %1 is a desktop environment name.
+    trf("✅ Default apps for %1 are set", &[&display])
+}
+
+/// Защищённые умолчания все на месте — возвращать нечего.
+fn defaults_kept_message() -> String {
+    tr("✅ Your default apps are in place")
+}
+
+/// Защищённое умолчание, которое установка перетёрла, возвращено.
+fn default_restored_line(label: &str) -> String {
+    // TRANSLATORS: %1 is an app kind with its icon, e.g. “🗂️ File Manager”.
+    trf("%1: your choice is back", &[&label])
+}
+
+/// Свои списки «чем открывать» записаны для столов `names`.
+fn mimeapps_written_message(names: &str) -> String {
+    // TRANSLATORS: %1 is a comma-separated list of desktop environment names.
+    trf("✅ File associations saved for: %1", &[&names])
+}
+
+/// Строки журнала приложений по умолчанию → что показать человеку в окне:
+/// только предупреждения и ошибки, без номеров процессов. Всё остальное
+/// (имена служб D-Bus, пути файлов, «уже так») — для журнала Rexon.
+pub fn window_defaults_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .map(|l| l.trim())
+        .filter(|l| l.starts_with("⚠️") || l.starts_with("❌"))
+        .map(|l| format!("  {}", strip_pids(l)))
+        .collect()
+}
+
+/// Убрать из строки «(pid 4613)» и «pid 4613, » — номер процесса человеку
+/// ничего не говорит (в журнале Rexon строка остаётся целиком).
+fn strip_pids(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(i) = rest.find("pid ") {
+        let digits = rest[i + 4..].chars().take_while(char::is_ascii_digit).count();
+        let word_start = i == 0 || !rest[..i].chars().last().is_some_and(char::is_alphanumeric);
+        if digits == 0 || !word_start {
+            out.push_str(&rest[..i + 4]);
+            rest = &rest[i + 4..];
+            continue;
+        }
+        let end = i + 4 + digits;
+        let before = &rest[..i];
+        let after = &rest[end..];
+        if before.ends_with('(') && after.starts_with(')') {
+            // « (pid 1)» целиком.
+            out.push_str(before[..before.len() - 1].trim_end());
+            rest = &after[1..];
+        } else if after.starts_with(", ") {
+            // «(pid 1, service mode)» → «(service mode)».
+            out.push_str(before);
+            rest = &after[2..];
+        } else {
+            out.push_str(before.trim_end());
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// pacman ничего не ставил: весь набор уже стоял (`--needed`).
+pub fn pacman_nothing_to_do(log: &str) -> bool {
+    log.lines().any(|l| l.trim().trim_start_matches("::").trim().eq_ignore_ascii_case("there is nothing to do"))
+}
+
 fn post_install_failed(msg: &str) -> String {
     trf("Post-install setup didn't fully finish: %1", &[&msg])
 }
@@ -184,6 +292,32 @@ fn switcher_message(display: &str) -> String {
 
 fn restore_failed(e: &str) -> String {
     trf("Couldn't restore the default apps: %1", &[&e])
+}
+
+/// Начало «Добавить вариант …»: без перечня всего набора стола.
+fn session_adding_message(kind: system::SessionKind, display: &str) -> String {
+    match kind {
+        // TRANSLATORS: %1 is a desktop environment name.
+        system::SessionKind::Wayland => trf("📦 Adding the Wayland version of %1…", &[&display]),
+        // TRANSLATORS: %1 is a desktop environment name.
+        system::SessionKind::X11 => trf("📦 Adding the X11 version of %1…", &[&display]),
+    }
+}
+
+/// Итог «Добавить вариант …» с сеансом, как его пишет экран входа.
+fn session_added_message(kind: system::SessionKind, display: &str, session: &str) -> String {
+    match kind {
+        system::SessionKind::Wayland => trf(
+            // TRANSLATORS: %1 is a desktop environment name, %2 is the session name on the login screen.
+            "✅ The Wayland version of %1 is added — choose “%2” on the login screen",
+            &[&display, &session],
+        ),
+        system::SessionKind::X11 => trf(
+            // TRANSLATORS: %1 is a desktop environment name, %2 is the session name on the login screen.
+            "✅ The X11 version of %1 is added — choose “%2” on the login screen",
+            &[&display, &session],
+        ),
+    }
 }
 
 fn installed_message(display: &str) -> String {
@@ -465,6 +599,8 @@ pub struct DeOpsExec<'a, IO: DeOpsIo + ?Sized> {
     cancellable: Cell<Option<bool>>,
     /// См. [`DeOpOutcome::restart_needed`]; ставят шаги операции.
     restart_needed: Cell<bool>,
+    /// Главный шаг установки ничего не ставил (всё уже стояло).
+    main_nothing_to_do: Cell<bool>,
 }
 
 impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
@@ -479,6 +615,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             cancel,
             cancellable: Cell::new(None),
             restart_needed: Cell::new(false),
+            main_nothing_to_do: Cell::new(false),
         }
     }
 
@@ -492,6 +629,18 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
 
     fn raw(&self, message: &str) {
         self.emit(de_progress::STAGE_RAW, message, None);
+    }
+
+    /// Журнал приложений по умолчанию: целиком — в журнал Rexon, в окно —
+    /// предупреждения ([`window_defaults_lines`]) и одна строка итога.
+    fn show_defaults_lines(&self, lines: &[String], display: &str) {
+        for line in lines {
+            crate::log_info!("appdefaults", "{}", line.trim());
+        }
+        for line in window_defaults_lines(lines) {
+            self.raw(&line);
+        }
+        self.raw(&format!("  {}", defaults_set_message(display)));
     }
 
     fn set_cancellable(&self, allowed: bool) {
@@ -851,8 +1000,19 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
         self.checkpoint()?;
 
-        // 3. Пакеты.
-        self.emit("install", &install_intro(main_pkgs.len(), aur_pkgs.len()), Some(0.05));
+        // 3. Пакеты. Стол уже стоит — это «Проверить / Восстановить»:
+        // пакетный менеджер сверяет набор (`--needed`) и доставляет только
+        // недостающее, так и говорим.
+        let checking = self.sys.is_pkg_installed(system::get_check_binary(de_id).unwrap_or(de_id));
+        let aur_missing_before: Vec<String> =
+            aur_pkgs.iter().filter(|p| !self.sys.is_pkg_installed(p)).cloned().collect();
+        self.main_nothing_to_do.set(false);
+        let intro = if checking {
+            check_intro(main_pkgs.len(), aur_pkgs.len())
+        } else {
+            install_intro(main_pkgs.len(), aur_pkgs.len())
+        };
+        self.emit("install", &intro, Some(0.05));
         let aur_for_batch: Vec<String> = if aur_helper.is_some() {
             aur_pkgs.clone()
         } else {
@@ -888,11 +1048,16 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
 
         // 5. Экран входа из пакет-листа стола (если помощник его уже не
         //    включил в том же сеансе авторизации).
-        self.emit("dm_enable", &dm_step_message(), Some(0.90));
-        if !used_de_helper {
-            if self.sys.display_manager_present() {
-                self.emit("dm_enable", &dm_already(&self.sys.active_login_manager()), None);
-            } else {
+        // Экран входа уже стоит — одна строка «уже настроен» вместо
+        // заголовка и двух повторов (шаг 6 тогда молчит).
+        let dm_said = !used_de_helper && self.sys.display_manager_present();
+        if dm_said {
+            self.emit("dm_enable", &dm_already(&self.sys.active_login_manager()), Some(0.90));
+        } else {
+            self.emit("dm_enable", &dm_step_message(), Some(0.90));
+        }
+        if !used_de_helper && !dm_said {
+            {
                 let mut all = main_pkgs.clone();
                 all.extend(aur_pkgs.iter().cloned());
                 if let Some((unit, cmd)) = plan::dm_enable_step(
@@ -918,14 +1083,12 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         }
 
         // 6. Защита от дурака: включённый экран входа обязан быть.
-        self.ensure_display_manager(family);
+        self.ensure_display_manager(family, dm_said);
 
         // 7. Приложения по умолчанию под новый стол.
         self.emit("switcher", &switcher_message(display), Some(0.93));
         let (_, lines) = self.io.app_defaults_switch(de_id);
-        for line in lines {
-            self.raw(&line);
-        }
+        self.show_defaults_lines(&lines, display);
 
         self.io
             .bridge_notify(&BridgeEvent::DeInstalled(de_id.to_string()));
@@ -934,8 +1097,16 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.emit("restore", &restore_message(), Some(0.96));
         match self.defaults_restore() {
             Ok(results) => {
+                let mut restored = 0;
                 for (app_type, status) in results {
-                    self.raw(&format!("  {app_type}: {status}"));
+                    crate::log_info!("desktops", "умолчание {app_type}: {status}");
+                    if status == "restored" {
+                        restored += 1;
+                        self.raw(&format!("  {}", default_restored_line(&dfl::app_type_label(&app_type))));
+                    }
+                }
+                if restored == 0 {
+                    self.raw(&format!("  {}", defaults_kept_message()));
                 }
             }
             Err(e) => self.warn(&restore_failed(&e)),
@@ -958,7 +1129,111 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             self.raw(&line);
         }
 
-        self.emit("done", &installed_message(display), Some(1.0));
+        let done = if checking {
+            let still_missing = aur_pkgs.iter().any(|p| !self.sys.is_pkg_installed(p));
+            let aur_added = aur_missing_before.iter().any(|p| self.sys.is_pkg_installed(p));
+            if still_missing {
+                repair_incomplete_message(display)
+            } else if aur_added || !self.main_nothing_to_do.get() {
+                repaired_message(display)
+            } else {
+                checked_message(display)
+            }
+        } else {
+            installed_message(display)
+        };
+        self.emit("done", &done, Some(1.0));
+        Ok(de_progress::MSG_OK.to_string())
+    }
+
+    // ── Добавить сеанс установленному столу ─────────────────────────────
+
+    /// «➕ Добавить вариант Wayland / X11» на карточке установленного стола:
+    /// ставится только то, чего не хватает сеансу `kind`
+    /// (`system::SESSION_VARIANTS`). Стол уже стоит — снимок умолчаний,
+    /// пост-установка, экран входа, приложения по умолчанию и списки «чем
+    /// открывать» не трогаются: сеанс их не меняет.
+    pub fn add_session(&self, de_id: &str, kind: system::SessionKind) -> DeOpOutcome {
+        let result = self.add_session_steps(de_id, kind);
+        self.finish(result)
+    }
+
+    fn add_session_steps(&self, de_id: &str, kind: system::SessionKind) -> Step<String> {
+        let Some(meta) = system::DE_META.iter().find(|m| m.id == de_id) else {
+            return Err(Stop::Failed(unknown_de_message(de_id)));
+        };
+        let display = meta.display_name;
+        let family = self.sys.family();
+        let Some(variants) = system::session_variants(de_id, family) else {
+            return Err(Stop::Failed(unknown_de_message(de_id)));
+        };
+        self.set_cancellable(true);
+        let detector = self.detector();
+        // Сеанс X11 лежит в основных пакетах стола; X-сервер тянет их экран
+        // входа (LightDM и SDDM от него зависят).
+        let mut main_pkgs = match kind {
+            system::SessionKind::Wayland => system::session_packages(de_id, family, kind),
+            system::SessionKind::X11 => system::get_packages(de_id, family),
+        };
+        let aur_wanted = system::session_aur_packages(de_id, family, kind);
+        let (aur_in_repo, aur_pkgs) =
+            plan::split_repo_available(family, &aur_wanted, &|cmd: &plan::Cmd| {
+                let r = self.io.run(&cmd.argv, cmd.timeout_secs, cmd.lang_c);
+                r.rc().map(|rc| (rc, r.stdout.clone(), r.stderr.clone()))
+            });
+        main_pkgs.extend(aur_in_repo);
+        let mut seen = std::collections::HashSet::new();
+        main_pkgs.retain(|p| seen.insert(p.clone()));
+        let aur_helper = plan::pick_aur_helper(family, &|h| self.io.which(h));
+        if aur_helper.is_none() && !aur_pkgs.is_empty() {
+            let text = crate::qt_desktops::session_no_aur_helper_text(display);
+            self.emit(de_progress::STAGE_ERROR, &text, None);
+            return Err(Stop::Failed(text));
+        }
+        // Проба без прав root — как у установки стола: не ставится —
+        // понятный отказ до пароля.
+        let preview = plan::install_preview(family, &main_pkgs, &|cmd: &plan::Cmd| self.preview_run(cmd));
+        let deps_only: Vec<String> = preview.as_ref().map(|p| p.deps_only.clone()).unwrap_or_default();
+        let main_pkgs = match preview {
+            Some(p) if !p.installable() => {
+                let text = crate::qt_desktops::packages_notice(&p);
+                self.emit(de_progress::STAGE_ERROR, &text, None);
+                return Err(Stop::Failed(text));
+            }
+            Some(p) if !p.skipped.is_empty() => {
+                self.warn(&crate::qt_desktops::packages_notice(&p));
+                p.targets
+            }
+            Some(p) => p.targets,
+            None => main_pkgs,
+        };
+        self.checkpoint()?;
+
+        self.emit("install", &session_adding_message(kind, display), Some(0.05));
+        let aur_for_batch = if aur_helper.is_some() { aur_pkgs } else { Vec::new() };
+        match self.install_batch(
+            family,
+            &detector,
+            &main_pkgs,
+            &deps_only,
+            &[],
+            &aur_for_batch,
+            aur_helper.as_deref(),
+            de_id,
+        ) {
+            Ok(_) => {}
+            Err(Stop::Failed(msg)) => {
+                self.emit(de_progress::STAGE_ERROR, &msg, None);
+                return Err(Stop::Failed(msg));
+            }
+            Err(stop) => return Err(stop),
+        }
+        self.set_cancellable(false);
+        let session = match kind {
+            system::SessionKind::X11 => variants.x11_session_name,
+            system::SessionKind::Wayland => variants.wayland_session_name,
+        };
+        self.emit("done", &session_added_message(kind, display, session), Some(1.0));
         Ok(de_progress::MSG_OK.to_string())
     }
 
@@ -1027,9 +1302,7 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         self.set_shell_mode(target, shell)?;
         self.emit("switcher", &switcher_message(meta.display_name), Some(0.60));
         let (_, lines) = self.io.app_defaults_switch(target);
-        for line in lines {
-            self.raw(&line);
-        }
+        self.show_defaults_lines(&lines, meta.display_name);
         self.io.bridge_notify(&BridgeEvent::DeSwitch {
             from: current_de.to_string(),
             to: target.to_string(),
@@ -1442,6 +1715,10 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
                         if let Some(t) = tail.as_mut() {
                             t.stop();
                         }
+                        // «there is nothing to do» — набор уже стоял целиком.
+                        let log = self.io.read_text(&tmp_log).unwrap_or_default();
+                        self.main_nothing_to_do
+                            .set(pacman_nothing_to_do(&log) || pacman_nothing_to_do(&r.stdout));
                         r_main = Some(r);
                         main_seen = true;
                         main_pending = false;
@@ -1507,7 +1784,13 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         };
         let out = plan::batch_main_result(result, main_seen, packages, steamos, family, &agent, &installed);
         for (stage, message) in &out.logs {
-            self.out.pkg(stage, message);
+            // «Основные пакеты установлены (6)» при «ставить нечего» —
+            // неправда: число там — имена набора (группы), а не поставленное.
+            if stage == "done_main" && self.main_nothing_to_do.get() {
+                self.out.pkg(stage, &main_already_installed());
+            } else {
+                self.out.pkg(stage, message);
+            }
         }
         (out.ok, out.message)
     }
@@ -1685,7 +1968,8 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
     /// Порт `ensure_display_manager`: решение — [`plan::ensure_dm_plan`].
     /// Не рушит установку: экран входа — лучшее усилие поверх уже
     /// поставленного стола, но каждая неудача сказана вслух.
-    fn ensure_display_manager(&self, family: PkgFamily) {
+    /// `already_said` — строка «экран входа уже настроен» уже в окне.
+    fn ensure_display_manager(&self, family: PkgFamily, already_said: bool) {
         let dm_plan = plan::ensure_dm_plan(
             family,
             self.sys.display_manager_present(),
@@ -1694,7 +1978,9 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
         );
         match dm_plan {
             plan::EnsureDmPlan::Present { message, .. } => {
-                self.emit("dm_ensure", &message, None);
+                if !already_said {
+                    self.emit("dm_ensure", &message, None);
+                }
             }
             plan::EnsureDmPlan::Skipped { message, .. } => {
                 if let Some(m) = message {
@@ -2195,10 +2481,14 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
 
     /// Порт `_get_current_terminal` (с той же ленивостью источников).
     fn current_terminal(&self) -> Option<String> {
-        let xdg_list = self
-            .io
-            .read_text(&format!("{}/xdg-terminals.list", self.config_home()));
         let de = self.io.env("XDG_CURRENT_DESKTOP");
+        // Список своего стола `xdg-terminal-exec` читает раньше общего.
+        let xdg_list = dfl::effective_terminals_list(
+            crate::appdefaults::terminals_list_filename(&de)
+                .and_then(|name| self.io.read_text(&format!("{}/{name}", self.config_home()))),
+            self.io
+                .read_text(&format!("{}/xdg-terminals.list", self.config_home())),
+        );
         if let Some(content) = &xdg_list {
             if content.lines().next().is_some_and(|l| !l.trim().is_empty()) {
                 if let Some(t) = dfl::get_current_terminal(Some(content), &de, None, None) {
@@ -2386,26 +2676,35 @@ impl<'a, IO: DeOpsIo + ?Sized> DeOpsExec<'a, IO> {
             &|d| self.desktop_file_exists(d),
             &|p| self.io.read_text(p),
         );
-        let mut lines = Vec::new();
+        // В окно — одна строка со столами по именам; id, «created/updated»,
+        // число записей и путь — в журнал Rexon.
+        let mut written: Vec<&str> = Vec::new();
         let mut writes = outcome.writes.iter().zip(outcome.valid_counts.iter());
         for (de_id, action) in &outcome.results {
             match action.as_str() {
-                "skipped" => lines.push(format!("  {}", trf("⏭️ %1: no installed apps", &[&de_id]))),
+                "skipped" => crate::log_info!("desktops", "mimeapps {de_id}: нет установленных приложений"),
                 "created" | "updated" => {
                     if let Some(((path, content), count)) = writes.next() {
                         let _ = self.io.write_text(path, content);
-                        lines.push(format!(
-                            "  {}",
-                            // TRANSLATORS: %1 desktop id, %2 “created”/“updated”, %3 entry count, %4 file path.
-                            // Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-                            trf("✅ %1: %2 (%3 entries) → %4", &[&de_id, &action, &count, &path])
-                        ));
+                        crate::log_info!("desktops", "mimeapps {de_id}: {action} (записей: {count}) → {path}");
+                        let name = system::DE_META
+                            .iter()
+                            .find(|m| m.id == de_id.as_str())
+                            .map(|m| m.display_name)
+                            .unwrap_or(de_id.as_str());
+                        if !written.contains(&name) {
+                            written.push(name);
+                        }
                     }
                 }
                 _ => {}
             }
         }
-        lines
+        if written.is_empty() {
+            Vec::new()
+        } else {
+            vec![format!("  {}", mimeapps_written_message(&written.join(", ")))]
+        }
     }
 }
 
@@ -3488,6 +3787,17 @@ pub fn install_de_live(
         return DeOpsExec::new(&io, sink, cancel).install_de_session(de_id, current_de, &[], session);
     }
     install_de_packages_live(sink, cancel, de_id, current_de)
+}
+
+/// «Добавить вариант Wayland / X11» установленному столу на живой машине.
+pub fn add_session_live(
+    sink: Arc<dyn DeOpSink>,
+    cancel: CancelToken,
+    de_id: &str,
+    kind: system::SessionKind,
+) -> DeOpOutcome {
+    let io = LiveDeOpsIo::new();
+    DeOpsExec::new(&io, sink, cancel).add_session(de_id, kind)
 }
 
 /// Установка набора стола пакетным менеджером, без особых путей
@@ -4728,6 +5038,42 @@ pub(crate) mod tests {
         let (outcome, _) = run_install_session(&io, "lxqt", Some(system::SessionKind::Wayland));
         assert!(outcome.ok, "{outcome:?}");
         assert!(session_install_set(&io).iter().any(|p| p == "lxqt-wayland-session"));
+    }
+
+    /// «➕ Добавить вариант Wayland» у LXQt (живой журнал 08.11.2026): ставится
+    /// только добавка сеанса, без набора стола; шаги установки стола
+    /// (умолчания, пост-установка, экран входа, «чем открывать») не идут;
+    /// итог — про сеанс, с его именем на экране входа.
+    #[test]
+    fn add_session_installs_only_the_session() {
+        crate::i18n::set_language(Some(crate::i18n::SOURCE_LANGUAGE));
+        let io = with_session(FakeIo::arch(Box::new(healthy)), out(0, "", ""));
+        let rec = Arc::new(Recorder::default());
+        let sink: Arc<dyn DeOpSink> = rec.clone();
+        let outcome = DeOpsExec::new(&io, sink, CancelToken::new()).add_session("lxqt", system::SessionKind::Wayland);
+        assert!(outcome.ok, "{outcome:?}");
+        let set = session_install_set(&io);
+        assert!(set.iter().any(|p| p == "lxqt-wayland-session"), "{set:?}");
+        assert!(!set.iter().any(|p| p == "lxqt" || p == "openbox" || p == "sddm"), "{set:?}");
+        let stages = rec.stages();
+        for step in ["snapshot", "post_install", "dm_enable", "switcher", "restore", "mime"] {
+            assert!(!stages.iter().any(|s| s == step), "{step}: {stages:?}");
+        }
+        let done = rec.messages("done");
+        assert_eq!(done.len(), 1, "{done:?}");
+        assert!(done[0].contains("Wayland version of LXQt is added") && done[0].contains("“LXQt (Wayland)”"), "{done:?}");
+        let intro = rec.messages("install");
+        assert!(intro.iter().any(|m| m.contains("Adding the Wayland version of LXQt")), "{intro:?}");
+
+        // X11: набор стола (X-сервер — зависимость его экрана входа).
+        let io = with_session(FakeIo::arch(Box::new(healthy)), out(0, "", ""));
+        let rec = Arc::new(Recorder::default());
+        let sink: Arc<dyn DeOpSink> = rec.clone();
+        let outcome = DeOpsExec::new(&io, sink, CancelToken::new()).add_session("xfce", system::SessionKind::X11);
+        assert!(outcome.ok, "{outcome:?}");
+        let set = session_install_set(&io);
+        assert!(set.iter().any(|p| p == "xfce4") && set.iter().any(|p| p == "lightdm"), "{set:?}");
+        assert!(!set.iter().any(|p| p == "labwc"), "{set:?}");
     }
 
     /// MATE на Wayland — только из AUR: без помощника AUR отказ ДО пароля

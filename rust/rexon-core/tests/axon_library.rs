@@ -84,17 +84,35 @@ fn home_with_axon(home: &Path) {
             "Resolution": "3840x2160",
             "WallPaperStatus": "Installed",
             "PlayResoucePath": "C:\\users\\wehrwolfmann\\AppData\\Local\\Razer\\RazerAxon\\WallpaperSource\\1203421603840\\Resource\\3840x2160.mp4",
+            "IsFavorite": 1,
+            "Category": "18,17",
+            "AllTags": " Город,Автор 12034, Ночь",
+            "CollectionInfos": [{"collection_id": "154", "title": "Серия первая"}],
+            "Upvoted": 89,
+            "Downloads": 9218,
+            "PlayEffects": {"Brightness": "0.8", "PlayRate": 1.5, "Hue": null},
         })),
         // Путь показа пуст, разрешение есть — каталог по `{Id}{H}{W}`.
         entry("10038", "The Beauty of Space", "Type", "VIDEO", json!({
             "Resolution": "3840x2160",
             "WallPaperStatus": "Playing",
         })),
-        entry("13300", "Skyline GTR", "Type", "VIDEO", json!({"Audible": "1"})),
+        // ИИ-обои: номер творения и `PaperType`; свойства — строкой JSON.
+        entry("13300", "Skyline GTR", "Type", "VIDEO", json!({
+            "Audible": "1",
+            "DetailId": 5,
+            "PaperType": "Generate",
+            "Method": "txt2img",
+            "IsMute": true,
+            "PlayEffects": "{\"WallpaperFillingMode\":\"Fill\"}",
+        })),
         // Новый ключ типа в библиотеке.
         entry("13479", "Neo Rey by Night", "WallPaperType", "IMAGE", json!({
             "Resolution": "3840x2400",
             "WallPaperStatus": "Installed",
+            "Silver": "120",
+            "IsRedeemed": 1,
+            "EffectType": "Static",
         })),
         entry("14001", "Web demo", "WallPaperType", "WEB", json!({})),
         // Записи без номера пропускаются.
@@ -103,7 +121,16 @@ fn home_with_axon(home: &Path) {
     put(&account.join(ax::LIBRARY_FILE), &format!("{BOM}{lib}"));
     put(
         &account.join(ax::PLAYLIST_FILE),
-        &format!("{BOM}{}", json!({"PlayLists": [{"MonitorId": "\\\\.\\DISPLAY1", "WallpaperIds": ["13305", "10038", "12034"], "CurrentPlayIndex": 1, "IsMute": true}]})),
+        &format!("{BOM}{}", json!({
+            "SwitchIntervalSeconds": 3600,
+            "IsCustomInterval": false,
+            "PlayOrder": "Ordered",
+            "DefaultVolume": 50,
+            "PlayLists": [{"MonitorId": "\\\\.\\DISPLAY1", "WallpaperIds": ["13305", "10038", "12034"], "CurrentPlayIndex": 1, "IsMute": true, "MaxVolume": 80, "IsSelect": true, "IsStopped": false}],
+            "IsPauseWhenFullScreen": true,
+            "IsPauseAllWhenD3dFullScreen": false,
+            "PlayMode": "None",
+        })),
     );
     put(
         &account.join(ax::USER_SETTING_FILE),
@@ -164,6 +191,49 @@ fn summary(home: &Path, lib: &ax::AxonLibrary) -> Value {
             "prefix": norm(home, &Some(w.prefix.clone())),
             "tile": ax::tile_line(w),
             "title_shown": ax::display_title(w),
+            "tags": ax::tag_list(&w.tags),
+            "details": details(&w.details),
+        })).collect::<Vec<_>>(),
+        "playSetting": lib.play_setting.as_ref().map(play_setting),
+    })
+}
+
+fn details(d: &ax::AxonDetails) -> Value {
+    json!({
+        "favorite": d.is_favorite,
+        "silver": d.silver,
+        "redeemed": d.is_redeemed,
+        "reward": d.download_reward,
+        "paperType": d.paper_type,
+        "method": d.method,
+        "detailId": d.detail_id,
+        "ai": d.is_ai(),
+        "categories": d.categories,
+        "collections": d.collections.iter().map(|(id, t)| json!([id, t])).collect::<Vec<_>>(),
+        "upvoted": d.upvoted,
+        "downloads": d.downloads,
+        "mute": d.is_mute,
+        "playEffects": d.play_effects,
+    })
+}
+
+fn play_setting(s: &ax::PlayListSetting) -> Value {
+    json!({
+        "interval": s.switch_interval_seconds,
+        "custom": s.is_custom_interval,
+        "order": format!("{:?}", s.play_order),
+        "mode": format!("{:?}", s.play_mode),
+        "pauseFullscreen": s.pause_when_fullscreen,
+        "pauseAllGame": s.pause_all_when_game_fullscreen,
+        "defaultVolume": s.default_volume,
+        "playlists": s.playlists.iter().map(|p| json!({
+            "monitor": p.monitor,
+            "ids": p.wallpaper_ids,
+            "current": p.current_index,
+            "mute": p.mute,
+            "volume": p.volume,
+            "stopped": p.stopped,
+            "selected": p.selected,
         })).collect::<Vec<_>>(),
     })
 }
@@ -237,6 +307,26 @@ fn prefixes_are_found_without_walking_the_disk() {
 }
 
 #[test]
+fn tab_shows_only_with_axon_or_a_chosen_folder() {
+    use rexon_core::axon_window::show_tab;
+    let empty = bench("tab-empty");
+    // Префикс Wine есть, Axon в нём нет — вкладки нет.
+    fs::create_dir_all(empty.join(".wine/drive_c/users/u")).unwrap();
+    assert!(!show_tab(&ax::AxonEnv::with_home(&empty)));
+    // Каталог Axon без библиотеки (не входил ни разу) — тоже нет.
+    put(&axon_root(&empty.join(".wine"), "u").join("guest-0/UserSetting"), "{}");
+    assert!(!show_tab(&ax::AxonEnv::with_home(&empty)));
+    // Папка, указанная вручную, держит вкладку, даже если её уже нет.
+    let mut env = ax::AxonEnv::with_home(&empty);
+    env.source_dirs = vec![empty.join("пропавшая")];
+    assert!(show_tab(&env));
+    // Axon с библиотекой найден сам.
+    let home = bench("tab-axon");
+    home_with_axon(&home);
+    assert!(show_tab(&ax::AxonEnv::with_home(&home)));
+}
+
+#[test]
 fn empty_home_has_no_library() {
     let home = bench("empty");
     let lib = ax::load_library(&ax::AxonEnv::with_home(&home));
@@ -282,6 +372,52 @@ fn playlist_current_wallpaper() {
     assert_eq!(p[0].current(), Some("b"));
     assert!(p[0].mute);
     assert_eq!(p[1].current(), None);
+}
+
+#[test]
+fn playlist_setting_reads_timer_order_mode_and_pauses() {
+    let s = ax::parse_playlist_setting(&format!(
+        "{BOM}{}",
+        json!({
+            "SwitchIntervalSeconds": 5400, "IsCustomInterval": true, "PlayOrder": "Random",
+            "PlayMode": "Span", "IsPauseWhenFullScreen": false, "IsPauseAllWhenD3dFullScreen": true,
+            "DefaultVolume": 250,
+            "PlayLists": [{"WallpaperIds": ["a"], "MaxVolume": "30", "IsStopped": true}],
+        })
+    ))
+    .unwrap();
+    assert_eq!((s.switch_interval_seconds, s.is_custom_interval), (5400, true));
+    assert_eq!((s.play_order, s.play_mode), (ax::PlayOrder::Random, ax::PlayMode::Span));
+    assert!(!s.pause_when_fullscreen && s.pause_all_when_game_fullscreen);
+    assert_eq!(s.default_volume, 100, "громкость не выше 100");
+    assert_eq!((s.playlists[0].volume, s.playlists[0].stopped), (30, true));
+    // Голый файл: «Никогда», по порядку, разные обои на экранах.
+    let bare = ax::parse_playlist_setting("{\"PlayLists\": [{\"SwitchIntervalSeconds\": 1}]}").unwrap();
+    assert_eq!(bare.switch_interval_seconds, ax::SWITCH_NEVER);
+    assert_eq!((bare.play_order, bare.play_mode), (ax::PlayOrder::Ordered, ax::PlayMode::Separate));
+    assert_eq!((bare.default_volume, bare.playlists[0].volume), (50, 100));
+    let never = ax::parse_playlist_setting("{\"SwitchIntervalSeconds\": -1, \"PlayLists\": []}").unwrap();
+    assert_eq!(never.switch_interval_seconds, ax::SWITCH_NEVER);
+    assert!(ax::parse_playlist_setting("{\"SwitchIntervalSeconds\": 60}").is_err(), "без PlayLists — не тот файл");
+}
+
+#[test]
+fn details_tolerate_strings_numbers_and_nulls() {
+    let e = ax::parse_library(&json!([
+        {"Id": "1", "IsFavorite": "1", "Silver": 12.0, "IsRedeemed": true, "Upvoted": "7",
+         "Downloads": null, "Category": " 3 ,, 4", "CollectionInfos": [{"collection_id": 9}, {}],
+         "PlayEffects": "не JSON", "DownloadReward": 2},
+        {"Id": "2", "PlayEffects": null, "CollectionInfos": null, "Category": null},
+    ]).to_string())
+    .unwrap();
+    let d = &e[0].details;
+    assert!(d.is_favorite && d.is_redeemed && !d.is_ai());
+    assert_eq!((d.silver, d.upvoted, d.downloads, d.download_reward), (12, 7, 0, 2));
+    assert_eq!(d.categories, ["3", "4"]);
+    assert_eq!(d.collections, [("9".to_string(), String::new())], "пустая серия отброшена");
+    assert!(d.play_effects.is_empty());
+    assert_eq!(e[1].details, ax::AxonDetails::default());
+    assert_eq!(ax::tag_list(" a, ,b ,"), ["a", "b"]);
 }
 
 #[test]

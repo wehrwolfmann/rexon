@@ -38,7 +38,7 @@
 //! | Строка сборщика | Что делает окно |
 //! |---|---|
 //! | `pacman -S … -- [repo/]имя…` | [`PrivOp::AurDeps`]: помощник ставит `--asdeps --needed`, только имена из sync-базы своей машины |
-//! | `pacman -U … -- /путь/файл.pkg.tar…` | [`PrivOp::AurInstallBuilt`]: имя из имени файла — из списка операции (иначе отказ ДО пароля), файл открывает окно (`O_NOFOLLOW`) и отдаёт дескриптором; помощник сверяет `.PKGINFO` копии |
+//! | `pacman -U … -- /путь/файл.pkg.tar…` | [`PrivOp::AurInstallBuilt`]: имя из имени файла — из списка операции или его зависимость из AUR по `.SRCINFO` каталога сборщика ([`aur_dep_closure`]; иначе отказ ДО пароля), файл открывает окно (`O_NOFOLLOW`) и отдаёт дескриптором; помощник сверяет `.PKGINFO` копии |
 //! | `pacman -D --asdeps/--asexplicit -- имя…` | ничего от root: `-S` уже ставит зависимостью, `-U` — явно; имена обязаны быть из операции |
 //! | `pacman -R[s][u] … -- имя…` | [`PrivOp::AurDropMake`]: только имена, которые эта операция ставила через `-S`; помощник снимает лишь сироты |
 //!
@@ -216,7 +216,9 @@ pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String
                 "-U" | "--upgrade" => set_op(PacOp::Upgrade, &mut op)?,
                 "-D" | "--database" => set_op(PacOp::Database, &mut op)?,
                 "-R" | "--remove" => set_op(PacOp::Remove, &mut op)?,
-                "--noconfirm" | "--needed" => {}
+                // `-q`: yay 13 помечает причину установки `pacman -D -q
+                // --asdeps` (живьём 08.11.2026: отказ ронял всю сборку).
+                "--noconfirm" | "--needed" | "-q" | "--quiet" => {}
                 "--asdeps" | "--asdep" => asdeps = true,
                 "--asexplicit" | "--asexp" => asexplicit = true,
                 "-s" | "--recursive" | "-u" | "--unneeded" | "-n" | "--nosave" => remove_mods = true,
@@ -282,6 +284,138 @@ pub fn parse_pacman(argv: &[String], replace: bool) -> Result<PacmanCall, String
             Ok(PacmanCall::Remove(names(false)?))
         }
     }
+}
+
+// ============================================================================
+// Зависимости из AUR: что сборщик собрал ради пакетов окна
+// ============================================================================
+
+/// Один пакет из `.SRCINFO`: имя, что он даёт (`provides`) и что ему нужно
+/// для сборки и работы (`depends`, `makedepends`, `checkdepends` основы и
+/// своего раздела, с архитектурными вариантами).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SrcPkg {
+    pub name: String,
+    pub provides: Vec<String>,
+    pub needs: Vec<String>,
+}
+
+/// Имя из записи зависимости: `foo>=1.2` → `foo`, `libx.so=1-64` → `libx.so`.
+fn dep_name(dep: &str) -> &str {
+    dep.split(['<', '>', '=', ':']).next().unwrap_or("").trim()
+}
+
+/// Разобрать `.SRCINFO` в пакеты (раздельные пакеты — каждый своим).
+pub fn parse_srcinfo_pkgs(text: &str) -> Vec<SrcPkg> {
+    let mut base_needs: Vec<String> = Vec::new();
+    let mut out: Vec<SrcPkg> = Vec::new();
+    for line in text.lines() {
+        let Some((k, v)) = line.trim().split_once(" = ") else { continue };
+        let (k, v) = (k.trim(), v.trim());
+        if k == "pkgname" {
+            out.push(SrcPkg { name: v.to_string(), ..SrcPkg::default() });
+            continue;
+        }
+        let key = k.split('_').next().unwrap_or(k);
+        let needs = matches!(key, "depends" | "makedepends" | "checkdepends");
+        match out.last_mut() {
+            None if needs => base_needs.push(dep_name(v).to_string()),
+            Some(p) if needs => p.needs.push(dep_name(v).to_string()),
+            Some(p) if key == "provides" => p.provides.push(dep_name(v).to_string()),
+            _ => {}
+        }
+    }
+    for p in &mut out {
+        p.needs.extend(base_needs.iter().cloned());
+    }
+    out
+}
+
+/// Пакеты из AUR, без которых не собрать `allowed`: обход зависимостей по
+/// `.SRCINFO` каталога сборщика (только найденные там имена; официальные
+/// зависимости ставит `-S`, их тут нет). Возвращает новые имена.
+pub fn aur_dep_closure(allowed: &[String], pkgs: &[SrcPkg]) -> Vec<String> {
+    let find = |dep: &str| -> Option<&SrcPkg> {
+        pkgs.iter().find(|p| p.name == dep).or_else(|| pkgs.iter().find(|p| p.provides.iter().any(|x| x == dep)))
+    };
+    let mut seen: BTreeSet<String> = allowed.iter().cloned().collect();
+    let mut queue: Vec<String> = allowed.to_vec();
+    let mut extra = Vec::new();
+    while let Some(n) = queue.pop() {
+        let Some(p) = pkgs.iter().find(|p| p.name == n) else { continue };
+        for d in &p.needs {
+            if let Some(dp) = find(d) {
+                if seen.insert(dp.name.clone()) {
+                    extra.push(dp.name.clone());
+                    queue.push(dp.name.clone());
+                }
+            }
+        }
+    }
+    extra
+}
+
+/// Каталоги исходников сборщика по его командной строке: yay —
+/// `--builddir` или `buildDir` из `~/.config/yay/config.json`, иначе
+/// `$XDG_CACHE_HOME/yay`; paru — `--clonedir`, иначе `$XDG_CACHE_HOME/paru/clone`.
+fn builder_clone_dirs(cmd: &[String]) -> Vec<PathBuf> {
+    let helper = cmd.first().map(|a| a.rsplit('/').next().unwrap_or(a).to_string()).unwrap_or_default();
+    let flag = |name: &str| -> Option<String> {
+        cmd.iter().enumerate().find_map(|(i, a)| {
+            a.strip_prefix(&format!("{name}=")).map(str::to_string).or_else(|| (a == name).then(|| cmd.get(i + 1).cloned()).flatten())
+        })
+    };
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let cache = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| home.as_ref().map(|h| h.join(".cache")));
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| home.as_ref().map(|h| h.join(".config")));
+    let mut dirs = Vec::new();
+    match helper.as_str() {
+        "yay" => {
+            if let Some(d) = flag("--builddir") {
+                dirs.push(PathBuf::from(d));
+            }
+            if let Some(d) = config
+                .and_then(|c| std::fs::read_to_string(c.join("yay/config.json")).ok())
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .and_then(|v| v.get("buildDir").and_then(|b| b.as_str()).map(PathBuf::from))
+            {
+                dirs.push(d);
+            }
+            dirs.extend(cache.map(|c| c.join("yay")));
+        }
+        "paru" => {
+            if let Some(d) = flag("--clonedir") {
+                dirs.push(PathBuf::from(d));
+            }
+            dirs.extend(cache.map(|c| c.join("paru/clone")));
+        }
+        _ => {}
+    }
+    dirs.retain(|d| d.is_absolute());
+    dirs
+}
+
+/// Все `.SRCINFO` из каталогов сборщика (по одному на подкаталог).
+fn read_srcinfos(dirs: &[PathBuf]) -> Vec<SrcPkg> {
+    const MAX_ENTRIES: usize = 4096;
+    let mut out = Vec::new();
+    for dir in dirs {
+        let Ok(rd) = std::fs::read_dir(dir) else { continue };
+        for e in rd.flatten().take(MAX_ENTRIES) {
+            let path = e.path().join(".SRCINFO");
+            let small = std::fs::symlink_metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= 1 << 20);
+            if let (true, Ok(text)) = (small, std::fs::read_to_string(&path)) {
+                out.extend(parse_srcinfo_pkgs(&text));
+            }
+        }
+    }
+    out
 }
 
 /// Имя репозитория в цели `repo/имя` (`core`, `extra`, `cachyos-v3`…).
@@ -556,8 +690,19 @@ impl Broker {
             PacmanCall::Sync(names) => Decision::Run { op: PrivOp::AurDeps { names }, files: Vec::new() },
             PacmanCall::Upgrade(files) => {
                 // Чужое имя — отказ сразу, без подъёма сеанса.
-                for f in &files {
-                    let name = super::helper::pkgname_from_file(f).unwrap_or_default();
+                // Зависимость из AUR (yay/paru собрали её ради пакета из
+                // списка) — в список операции по `.SRCINFO` сборщика.
+                let names: Vec<String> =
+                    files.iter().map(|f| super::helper::pkgname_from_file(f).unwrap_or_default()).collect();
+                if names.iter().any(|n| !op.allowed.contains(n)) {
+                    if let Some((p, _)) = op.bound {
+                        let dirs = builder_clone_dirs(&cmdline(p.pid));
+                        let extra = aur_dep_closure(&op.allowed, &read_srcinfos(&dirs));
+                        op.allowed.extend(extra);
+                    }
+                }
+                for name in &names {
+                    let name = name.clone();
                     if !op.allowed.contains(&name) {
                         return Decision::Refuse(format!("{name}: окно не просило собирать этот пакет"));
                     }
@@ -889,6 +1034,47 @@ mod tests {
         ] {
             assert!(parse_pacman(&argv, replace).is_err(), "{argv:?}");
         }
+    }
+
+    #[test]
+    fn yay_помечает_причину_с_q() {
+        // Живьём 08.11.2026 (yay 13.1.0): отказ на `-q` ронял сборку тем MATE.
+        assert_eq!(
+            parse_pacman(&s(&["pacman", "-D", "-q", "--asdeps", "--noconfirm", "--config", "/etc/pacman.conf", "--", "gtk2"]), false),
+            Ok(PacmanCall::Database { explicit: false, names: s(&["gtk2"]) })
+        );
+    }
+
+    #[test]
+    fn зависимости_из_aur_по_srcinfo() {
+        // Живьём 08.11.2026: ayatana-indicator-session/-datetime тянут из AUR
+        // libayatana-common, librda, properties-cpp, ayatana-indicator-messages;
+        // шим отказывал «окно не просило собирать этот пакет».
+        let session = "pkgbase = ayatana-indicator-session\n\tmakedepends = cmake-extras\n\tdepends = glib2\n\tdepends = libayatana-common\n\tdepends = librda>=0.0.5\n\npkgname = ayatana-indicator-session\n";
+        let datetime = "pkgbase = ayatana-indicator-datetime\n\tmakedepends = properties-cpp\n\tdepends = ayatana-indicator-messages\n\npkgname = ayatana-indicator-datetime\n";
+        let common = "pkgbase = libayatana-common\n\tdepends = glib2\n\npkgname = libayatana-common\n";
+        let rda = "pkgbase = librda\n\npkgname = librda\n\tprovides = librda.so=0-64\n";
+        let props = "pkgbase = properties-cpp\n\npkgname = properties-cpp\n";
+        let msgs = "pkgbase = ayatana-indicator-messages\n\tdepends = libayatana-common\n\npkgname = ayatana-indicator-messages\n";
+        let other = "pkgbase = chuzhoy\n\npkgname = chuzhoy\n";
+        let pkgs: Vec<SrcPkg> =
+            [session, datetime, common, rda, props, msgs, other].iter().flat_map(|t| parse_srcinfo_pkgs(t)).collect();
+        let mut got = aur_dep_closure(&s(&["ayatana-indicator-session", "ayatana-indicator-datetime"]), &pkgs);
+        got.sort();
+        assert_eq!(got, s(&["ayatana-indicator-messages", "libayatana-common", "librda", "properties-cpp"]));
+        // Ничьей зависимостью не являющийся пакет из кеша — не добавляется.
+        assert!(aur_dep_closure(&s(&["librda"]), &pkgs).is_empty());
+    }
+
+    #[test]
+    fn раздельный_srcinfo() {
+        let t = "pkgbase = vala-panel-appmenu\n\tmakedepends = meson\n\tdepends_x86_64 = glib2\n\npkgname = vala-panel-appmenu-mate\n\tdepends = mate-panel\n\tprovides = vpa-mate=1\n\npkgname = vala-panel-appmenu-registrar\n";
+        let p = parse_srcinfo_pkgs(t);
+        assert_eq!(p.len(), 2);
+        assert_eq!(p[0].name, "vala-panel-appmenu-mate");
+        assert_eq!(p[0].needs, s(&["mate-panel", "meson", "glib2"]));
+        assert_eq!(p[0].provides, s(&["vpa-mate"]));
+        assert_eq!(p[1].needs, s(&["meson", "glib2"]));
     }
 
     #[test]

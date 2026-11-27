@@ -266,13 +266,19 @@ fn term_table(desktop: &str, term: &str) -> Vec<String> {
 
 #[test]
 fn terminal_written_to_native_place_of_every_desktop() {
-    let common = |exec: &str, arg: &str, id: &str| {
-        vec![
-            format!("file:xdg-terminals.list|{id}"),
+    // Общий слой: общий список, список своего стола (с пометкой «выбрано
+    // человеком» — его перебивает только новый выбор), схема GNOME, TERMINAL.
+    let common = |de: &str, exec: &str, arg: &str, id: &str| {
+        let mut v = vec![format!("file:xdg-terminals.list|{id}")];
+        if let Some(name) = rexon_core::appdefaults::terminals_list_filename(de) {
+            v.push(format!("file:{name}|{id}\n{}", D::TERMINALS_LIST_CHOSEN_MARK));
+        }
+        v.extend([
             format!("run:org.gnome.desktop.default-applications.terminal exec {exec}"),
             format!("run:org.gnome.desktop.default-applications.terminal exec-arg {arg}"),
             format!("file:environment.d/rexon-terminal.conf|TERMINAL={exec}"),
-        ]
+        ]);
+        v
     };
     let with = |mut v: Vec<String>, extra: &[&str]| {
         v.extend(extra.iter().map(|s| s.to_string()));
@@ -283,7 +289,7 @@ fn terminal_written_to_native_place_of_every_desktop() {
         assert_eq!(
             term_table(de, "org.gnome.Terminal.desktop"),
             with(
-                common("gnome-terminal", "--", "org.gnome.Terminal.desktop"),
+                common(de, "gnome-terminal", "--", "org.gnome.Terminal.desktop"),
                 &[
                     "run:org.cinnamon.desktop.default-applications.terminal exec gnome-terminal",
                     "run:org.cinnamon.desktop.default-applications.terminal exec-arg --",
@@ -294,13 +300,13 @@ fn terminal_written_to_native_place_of_every_desktop() {
     }
     assert_eq!(
         term_table("XFCE", "Alacritty.desktop"),
-        with(common("alacritty", "-e", "Alacritty.desktop"), &["ini:xfce4/helpers.rc||TerminalEmulator=alacritty"])
+        with(common("XFCE", "alacritty", "-e", "Alacritty.desktop"), &["ini:xfce4/helpers.rc||TerminalEmulator=alacritty"])
     );
     for de in ["LXQt", "LXQt:labwc:wlroots", "lxqt"] {
         assert_eq!(
             term_table(de, "qterminal.desktop"),
             with(
-                common("qterminal", "-e", "qterminal.desktop"),
+                common(de, "qterminal", "-e", "qterminal.desktop"),
                 &["ini:lxqt-qtxdg.conf|[General]|TerminalEmulator=qterminal.desktop"]
             ),
             "{de}"
@@ -309,7 +315,7 @@ fn terminal_written_to_native_place_of_every_desktop() {
     assert_eq!(
         term_table("MATE", "mate-terminal.desktop"),
         with(
-            common("mate-terminal", "-x", "mate-terminal.desktop"),
+            common("MATE", "mate-terminal", "-x", "mate-terminal.desktop"),
             &[
                 "run:org.mate.applications-terminal exec mate-terminal",
                 "run:org.mate.applications-terminal exec-arg -x",
@@ -318,7 +324,7 @@ fn terminal_written_to_native_place_of_every_desktop() {
     );
     // GNOME: родное место = общий слой, повторов нет.
     for de in ["GNOME", "ubuntu:GNOME"] {
-        assert_eq!(term_table(de, "org.gnome.Console.desktop"), common("kgx", "-e", "org.gnome.Console.desktop"), "{de}");
+        assert_eq!(term_table(de, "org.gnome.Console.desktop"), common(de, "kgx", "-e", "org.gnome.Console.desktop"), "{de}");
     }
     // Budgie: родное место то же, что у GNOME, плюс схема Cinnamon — её
     // «Открыть в терминале» читает Nemo, файловый менеджер набора Budgie
@@ -327,7 +333,7 @@ fn terminal_written_to_native_place_of_every_desktop() {
         assert_eq!(
             term_table(de, "xfce4-terminal.desktop"),
             with(
-                common("xfce4-terminal", "-e", "xfce4-terminal.desktop"),
+                common(de, "xfce4-terminal", "-e", "xfce4-terminal.desktop"),
                 &[
                     "run:org.cinnamon.desktop.default-applications.terminal exec xfce4-terminal",
                     "run:org.cinnamon.desktop.default-applications.terminal exec-arg -e",
@@ -339,7 +345,7 @@ fn terminal_written_to_native_place_of_every_desktop() {
     assert_eq!(
         term_table("KDE", "org.kde.konsole.desktop"),
         with(
-            common("konsole", "-e", "org.kde.konsole.desktop"),
+            common("KDE", "konsole", "-e", "org.kde.konsole.desktop"),
             &[
                 "ini:kdeglobals|[General]|TerminalApplication=konsole",
                 "ini:kdeglobals|[General]|TerminalService=org.kde.konsole.desktop",
@@ -350,7 +356,7 @@ fn terminal_written_to_native_place_of_every_desktop() {
     );
     // Своего места нет — только общий слой, честно без «родной» записи.
     for de in ["COSMIC", "sway", "Hyprland", "niri", ""] {
-        assert_eq!(term_table(de, "foot.desktop"), common("foot", "-e", "foot.desktop"), "{de}");
+        assert_eq!(term_table(de, "foot.desktop"), common(de, "foot", "-e", "foot.desktop"), "{de}");
     }
 }
 
@@ -837,4 +843,166 @@ fn pantheon_terminal_goes_to_gnome_schema_with_real_binary() {
         d::get_current_terminal(None, "Pantheon", None, Some("'io.elementary.terminal'\n")).as_deref(),
         Some("io.elementary.terminal.desktop")
     );
+}
+
+// ── Список терминалов своего стола (`<стол>-xdg-terminals.list`) ──────────
+//
+// `xdg-terminal-exec` читает `~/.config/<стол>-xdg-terminals.list` РАНЬШЕ
+// общего `xdg-terminals.list`. Случай 08.11.2026: в MATE чужой
+// `mate-xdg-terminals.list` с GNOME Terminal перебивал всё, что Rexon писал.
+
+/// Имя списка: первый элемент `XDG_CURRENT_DESKTOP` в нижнем регистре; для
+/// идентификаторов Rexon — то же имя стола, что у `<стол>-mimeapps.list`.
+#[test]
+fn desktop_terminals_list_names() {
+    use rexon_core::appdefaults::terminals_list_filename as name;
+    for (desktop, want) in [
+        ("MATE", "mate-xdg-terminals.list"),
+        ("mate", "mate-xdg-terminals.list"),
+        ("KDE", "kde-xdg-terminals.list"),
+        ("kde", "kde-xdg-terminals.list"),
+        ("GNOME", "gnome-xdg-terminals.list"),
+        ("ubuntu:GNOME", "ubuntu-xdg-terminals.list"),
+        ("Budgie:GNOME", "budgie-xdg-terminals.list"),
+        ("X-Cinnamon", "x-cinnamon-xdg-terminals.list"),
+        ("cinnamon-mint", "x-cinnamon-xdg-terminals.list"),
+        ("XFCE", "xfce-xdg-terminals.list"),
+        ("LXQt:labwc:wlroots", "lxqt-xdg-terminals.list"),
+        ("DDE", "dde-xdg-terminals.list"),
+        ("deepin", "dde-xdg-terminals.list"),
+        ("Pantheon", "pantheon-xdg-terminals.list"),
+        ("COSMIC", "cosmic-xdg-terminals.list"),
+        ("sway", "sway-xdg-terminals.list"),
+    ] {
+        assert_eq!(name(desktop).as_deref(), Some(want), "{desktop}");
+    }
+    assert_eq!(name(""), None);
+}
+
+/// Пометки и чтение: выбор человека узнаётся, чужой список и «родной» — нет;
+/// терминал всегда первой строкой (её читает `get_current_terminal`).
+#[test]
+fn desktop_terminals_list_marks() {
+    let chosen = D::desktop_terminals_list_text("org.kde.konsole.desktop", true);
+    let native = D::desktop_terminals_list_text("mate-terminal.desktop", false);
+    assert_eq!(chosen, format!("org.kde.konsole.desktop\n{}\n", D::TERMINALS_LIST_CHOSEN_MARK));
+    assert_eq!(D::chosen_terminal_in_list(&chosen).as_deref(), Some("org.kde.konsole.desktop"));
+    assert_eq!(D::chosen_terminal_in_list(&native), None);
+    assert_eq!(D::chosen_terminal_in_list("org.gnome.Terminal.desktop\n"), None);
+    assert_eq!(
+        D::get_current_terminal(Some(&native), "MATE", None, None).as_deref(),
+        Some("mate-terminal.desktop")
+    );
+    // Список своего стола главнее общего; пустой — не в счёт.
+    let s = |v: &str| Some(v.to_string());
+    assert_eq!(D::effective_terminals_list(s("a.desktop\n"), s("b.desktop\n")), s("a.desktop\n"));
+    assert_eq!(D::effective_terminals_list(s("\n"), s("b.desktop\n")), s("b.desktop\n"));
+    assert_eq!(D::effective_terminals_list(None, s("b.desktop\n")), s("b.desktop\n"));
+}
+
+/// Вход в сеанс: КАЖДЫЙ стол с родным терминалом получает его в свой список
+/// (тот же терминал, что пишется в родное место стола), чужой список
+/// переписывается, выбор человека остаётся, у тайловых списка нет.
+#[test]
+fn login_puts_native_terminal_into_desktop_list_of_every_desktop() {
+    use rexon_core::appdefaults::{native_terminals_list_plan as plan, TerminalsListPlan as P};
+    let all = |_: &str| true;
+    let foreign = Some("org.gnome.Terminal.desktop\n");
+    for (de_id, desktop, terminal, file) in [
+        ("kde", "KDE", "org.kde.konsole.desktop", "kde-xdg-terminals.list"),
+        ("gnome", "GNOME", "org.gnome.Console.desktop", "gnome-xdg-terminals.list"),
+        ("mate", "MATE", "mate-terminal.desktop", "mate-xdg-terminals.list"),
+        ("cinnamon-mint", "X-Cinnamon", "org.gnome.Terminal.desktop", "x-cinnamon-xdg-terminals.list"),
+        ("xfce", "XFCE", "xfce4-terminal.desktop", "xfce-xdg-terminals.list"),
+        ("budgie", "Budgie:GNOME", "xfce4-terminal.desktop", "budgie-xdg-terminals.list"),
+        ("pantheon", "Pantheon", "io.elementary.terminal.desktop", "pantheon-xdg-terminals.list"),
+        ("deepin", "DDE", "deepin-terminal.desktop", "dde-xdg-terminals.list"),
+        ("lxqt", "LXQt", "qterminal.desktop", "lxqt-xdg-terminals.list"),
+        ("cosmic", "COSMIC", "com.system76.CosmicTerm.desktop", "cosmic-xdg-terminals.list"),
+    ] {
+        let want = P::Write {
+            filename: file.to_string(),
+            terminal: terminal.to_string(),
+            content: D::desktop_terminals_list_text(terminal, false),
+        };
+        // Тот же родной терминал, что у набора стола.
+        let apps = rexon_core::appdefaults::resolve_de_apps(de_id);
+        assert!(apps.iter().any(|(k, v)| *k == "terminal" && v == terminal), "{de_id}: {apps:?}");
+        assert_eq!(plan(de_id, desktop, None, &all), want, "{de_id}: файла нет");
+        if terminal != "org.gnome.Terminal.desktop" {
+            assert_eq!(plan(de_id, desktop, foreign, &all), want, "{de_id}: чужой список");
+        }
+        let native = D::desktop_terminals_list_text(terminal, false);
+        assert_eq!(
+            plan(de_id, desktop, Some(&native), &all),
+            P::UpToDate { filename: file.to_string() },
+            "{de_id}"
+        );
+        let chosen = D::desktop_terminals_list_text("kitty.desktop", true);
+        assert_eq!(
+            plan(de_id, desktop, Some(&chosen), &all),
+            P::KeepChosen { filename: file.to_string(), terminal: "kitty.desktop".into() },
+            "{de_id}"
+        );
+    }
+    // Родной терминал не установлен — ничего не пишем.
+    assert_eq!(plan("mate", "MATE", foreign, &|_| false), P::Nothing);
+    // GNOME Console нет — его замена из того же набора (gnome-terminal).
+    let only_gt = |id: &str| id == "org.gnome.Terminal.desktop";
+    assert!(matches!(
+        plan("gnome", "GNOME", None, &only_gt),
+        P::Write { terminal, .. } if terminal == "org.gnome.Terminal.desktop"
+    ));
+    // Тайловые и незнакомые окружения своего терминала не имеют.
+    for (de_id, desktop) in [("sway", "sway"), ("hyprland", "Hyprland"), ("niri", "niri"), ("wayfire", "wayfire")] {
+        assert_eq!(plan(de_id, desktop, foreign, &all), P::Nothing, "{de_id}");
+    }
+    // Имени стола нет — общий список остаётся единственным.
+    assert_eq!(plan("mate", "", None, &all), P::Nothing);
+}
+
+/// Выбор человека главнее родного (решение Wehrwolfmann 08.11.2026): вход в
+/// сеанс ставит выбранный терминал во ВСЕ родные места стола; без выбора —
+/// родной; выбранный, но не установленный — родной и строка в журнале.
+#[test]
+fn login_puts_chosen_terminal_into_native_places_of_every_desktop() {
+    use rexon_core::appdefaults::apply_de_specific_with_terminal as apply;
+    let all = |_: &str| true;
+    let no_helper = |_: &str| false;
+    let mentions = |out: &rexon_core::appdefaults::ApplyDeSpecific, word: &str| {
+        out.commands.iter().any(|c| c.iter().any(|a| a == word || a.trim_end_matches(".desktop") == word))
+            || out.file_steps.iter().any(|s| format!("{s:?}").contains(word))
+            || out.helpers_rc.as_deref().is_some_and(|t| t.contains(word))
+    };
+    for (de_id, native) in [
+        ("kde", "konsole"),
+        ("gnome", "kgx"),
+        ("mate", "mate-terminal"),
+        ("cinnamon-mint", "gnome-terminal"),
+        ("xfce", "xfce4-terminal"),
+        ("budgie", "xfce4-terminal"),
+        ("pantheon", "io.elementary.terminal"),
+        ("deepin", "deepin-terminal"),
+        ("lxqt", "qterminal"),
+    ] {
+        let chosen = apply(de_id, Some("kitty.desktop"), &all, &all, None, &no_helper);
+        assert!(mentions(&chosen, "kitty"), "{de_id}: выбор не дошёл: {chosen:?}");
+        let natural = apply(de_id, None, &all, &all, None, &no_helper);
+        assert!(mentions(&natural, native), "{de_id}: без выбора нет родного: {natural:?}");
+        assert!(!mentions(&natural, "kitty"), "{de_id}");
+        // Выбранный не установлен — родной и объяснение.
+        let missing = apply(de_id, Some("kitty.desktop"), &|id: &str| id != "kitty.desktop", &all, None, &no_helper);
+        assert!(!mentions(&missing, "kitty"), "{de_id}: {missing:?}");
+        assert!(mentions(&missing, native), "{de_id}: {missing:?}");
+        assert!(missing.logs[0].contains("kitty"), "{de_id}: {:?}", missing.logs);
+    }
+    // XFCE: выбранной программе без помощника exo заводится свой помощник,
+    // и в helpers.rc в итоге стоит он — как во вкладке «Настройки».
+    let xfce = apply("xfce", Some("org.kde.konsole.desktop"), &all, &all, None, &no_helper);
+    let last_ini = xfce.file_steps.iter().rev().find_map(|s| match s {
+        D::TermStep::SetIni { key, value, .. } if key == "TerminalEmulator" => Some(value.clone()),
+        _ => None,
+    });
+    assert_eq!(last_ini.as_deref(), Some("custom-TerminalEmulator"), "{xfce:?}");
+    assert!(xfce.file_steps.iter().any(|s| matches!(s, D::TermStep::WriteFile { path, .. } if path.ends_with("custom-TerminalEmulator.desktop"))));
 }

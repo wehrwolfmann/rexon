@@ -366,11 +366,11 @@ impl cxx_qt::Initialize for qobject::RemoteStoreItem {
         let handle = self.as_ref().get_ref().qt_thread();
         // Ни unwrap(), ни предварительного is_destroyed(): между проверкой
         // и постановкой объект успевает умереть.
-        let id = acquisition::register(Box::new(move |source_id, item_id, state| {
+        let id = acquisition::register(Box::new(move |source_id, item_id, state, transfer| {
             let source = source_id.to_string();
             let item = item_id.to_string();
             match handle.queue(move |object| {
-                object.apply_acquisition(&source, &item, state);
+                object.apply_acquisition(&source, &item, state, transfer);
             }) {
                 Ok(()) => Ok(()),
                 Err(ThreadingQueueError::ObjectDestroyed) => Err(()),
@@ -400,19 +400,43 @@ impl qobject::RemoteStoreItem {
 
     /// Склад сообщил состояние приобретения. Наш ли это предмет и правда ли
     /// значение изменилось — решается здесь (порт `_on_acquisition`).
-    pub fn apply_acquisition(mut self: Pin<&mut Self>, source_id: &str, item_id: &str, state: i32) {
+    ///
+    /// waywallen 0.6.0: вместе с состоянием приходит ход передачи — панель
+    /// деталей показывает принятые байты (`downloadReceivedBytes` и др.).
+    pub fn apply_acquisition(
+        mut self: Pin<&mut Self>,
+        source_id: &str,
+        item_id: &str,
+        state: i32,
+        transfer: acquisition::Transfer,
+    ) {
         let same = self.item.get("sourceId").and_then(Value::as_str) == Some(source_id)
             && self.item.get("itemId").and_then(Value::as_str) == Some(item_id);
         if !same {
             return;
         }
-        if self.item.get("acquisitionState").and_then(Value::as_i64) == Some(state as i64) {
+        let next = [
+            ("acquisitionState", Value::from(state)),
+            ("downloadTransferActive", Value::Bool(transfer.active)),
+            ("downloadReceivedBytes", Value::from(transfer.received)),
+            ("downloadTotalBytes", Value::from(transfer.total)),
+        ];
+        let changed = next.iter().any(|(key, value)| match self.item.get(*key) {
+            // Номера из QML приходят дробными — сравниваем как числа.
+            Some(Value::Number(have)) => have.as_f64() != value.as_f64(),
+            Some(have) => have != value,
+            // Ключа хода передачи у прежней строки нет — пустой ход не новость.
+            None => *key == "acquisitionState" || value != &Value::Bool(false) && value != &Value::from(0),
+        });
+        if !changed {
             return;
         }
-        self.as_mut()
-            .rust_mut()
-            .item
-            .insert("acquisitionState".to_string(), Value::from(state));
+        {
+            let mut rust = self.as_mut().rust_mut();
+            for (key, value) in next {
+                rust.item.insert(key.to_string(), value);
+            }
+        }
         self.item_changed();
     }
 }

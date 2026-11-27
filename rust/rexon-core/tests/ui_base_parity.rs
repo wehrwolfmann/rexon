@@ -852,3 +852,64 @@ fn russian_skins_and_network_errors_read_as_before() {
         assert_eq!(ui::humanize_network_error(raw, ""), *plain, "{raw}");
     }
 }
+
+/// Ключи палитры, которые читает общий ползунок `RexonSlider`, обязаны быть
+/// в ОБЩЕЙ палитре каждого скина: ползунок стоит и в разделах «Оформления»
+/// (Conky, «Эффекты экрана», «Анимация»), чья страница дописывает в палитру
+/// только своё. 08.11.2026 ключа `track` там не было — «Unable to assign
+/// [undefined] to QColor» при открытии вкладки.
+#[test]
+fn slider_keys_are_in_every_skin_palette() {
+    let slider = include_str!("../../rexon-gui/qml/RexonSlider.qml");
+    let mut keys: Vec<String> = Vec::new();
+    for part in slider.split("control.pal.").skip(1) {
+        let key: String = part.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        if !key.is_empty() && !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    assert!(keys.contains(&"track".to_string()), "сторож не нашёл чтение pal.track: {keys:?}");
+    for skin in ui::SKINS {
+        let pal = ui::qml_palette(skin.id);
+        for key in &keys {
+            let value = pal.get(key).unwrap_or_else(|| panic!("скин {}: в палитре нет «{key}»", skin.id));
+            assert!(!value.starts_with("rgba("), "скин {}: «{key}» записан по-QSS: {value}", skin.id);
+        }
+        assert_eq!(pal["track"], ui::css_color_to_qml(&ui::neutral_rgba(ui::SLIDER_TRACK_ALPHA)));
+    }
+}
+
+/// Подкрутка к элементу с фокусом не срабатывает на возврат активности окна.
+///
+/// ⛔ЗАЧЕМ СТОРОЖ. Дефект 08.11.2026 (MATE X11, вкладка «Настройки»):
+/// прокрутил страницу колесом вниз, нажал Print — mate-screenshot открыл
+/// свой диалог, окно Rexon потеряло активность, а по закрытии диалога Qt
+/// вернул фокус тому же элементу («Язык» наверху). Его
+/// `onActiveFocusChanged` звал `ensureVisible`, и страница прыгала наверх.
+/// Возврат фокуса окном приходит с причиной `Qt.ActiveWindowFocusReason` —
+/// её каждая `ensureVisible` обязана пропускать. Проверка общая, по всем
+/// страницам: следующая вкладка с той же подкруткой попадёт сюда сама.
+#[test]
+fn qml_ensure_visible_ignores_window_activation() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../rexon-gui/qml");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(dir).expect("нет каталога QML rexon-gui") {
+        let path = entry.expect("запись каталога").path();
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        if !name.ends_with(".qml") {
+            continue;
+        }
+        let src = std::fs::read_to_string(&path).expect("QML не читается");
+        for (at, _) in src.match_indices("function ensureVisible(") {
+            checked += 1;
+            // Тело функции — до первой закрывающей скобки на уровне функции.
+            let body = &src[at..];
+            let end = body.find("\n    }\n").unwrap_or(body.len());
+            assert!(
+                body[..end].contains("Qt.ActiveWindowFocusReason"),
+                "{name}: ensureVisible крутит страницу и на возврат активности окна"
+            );
+        }
+    }
+    assert!(checked >= 4, "проверено подкруток: {checked} — сторож смотрит мимо");
+}

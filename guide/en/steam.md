@@ -1,4 +1,4 @@
-English | [Русский](../ru/steam.md) | [Deutsch](../de/steam.md)
+English | [Русский](../ru/steam.md) | [Deutsch](../de/steam.md) | [简体中文](../zh-CN/steam.md) | [Français](../fr/steam.md)
 
 # Steam
 
@@ -10,8 +10,8 @@ The tab needs Steam installed. In the top right corner Rexon shows where it
 found the Steam folder, or "Steam not found — install Steam to use startup
 movies and backgrounds".
 
-At the top are three sub-tabs: **🎬 Startup Movie**, **🖼️ Steam
-Backgrounds** and **🖼️ Profile Showcases**.
+At the top are four sub-tabs: **🎬 Startup Movie**, **🖼️ Steam
+Backgrounds**, **🖼️ Profile Showcases** and **🌙 Screensaver**.
 
 ## Startup movie at login
 
@@ -120,6 +120,39 @@ Showcases are available from Steam level 10.
 Tick "I certify that I created this piece of art" on the Steam page only if
 the picture is really yours.
 
+## Screensaver
+
+Rexon makes a screensaver for Steam Big Picture: Steam shows it when your
+Steam Deck, Steam Machine, TV or computer is idle for a while. It shows the
+artwork of your recently played games and your screenshots, or a bouncing
+logo. Rexon only puts the screensaver into the Steam folder — you switch it
+on yourself in the Steam settings.
+
+What's on screen:
+
+- The status line: "⚪ Not installed yet" or "✅ Installed — … pictures".
+- **Show**: **Slideshow** (artwork of your recent games and your screenshots
+  take turns) or **Bouncing logo**.
+- For the slideshow — the **Game artwork** and **My screenshots** checkboxes
+  and the **Next picture every** slider (4 to 60 seconds). Below them Rexon
+  says how many pictures it found in your Steam.
+- For the bouncing logo — **Logo**: **Rexon logo** (changes colour every
+  time it hits an edge) or **Logos of your games**.
+- The **Show the clock** checkbox.
+
+### How to set up the screensaver
+
+1. Open **Steam** → **🌙 Screensaver** and choose what to show.
+2. Press **"Install Screensaver"**. After a few seconds the status line says
+   "✅ Installed". **"👁️ Preview"** opens the screensaver in your browser.
+3. Switch it on in Steam: in Steam Big Picture open Settings →
+   Customization → Screensaver and choose "Rexon (User Created)".
+
+Played new games or took new screenshots? Press **"Update Screensaver"** and
+Rexon collects the pictures again. The same button applies changed
+settings. To take the screensaver out of Steam, press **"Remove"** and then
+**"Click again to remove"**.
+
 ## If something goes wrong
 
 - **"Steam not found…".** Install Steam and start it at least once.
@@ -138,3 +171,5 @@ the picture is really yours.
 - **The profile check says "The profile is private — there is nothing to
   read".** In Steam open Edit Profile → Privacy Settings and make your
   profile public.
+- **The Rexon screensaver isn't in Steam's list.** Close Steam completely
+  and start it again.

@@ -147,6 +147,12 @@ pub fn entry_to_map(e: &pb::WallpaperEntry) -> VMap {
     // Читают карточка (значок «скрыто»), панель деталей и счётчик
     // `hiddenSelectedCount` хранилища выделения.
     m.insert("hidden".into(), Value::Bool(e.hidden));
+    // waywallen 0.6.0: у обоины есть обновление в источнике (значок на
+    // карточке и в деталях) и подтип записи — 1 = «таймлайн» (обои,
+    // меняющиеся по времени суток, `WALLPAPER_SUB_TYPE_TIMELINE`). Подтип —
+    // число, как у гаджета оригинала: страница сравнивает `subType === 1`.
+    m.insert("updateAvailable".into(), Value::Bool(e.update_available));
+    m.insert("subType".into(), Value::from(e.sub_type));
     m
 }
 

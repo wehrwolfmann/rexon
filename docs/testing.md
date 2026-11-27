@@ -186,8 +186,8 @@ scripts/sync-waywallen-qml.py --git https://github.com/hypengw/waywallen --ref v
 ## После обновления вендорного QML waywallen
 
 Подписи вендорных страниц переводят ВЕНДОРНЫЕ каталоги
-`data/qt_wallpaper_engine/qml_ui/waywallen/ui/i18n/waywallen_{ru,de}.ts`
-(немецкий — с waywallen 0.5.0) — они вендорятся вместе с `ui/qml`, с того же
+`data/qt_wallpaper_engine/qml_ui/waywallen/ui/i18n/waywallen_<язык>.ts`
+(на waywallen 0.6.0 — ru, de, zh_CN, fr; каталог берётся целиком) — они вендорятся вместе с `ui/qml`, с того же
 коммита, что указан в `ui/UPSTREAM_TAG`. Своего словаря подписей у нас нет и заводить его не нужно:
 перевод чужой программы правится У НЕЁ (иначе он не достаётся никому, кроме
 нас, и расходится с оригиналом).

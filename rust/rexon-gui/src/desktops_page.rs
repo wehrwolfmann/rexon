@@ -683,7 +683,16 @@ impl qobject::DesktopsModel {
     }
 
     fn tools_notice(&self) -> QString {
-        QString::from(&SteamOsBlock::Desktops.live().unwrap_or_default())
+        // Стол сеанса Rexon узнал, но не поддерживает (UKUI) — сказать прямо,
+        // а не молчать над списком, где этого стола нет.
+        let notices: Vec<String> = [
+            SteamOsBlock::Desktops.live(),
+            system::unsupported_desktop_notice(&self.rust().current_de),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        QString::from(&notices.join("\n\n"))
     }
 
     fn tool_button_min_height(&self) -> i32 {
@@ -1055,6 +1064,8 @@ impl qobject::DesktopsModel {
             ("statusText", qstr(&status.text)),
             ("statusColor", qstr(status.color)),
             ("statusBold", QVariant::from(&status.bold)),
+            // Цвет «Установлен частично» (замена шапки по ответу пробы пакетов).
+            ("statusPartialColor", qstr(qd::STATUS_UNAVAILABLE_COLOR)),
             ("description", qstr(&qd::description(de_id))),
             ("stats", QVariant::from(&stats)),
             ("packagesText", qstr(&packages_text)),

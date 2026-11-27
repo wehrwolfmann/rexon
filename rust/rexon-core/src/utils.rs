@@ -2208,6 +2208,9 @@ pub fn run_plan(spec: &RunSpec, path_env: Option<&str>) -> RunPlan {
                 .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
         );
     }
+    // Ключи сборки рецептов AUR (`aur_install::BUILD_ENV`) — для любого
+    // места, что зовёт помощник AUR через общий запуск (правило #12).
+    env.extend(crate::aur_install::build_env(&spec.argv));
     env.extend(spec.env.iter().cloned());
     RunPlan {
         timeout_secs: spec.timeout_secs.unwrap_or_else(|| duration.timeout_secs()),

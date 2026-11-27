@@ -46,6 +46,9 @@ fn setting_schema_map(s: &SettingSchema) -> Value {
         "max": s.max,
         "step": s.step,
         "choices": s.choices,
+        // waywallen 0.6.0: подписи вариантов (`choiceLabels`, camelCase —
+        // так ключ пишет `source_query.cpp`).
+        "choiceLabels": s.choice_labels,
         "group": s.group,
         "order": s.order,
     })
@@ -963,11 +966,11 @@ pub fn apply_source_list(
             .into_iter()
             .filter(|s| we_query::we_tab_keeps_plugin(&s.types))
             .map(|s| {
-                let settings: Vec<Value> = s
-                    .settings
-                    .into_iter()
-                    .map(|ss| setting_schema_map(&SettingSchema::from(ss)))
-                    .collect();
+                let schemas = |list: Vec<pb::SettingSchema>| -> Vec<Value> {
+                    list.into_iter()
+                        .map(|ss| setting_schema_map(&SettingSchema::from(ss)))
+                        .collect()
+                };
                 json!({
                     "name": s.name,
                     "version": s.version,
@@ -975,7 +978,10 @@ pub fn apply_source_list(
                     "libraryHint": s.library_hint,
                     "types": we_query::we_tab_types(s.types),
                     "pluginId": s.plugin_id,
-                    "settings": settings,
+                    "settings": schemas(s.settings),
+                    // waywallen 0.6.0: настройки самой библиотеки
+                    // (`AddLibraryPage`/`EditLibraryPage`).
+                    "librarySettings": schemas(s.library_settings),
                 })
             })
             .collect();

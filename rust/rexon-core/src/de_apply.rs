@@ -657,14 +657,19 @@ fn with_ext_env<R>(io: &dyn LookIo, ctx: &Ctx, body: impl FnOnce(&crate::ext_man
     // Запущенный стол — из контекста (его и проверяют сверки); переменная
     // процесса — только если стол не опознан.
     let xdg = if ctx.de.is_empty() { std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default() } else { ctx.de.clone() };
-    let session = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
+    // Род сеанса — тоже из контекста: `Ctx::live` уже учёл и
+    // `WAYLAND_DISPLAY`, и `XDG_SESSION_TYPE`. Переменная процесса здесь
+    // делала план зависимым от стола, на котором его строят: сверка для
+    // Cinnamon X11 теряла `cinnamon --replace`, если её гоняли из сеанса
+    // Wayland.
+    let session = if ctx.wayland { "wayland" } else { "x11" };
     let env = ExtEnv {
         home: &ctx.home,
         fs: &fs,
         which: &which,
         run_ok: &run_ok,
         xdg_current_desktop: &xdg,
-        xdg_session_type: &session,
+        xdg_session_type: session,
         wayland_display: ctx.wayland,
         stage_helper_available: false,
         system_helper_path: "",

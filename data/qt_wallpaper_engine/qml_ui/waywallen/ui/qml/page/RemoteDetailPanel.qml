@@ -21,10 +21,16 @@ Item {
         const own = String(root.item?.authorAvatarUrl ?? "");
         return own.length > 0 ? own : String(root.details?.authorAvatarUrl ?? "");
     }
+    readonly property string authorUrl: String(root.details?.authorUrl ?? "")
     property int remoteCapability: 0
     property string remoteHint: ""
+    property var downloadAction: null
     property var tagOptions: []
+    property var typeLabels: ({})
     property int downloadState: 0
+    property bool downloadTransferActive: false
+    property real downloadReceivedBytes: 0
+    property real downloadTotalBytes: 0
     property int subscriptionState: 0
 
     signal back
@@ -33,36 +39,6 @@ Item {
     signal removeRequested
     signal subscriptionRefreshRequested
     signal subscriptionChangeRequested(bool subscribed)
-
-    function formatBytes(bytes) {
-        let value = Number(bytes ?? 0);
-        if (!(value > 0))
-            return "";
-        const units = ["B", "KB", "MB", "GB", "TB"];
-        let index = 0;
-        while (value >= 1024 && index < units.length - 1) {
-            value /= 1024;
-            ++index;
-        }
-        return value.toFixed(index === 0 ? 0 : 1) + " " + units[index];
-    }
-
-    function formatSize(size) {
-        const text = String(size ?? "").trim();
-        if (text.length === 0)
-            return "";
-        if (/^\d+$/.test(text))
-            return formatBytes(Number(text));
-        const match = text.match(/^([\d.,]+)\s*([KMGT]?B)$/i);
-        if (!match)
-            return text;
-        const value = parseFloat(match[1].replace(/,/g, ""));
-        if (isNaN(value))
-            return text;
-        return match[2].toUpperCase() === "B"
-            ? formatBytes(value)
-            : value.toFixed(1) + " " + match[2].toUpperCase();
-    }
 
     MD.Action {
         id: linkAction
@@ -93,20 +69,18 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        MD.VerticalListView {
+        MD.VerticalFlickable {
             id: detailView
             MD.NestedScroll.enabled: root.nestedScrollEnabled
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            model: []
-            spacing: 8
             leftMargin: 16
             rightMargin: 16
             topMargin: 0
             bottomMargin: 8
 
-            header: ColumnLayout {
+            ColumnLayout {
                 width: detailView.contentWidth
                 spacing: 12
 
@@ -135,7 +109,7 @@ Item {
 
                     MD.Text {
                         Layout.fillWidth: true
-                        text: root.item?.wpType ?? ""
+                        text: W.I18n.valueLabel(root.typeLabels, root.item?.wpType)
                         typescale: MD.Token.typescale.label_large
                         color: MD.Token.color.on_surface_variant
                         maximumLineCount: 1
@@ -151,6 +125,22 @@ Item {
                     Layout.fillWidth: true
                     spacing: 8
                     visible: root.authorName.length > 0
+                    Accessible.role: root.authorUrl.length > 0 ? Accessible.Link : Accessible.StaticText
+                    Accessible.name: root.authorName
+                    Accessible.onPressAction: {
+                        if (root.authorUrl.length > 0)
+                            MD.Util.openUrlExternally(root.authorUrl);
+                    }
+
+                    TapHandler {
+                        enabled: root.authorUrl.length > 0
+                        onTapped: MD.Util.openUrlExternally(root.authorUrl)
+                    }
+
+                    HoverHandler {
+                        enabled: root.authorUrl.length > 0
+                        cursorShape: Qt.PointingHandCursor
+                    }
 
                     W.ThumbnailImage {
                         Layout.preferredWidth: 32
@@ -167,6 +157,7 @@ Item {
                     MD.Text {
                         Layout.fillWidth: true
                         text: qsTr("by %1").arg(root.authorName)
+                        textFormat: Text.PlainText
                         typescale: MD.Token.typescale.body_medium
                         color: MD.Token.color.on_surface_variant
                         wrapMode: Text.WordWrap
@@ -181,9 +172,8 @@ Item {
                     rowSpacing: 4
                     visible: hasResolution || hasSize
 
-                    readonly property bool hasResolution:
-                        Number(root.details?.width ?? 0) > 0 && Number(root.details?.height ?? 0) > 0
-                    readonly property string formattedSize: root.formatSize(root.details?.size)
+                    readonly property bool hasResolution: Number(root.details?.width ?? 0) > 0 && Number(root.details?.height ?? 0) > 0
+                    readonly property string formattedSize: W.I18n.formatSize(root.details?.size)
                     readonly property bool hasSize: formattedSize.length > 0
 
                     MD.Text {
@@ -213,6 +203,12 @@ Item {
                     }
                 }
 
+                W.RemoteDetailFields {
+                    Layout.fillWidth: true
+                    fields: root.details?.fields ?? []
+                    labelForField: field => W.I18n.tr(field.labelText) || String(field.label ?? "")
+                }
+
                 Flow {
                     Layout.fillWidth: true
                     spacing: 6
@@ -230,10 +226,11 @@ Item {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 4
-                    visible: String(root.details?.description ?? "").length > 0
-                             || Boolean(root.details?.querying)
+                    visible: String(root.details?.description ?? "").length > 0 || Boolean(root.details?.querying)
 
-                    MD.Divider { Layout.fillWidth: true }
+                    MD.Divider {
+                        Layout.fillWidth: true
+                    }
 
                     MD.Text {
                         text: qsTr("Description")
@@ -261,26 +258,79 @@ Item {
             spacing: 8
             visible: root.remoteCapability === 1 || root.remoteCapability === 2
 
-            MD.Button {
-                visible: root.remoteCapability === 1
+            ColumnLayout {
                 Layout.fillWidth: true
-                mdState.type: root.downloadState === 3 ? MD.Enum.BtFilledTonal : MD.Enum.BtFilled
-                enabled: root.downloadState === 0 || root.downloadState === 3
-                text: {
-                    switch (root.downloadState) {
-                    case 1: return qsTr("Pending");
-                    case 2: return qsTr("Downloading");
-                    case 3: return qsTr("Remove");
-                    case 4:
-                    case 5: return qsTr("Retry");
-                    default: return qsTr("Download");
+                spacing: 4
+                visible: root.remoteCapability === 1 && (root.downloadState === 1 || root.downloadState === 2)
+
+                MD.LinearIndicator {
+                    id: downloadProgress
+                    objectName: "remoteDownloadProgress"
+                    Layout.fillWidth: true
+                    indeterminate: !root.downloadTransferActive || root.downloadTotalBytes <= 0
+                    value: indeterminate ? 0 : Math.max(0, Math.min(1, root.downloadReceivedBytes / root.downloadTotalBytes))
+                    running: visible && indeterminate
+                    completionBehavior: MD.LinearIndicator.Keep
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: root.downloadTransferActive
+
+                    MD.Text {
+                        Layout.fillWidth: true
+                        typescale: MD.Token.typescale.body_small
+                        color: MD.Token.color.on_surface_variant
+                        text: root.downloadTotalBytes > 0 ? W.I18n.formatBytes(root.downloadReceivedBytes) + " / " + W.I18n.formatBytes(root.downloadTotalBytes) : W.I18n.formatBytes(root.downloadReceivedBytes)
+                    }
+                    MD.Text {
+                        visible: !downloadProgress.indeterminate
+                        typescale: MD.Token.typescale.body_small
+                        color: MD.Token.color.on_surface_variant
+                        text: Math.floor(downloadProgress.value * 100) + "%"
                     }
                 }
-                onClicked: {
-                    if (root.downloadState === 3)
-                        root.removeRequested();
-                    else
-                        root.downloadRequested();
+            }
+
+            Item {
+                id: downloadControl
+                visible: root.remoteCapability === 1
+                Layout.fillWidth: true
+                implicitHeight: downloadButton.implicitHeight
+
+                readonly property string label: W.I18n.tr(root.downloadAction?.labelText ?? "")
+                readonly property string tooltip: root.downloadState === 3 ? "" : W.I18n.tr(root.downloadAction?.tooltipText ?? "")
+
+                HoverHandler {
+                    id: downloadHover
+                }
+                MD.ToolTip.visible: downloadHover.hovered && downloadControl.tooltip.length > 0
+                MD.ToolTip.text: downloadControl.tooltip
+
+                MD.Button {
+                    id: downloadButton
+                    anchors.fill: parent
+                    mdState.type: root.downloadState === 3 ? MD.Enum.BtFilledTonal : MD.Enum.BtFilled
+                    enabled: root.downloadState === 3 || (root.downloadAction?.enabled ?? true) && root.downloadState !== 1 && root.downloadState !== 2
+                    text: {
+                        switch (root.downloadState) {
+                        case 1:
+                            return qsTr("Pending");
+                        case 2:
+                            return qsTr("Downloading");
+                        case 3:
+                            return qsTr("Remove");
+                        }
+                        if (downloadControl.label.length > 0)
+                            return downloadControl.label;
+                        return root.downloadState === 4 || root.downloadState === 5 ? qsTr("Retry") : qsTr("Download");
+                    }
+                    onClicked: {
+                        if (root.downloadState === 3)
+                            root.removeRequested();
+                        else
+                            root.downloadRequested();
+                    }
                 }
             }
 
@@ -291,11 +341,16 @@ Item {
                 enabled: root.subscriptionState !== 3
                 text: {
                     switch (root.subscriptionState) {
-                    case 0: return qsTr("Retry");
-                    case 1: return qsTr("Subscribe");
-                    case 2: return qsTr("Unsubscribe");
-                    case 3: return qsTr("Updating…");
-                    default: return qsTr("Subscribe");
+                    case 0:
+                        return qsTr("Retry");
+                    case 1:
+                        return qsTr("Subscribe");
+                    case 2:
+                        return qsTr("Unsubscribe");
+                    case 3:
+                        return qsTr("Updating…");
+                    default:
+                        return qsTr("Subscribe");
                     }
                 }
                 onClicked: {
@@ -307,7 +362,7 @@ Item {
             }
 
             MD.Text {
-                visible: root.remoteCapability === 2 && root.remoteHint.length > 0
+                visible: root.remoteCapability !== 0 && root.remoteHint.length > 0
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: MD.Token.color.on_surface_variant

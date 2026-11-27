@@ -693,3 +693,158 @@ fn recreate_icons_window_toggles_and_restores() {
     assert!(!wb::recreate_icons_window(&mut broken, "org.mate.background", "show-desktop-icons"));
     assert_eq!(broken.sets, ["org.mate.background show-desktop-icons=false"], "«выкл» не прошло — дальше не идём");
 }
+
+// ── GNOME: расширение вывода waywallen (дефект 09.11.2026, чёрный стол) ──
+
+/// Подставной сеанс: окружение, каталоги и ответы команд по первому слову.
+struct GnomeFake {
+    env: std::collections::BTreeMap<&'static str, &'static str>,
+    dirs: Vec<String>,
+    /// Ответ `GetExtensionInfo`; `None` — оболочка не ответила.
+    info: Option<String>,
+    /// Ответ оболочки на Enable/DisableExtension; `None` — шина молчит.
+    toggle: Option<&'static str>,
+    /// Удался ли запасной сценарий `sh -c`.
+    script_ok: bool,
+    ran: std::cell::RefCell<Vec<Vec<String>>>,
+}
+
+impl GnomeFake {
+    fn new(desktop: &'static str, state: Option<f64>) -> GnomeFake {
+        GnomeFake {
+            env: [("XDG_CURRENT_DESKTOP", desktop), ("HOME", "/home/u")].into_iter().collect(),
+            dirs: vec![format!("/home/u/.local/share/gnome-shell/extensions/{}", wb::WAYWALLEN_GNOME_EXT_ID)],
+            info: state.map(|st| {
+                format!("({{'uuid': <'{}'>, 'state': <{st:.1}>}},)", wb::WAYWALLEN_GNOME_EXT_ID)
+            }),
+            toggle: Some("(true,)"),
+            script_ok: true,
+            ran: Default::default(),
+        }
+    }
+    fn scripts(&self) -> Vec<String> {
+        self.ran.borrow().iter().filter(|a| a[0] == "sh").map(|a| a[2].clone()).collect()
+    }
+    /// Методы оболочки, которые звали, кроме вопроса о состоянии.
+    fn toggles(&self) -> Vec<String> {
+        self.ran
+            .borrow()
+            .iter()
+            .filter(|a| a[0] == "gdbus" && !a[8].ends_with("GetExtensionInfo"))
+            .map(|a| a[8].rsplit('.').next().unwrap().to_string())
+            .collect()
+    }
+}
+
+impl wb::GnomeExtIo for GnomeFake {
+    fn env(&self, name: &str) -> String {
+        self.env.get(name).copied().unwrap_or_default().to_string()
+    }
+    fn is_dir(&self, path: &str) -> bool {
+        self.dirs.iter().any(|d| d == path)
+    }
+    fn run(&self, argv: &[String]) -> Option<String> {
+        self.ran.borrow_mut().push(argv.to_vec());
+        match argv[0].as_str() {
+            "gdbus" => {
+                assert_eq!(argv.last().map(String::as_str), Some(wb::WAYWALLEN_GNOME_EXT_ID));
+                if argv[8].ends_with("GetExtensionInfo") {
+                    self.info.clone()
+                } else {
+                    self.toggle.map(str::to_string)
+                }
+            }
+            "sh" => self.script_ok.then(String::new),
+            other => panic!("неожиданная команда {other}"),
+        }
+    }
+}
+
+#[test]
+fn waywallen_gnome_display_switches_only_what_is_needed() {
+    use wb::GnomeDisplaySwitch as R;
+    // Включено → выключает сама оболочка; своей правки списка нет.
+    let io = GnomeFake::new("GNOME", Some(1.0));
+    assert_eq!(wb::set_waywallen_gnome_display(&io, false), R::Switched);
+    assert_eq!(io.toggles(), vec!["DisableExtension"]);
+    assert!(io.scripts().is_empty(), "{:?}", io.scripts());
+    // Включено и просят включить — ничего не зовём.
+    let io = GnomeFake::new("GNOME", Some(1.0));
+    assert_eq!(wb::set_waywallen_gnome_display(&io, true), R::Already);
+    assert!(io.toggles().is_empty() && io.scripts().is_empty());
+    // Выключено → включаем.
+    let io = GnomeFake::new("ubuntu:GNOME", Some(2.0));
+    assert_eq!(wb::set_waywallen_gnome_display(&io, true), R::Switched);
+    assert_eq!(io.toggles(), vec!["EnableExtension"]);
+    // Выключено и просят выключить; загружено, но не включалось (6);
+    // ошибка; не та версия.
+    for st in [2.0, 6.0, 3.0, 4.0] {
+        let io = GnomeFake::new("GNOME", Some(st));
+        assert_eq!(wb::set_waywallen_gnome_display(&io, false), R::Already, "{st}");
+        assert!(io.toggles().is_empty() && io.scripts().is_empty(), "{st}");
+    }
+    // Ошибка в расширении: включаем, но дисплея не будет — придержка не ждёт.
+    let io = GnomeFake::new("GNOME", Some(3.0));
+    assert_eq!(wb::set_waywallen_gnome_display(&io, true), R::Failed);
+    // Шина не ответила на переключение — запасной путь: список настроек
+    // без чужих uuid.
+    let mut io = GnomeFake::new("GNOME", Some(1.0));
+    io.toggle = None;
+    assert_eq!(wb::set_waywallen_gnome_display(&io, false), R::Switched);
+    let s = io.scripts();
+    assert_eq!(s.len(), 1, "{s:?}");
+    assert!(s[0].contains("grep -vF 'org.waywallen.gnome@waywallen.io'"), "{}", s[0]);
+    assert!(s[0].contains("gsettings set org.gnome.shell enabled-extensions"), "{}", s[0]);
+    let mut io = GnomeFake::new("GNOME", Some(2.0));
+    io.toggle = Some("(false,)");
+    assert_eq!(wb::set_waywallen_gnome_display(&io, true), R::Switched);
+    assert!(io.scripts()[0].contains("'org.waywallen.gnome@waywallen.io'"), "{:?}", io.scripts());
+    // И запасной путь не удался.
+    let mut io = GnomeFake::new("GNOME", Some(1.0));
+    io.toggle = None;
+    io.script_ok = false;
+    assert_eq!(wb::set_waywallen_gnome_display(&io, false), R::Failed);
+}
+
+#[test]
+fn waywallen_gnome_display_skips_foreign_sessions() {
+    use wb::GnomeDisplaySwitch as R;
+    // Не GNOME Shell — даже не спрашиваем.
+    for de in ["KDE", "X-Cinnamon", "Budgie:GNOME", "Unity", "Pantheon:GNOME", "Hyprland", ""] {
+        let io = GnomeFake::new(de, Some(1.0));
+        assert_eq!(wb::set_waywallen_gnome_display(&io, false), R::Skipped, "{de}");
+        assert!(io.ran.borrow().is_empty(), "{de}: {:?}", io.ran.borrow());
+    }
+    // Расширения нет — тоже.
+    let mut io = GnomeFake::new("GNOME", Some(1.0));
+    io.dirs.clear();
+    assert_eq!(wb::set_waywallen_gnome_display(&io, false), R::Skipped);
+    assert!(io.ran.borrow().is_empty());
+    // Оболочка не ответила (нет gnome-shell на шине).
+    let io = GnomeFake::new("GNOME", None);
+    assert_eq!(wb::set_waywallen_gnome_display(&io, false), R::Skipped);
+    assert!(io.scripts().is_empty());
+    // Системный каталог из XDG_DATA_DIRS находится так же.
+    let mut io = GnomeFake::new("GNOME", Some(1.0));
+    io.dirs = vec![format!("/opt/share/gnome-shell/extensions/{}", wb::WAYWALLEN_GNOME_EXT_ID)];
+    io.env.insert("XDG_DATA_DIRS", "/opt/share/:/usr/share");
+    assert_eq!(wb::set_waywallen_gnome_display(&io, false), R::Switched);
+}
+
+#[test]
+fn gnome_display_setup_needs_installed_waywallen_extension() {
+    use wb::DisplaySetup as D;
+    let gnome = wb::pick("GNOME", "wayland", "wayland-0", "");
+    assert_eq!(wb::display_setup_for(gnome, "GNOME", true), D::GnomeExtension);
+    assert!(D::GnomeExtension.rexon_brings_display());
+    assert_eq!(wb::display_setup_for(gnome, "GNOME", false), D::None);
+    // Cinnamon на Wayland — тот же бэкенд, но расширение waywallen не его.
+    let cin = wb::pick("X-Cinnamon", "wayland", "wayland-0", "");
+    assert_eq!(wb::display_setup_for(cin, "X-Cinnamon", true), D::None);
+    // Остальные бэкенды — как без расширения.
+    for de in ["KDE", "Hyprland"] {
+        let b = wb::pick(de, "wayland", "wayland-0", "");
+        assert_eq!(wb::display_setup_for(b, de, true), b.display_setup(), "{de}");
+    }
+    assert_eq!(wb::display_setup_for(wb::pick("GNOME", "x11", "", ""), "GNOME", true), D::RexonHost);
+}

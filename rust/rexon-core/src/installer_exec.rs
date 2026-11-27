@@ -2232,6 +2232,17 @@ fn release_session_guard<IO: InstallIo + ?Sized>(io: &IO) {
             }
         }
     }
+    // Выбор демона уведомлений (`notifications_slot`): без Rexon его никто
+    // не обновит. Убираем только НАШ файл (метка в первой строке); чужой,
+    // положенный человеком, остаётся. Шина лишь перечитывает конфигурацию.
+    let slot = crate::notifications_slot::SlotPaths::from_env(&home, &io.env("XDG_DATA_HOME")).user_file;
+    let slot = slot.to_string_lossy();
+    if io.read_text(&slot).is_some_and(|t| crate::notifications_slot::is_ours(&t)) {
+        io.remove_file(&slot);
+        if io.which("busctl") {
+            io.run(&crate::appdefaults::busctl_reload_cmd(), Some(10), true);
+        }
+    }
     // Светлое и тёмное по расписанию: таймер, служба и автозапуск без
     // Rexon будили бы пустоту. Настройку Plasma (её же «Автоматически»)
     // не трогаем — это настройка самой Plasma.
@@ -4533,6 +4544,36 @@ mod tests {
         assert!(sc(&["systemctl", "--user", "disable", crate::session_watch::UNIT_NAME]), "{runs:?}");
         assert!(sc(&["systemctl", "--user", "daemon-reload"]), "{runs:?}");
         assert!(runs.iter().any(|r| r == &crate::session_guard::reconfigure_kwin_argv()), "KWin перечитал настройки: {runs:?}");
+    }
+
+    #[test]
+    fn uninstall_removes_our_notifications_slot_and_keeps_foreign_one() {
+        use crate::notifications_slot as ns;
+        let rel = "home/.local/share/dbus-1/services/org.freedesktop.Notifications.service";
+        let busctl = crate::appdefaults::busctl_reload_cmd();
+
+        // Наш файл (метка в первой строке) — уходит, шина перечитывает.
+        let mut io = ScratchIo::new();
+        io.tools.insert("busctl".to_string());
+        assert!(user_install(&io).0.ok());
+        let path = format!("{}/{rel}", io.base);
+        io.put(rel, &format!("{}\n[D-BUS Service]\nName={}\nExec=/bin/false\n", ns::MARKER, ns::BUS_NAME), 0o644);
+        let (r, _) = un(&io, &user_request(true));
+        assert!(r.ok(), "{}", r.message);
+        assert!(!io.exists(&path), "наш файл выбора демона уведомлений убран");
+        assert!(io.runs().contains(&busctl), "{:?}", io.runs());
+
+        // Чужой файл — на месте, шину не дёргаем.
+        let mut io = ScratchIo::new();
+        io.tools.insert("busctl".to_string());
+        assert!(user_install(&io).0.ok());
+        let path = format!("{}/{rel}", io.base);
+        let foreign = format!("[D-BUS Service]\nName={}\nExec=/usr/bin/mako\n", ns::BUS_NAME);
+        io.put(rel, &foreign, 0o644);
+        let (r, _) = un(&io, &user_request(true));
+        assert!(r.ok(), "{}", r.message);
+        assert_eq!(read(&path), foreign, "чужой файл не тронут");
+        assert!(!io.runs().contains(&busctl), "{:?}", io.runs());
     }
 
     #[test]

@@ -483,12 +483,13 @@ fn mate_sidebar_is_grouped_by_what_it_changes() {
     );
     let keys = |g: SidebarGroup| groups.iter().find(|(x, _)| *x == g).unwrap().1.clone();
     // Глобальные темы — первыми, как в KDE (вне Plasma — по частям,
-    // 01.11.2026); кнопки заголовка — сразу за рамками Marco, анимация —
-    // последней (разделы настроек, 01.11.2026).
-    assert_eq!(keys(SidebarGroup::Desktop), ["global", "marco", "windowbuttons", "mate-panel", "animations", "screeneffects"]);
+    // 01.11.2026). Кнопки заголовка — в «⚙️ Настройках» Marco, «Анимации»
+    // в MATE нет (08.11.2026): у Marco нет анимаций окон, галочка для
+    // программ — в «GTK-темах → ⚙️ Настройки».
+    assert_eq!(keys(SidebarGroup::Desktop), ["global", "marco", "mate-panel", "screeneffects"]);
     assert_eq!(
         keys(SidebarGroup::AllApps),
-        ["icons", "cursor", "launchfeedback", "gtk", "appwidgets", "wallpapers", "fontsettings", "fonts", "sounds"]
+        ["icons", "cursor", "gtk", "wallpapers", "fonts", "sounds"]
     );
     assert_eq!(keys(SidebarGroup::QtApps), ["colors", "widgetstyle"]);
     assert_eq!(keys(SidebarGroup::Widgets), ["conky"]);
@@ -852,7 +853,6 @@ fn settings_panels_stand_where_kde_keeps_them() {
             "plasma",
             "colors",
             "aurorae",
-            "windowbuttons",
             "widgetstyle",
             "wallpaper_plugins",
             "splash",
@@ -861,30 +861,27 @@ fn settings_panels_stand_where_kde_keeps_them() {
             "kwinscripts",
             "kwineffects",
             "animations",
-            "screeneffects",
-            "desktopeffects"
+            "screeneffects"
         ]
     );
     assert_eq!(
         keys(SidebarGroup::AllApps),
-        ["icons", "cursor", "launchfeedback", "gtk", "appwidgets", "wallpapers", "fontsettings", "fonts", "sounds"]
+        ["icons", "cursor", "gtk", "wallpapers", "fonts", "sounds"]
     );
     // «Обзор» — по-прежнему первым.
     assert_eq!(groups[0].0, SidebarGroup::Overview);
-    // XFCE: кнопки — за рамками XFWM4.
-    let xfce = visible_groups("xfce");
-    let desk = &xfce.iter().find(|(g, _)| *g == SidebarGroup::Desktop).unwrap().1;
-    let at = desk.iter().position(|k| k == "xfwm4").unwrap();
-    assert_eq!(desk[at + 1], "windowbuttons", "{desk:?}");
     // Где виден каждый: эффекты KWin — только KDE, значки и панели — везде,
     // кроме Deepin; прочие — везде.
     for de in ["kde", "gnome", "mate", "xfce", "cinnamon", "hyprland", "deepin", "nonesuch"] {
         let known = rexon_core::de_customization::de_from_id(de).is_some();
-        assert_eq!(category_available("desktopeffects", de), de == "kde" || !known, "{de}");
-        assert_eq!(category_available("appwidgets", de), de != "deepin", "{de}");
-        for k in ["windowbuttons", "launchfeedback", "fontsettings", "animations", "screeneffects"] {
-            assert!(category_available(k, de), "{k} в {de}");
-        }
+        // «Эффекты рабочего стола» — вид «⚙️ Настройки» «Эффектов KWin»
+        // (08.11.2026): своей строки нет ни в одном столе.
+        assert!(get_category(home(), "desktopeffects").is_none(), "{de}");
+        let _ = known;
+        // «Анимация» — где у оконного менеджера есть анимации окон.
+        assert_eq!(category_available("animations", de), ["kde", "gnome", "cinnamon", "hyprland", "nonesuch"].contains(&de), "{de}");
+        // Эффекты экрана — где их можно включить хоть в одном роде сеанса.
+        assert_eq!(category_available("screeneffects", de), de != "deepin", "{de}");
     }
     // Подписи — заголовки самих разделов; магазина, скана и шапки нет,
     // экран — свой.
@@ -895,12 +892,7 @@ fn settings_panels_stand_where_kde_keeps_them() {
     assert_eq!(
         names,
         [
-            ("windowbuttons", "Кнопки заголовка окна"),
-            ("launchfeedback", "Отклик при запуске"),
-            ("appwidgets", "Значки и панели инструментов в программах"),
-            ("fontsettings", "Системные шрифты"),
             ("animations", "Анимация"),
-            ("desktopeffects", "Эффекты рабочего стола"),
             ("screeneffects", "Эффекты экрана"),
         ]
         .map(|(k, n)| (k.to_string(), n.to_string()))
@@ -918,21 +910,146 @@ fn settings_panels_stand_where_kde_keeps_them() {
     }
 }
 
-/// Во вкладке «Настройки» на месте переехавших разделов — ссылки
-/// «Оформление → …» в порядке боковой панели и только видимые в этом столе.
+/// Каталог и настройки одного рода — в одном разделе (08.11.2026), как
+/// вкладки модулей KDE: у «Шрифтов», «Значков», «Курсоров», рамок окон и
+/// «GTK-тем» настройки открываются кнопкой «⚙️ Настройки» в шапке, своих
+/// строк в боковой панели у этих настроек нет ни в одном столе. Настройки,
+/// которой у стола нет, нет и в виде. Один механизм на все пары.
 #[test]
-fn settings_tab_links_to_moved_panels() {
-    use rexon_core::categories::moved_settings_links;
+fn section_settings_open_inside_catalog_section() {
+    use rexon_core::appearance_page::{self as ap, CatalogView};
+    use rexon_core::categories::{
+        category_available, get_category, grouped_sidebar, section_settings_panels, ANIMATIONS_KEY,
+        APP_WIDGETS_PANEL, DESKTOP_EFFECTS_PANEL, FONT_SETTINGS_PANEL, LAUNCH_FEEDBACK_PANEL, SECTION_SETTINGS, WALLPAPER_BLUR_PANEL, AMBIENT_SOUNDS_PANEL, EVENT_SOUNDS_PANEL, WINDOW_BUTTONS_KEY,
+    };
     let _lang = i18n_pin::ru();
-    let keys = |de: &str| moved_settings_links(de).into_iter().map(|(k, _)| k).collect::<Vec<_>>();
+    let des = ["kde", "gnome", "mate", "xfce", "cinnamon-mint", "lxqt", "labwc", "budgie", "pantheon", "cosmic",
+               "hyprland", "sway", "deepin", "nonesuch"];
+    for de in des {
+        let side: Vec<String> = grouped_sidebar(&sidebar(home()), de).into_iter().map(|c| c.key).collect();
+        for (_, panel) in SECTION_SETTINGS {
+            if *panel != ANIMATIONS_KEY {
+                assert!(!side.iter().any(|k| k == panel), "{de}: {panel} в боковой панели");
+                assert!(get_category(home(), panel).is_none(), "{panel} — не раздел");
+            }
+        }
+        let p = |cat: &str| section_settings_panels(cat, de);
+        assert_eq!(p("fonts"), [FONT_SETTINGS_PANEL], "{de}");
+        // Размытие обоев — в «Обоях HD» (из вкладки «Настройки» ушло).
+        assert_eq!(p("wallpapers"), [WALLPAPER_BLUR_PANEL], "{de}");
+        // Звуки событий и фоновые звуки — в «Звуках».
+        assert_eq!(p("sounds"), [EVENT_SOUNDS_PANEL, AMBIENT_SOUNDS_PANEL], "{de}");
+        // Значки и панели инструментов в Deepin задаёт его Центр управления.
+        assert_eq!(p("icons"), if de == "deepin" { vec![] } else { vec![APP_WIDGETS_PANEL] }, "{de}");
+        // Отклик при запуске есть только у KDE: где его нет, нет и кнопки
+        // (пустая страница с «в MATE нет настройки…» — тупик).
+        assert_eq!(p("cursor"), if de == "kde" { vec![LAUNCH_FEEDBACK_PANEL] } else { vec![] }, "{de}");
+        // Включение эффектов KWin — кнопкой в «Эффектах KWin» (08.11.2026);
+        // эффекты есть только у KWin, у незнакомого стола кнопка видна.
+        let kde_like = de == "kde" || de == "nonesuch";
+        assert_eq!(p("kwineffects"), if kde_like { vec![DESKTOP_EFFECTS_PANEL] } else { vec![] }, "{de}");
+        // Кнопки заголовка — ровно в одном видимом разделе стола: при
+        // рамках окон, а без них — в «GTK-темах» (функция не теряется).
+        // У незнакомого стола видны все разделы рамок — кнопки в каждом.
+        let with_buttons: Vec<&str> = ["aurorae", "xfwm4", "marco", "cinnamontheme", "openbox", "gtk"]
+            .into_iter()
+            .filter(|c| category_available(c, de) && p(c).contains(&WINDOW_BUTTONS_KEY))
+            .collect();
+        let expect: &[&str] = match de {
+            "kde" => &["aurorae"],
+            "xfce" => &["xfwm4"],
+            "mate" => &["marco"],
+            "cinnamon-mint" => &["cinnamontheme"],
+            "lxqt" | "labwc" => &["openbox"],
+            "nonesuch" => &["aurorae", "xfwm4", "marco", "cinnamontheme", "openbox"],
+            _ => &["gtk"],
+        };
+        assert_eq!(with_buttons, expect, "{de}");
+        // Галочка «Без анимаций» — в «GTK-темах» ровно там, где нет своей
+        // строки «Анимация»; у незнакомого стола строка «Анимация» видна.
+        let gtk_anim = p("gtk").contains(&ANIMATIONS_KEY);
+        assert_eq!(gtk_anim, !category_available(ANIMATIONS_KEY, de), "{de}");
+    }
+    assert_eq!(section_settings_panels("gtk", "sway"), [WINDOW_BUTTONS_KEY, ANIMATIONS_KEY]);
+    assert!(section_settings_panels("plymouth", "kde").is_empty());
+    for (cat, de, panels) in [
+        ("fonts", "kde", "fontsettings"),
+        ("icons", "kde", "appwidgets"),
+        ("cursor", "kde", "launchfeedback"),
+        ("wallpapers", "kde", "wallpaperblur"),
+        ("sounds", "mate", "eventsounds,ambientsounds"),
+        ("aurorae", "kde", "windowbuttons"),
+        ("kwineffects", "kde", "desktopeffects"),
+        ("marco", "mate", "windowbuttons"),
+        ("gtk", "mate", "animations"),
+        ("gtk", "gnome", "windowbuttons"),
+        ("gtk", "deepin", "windowbuttons,animations"),
+    ] {
+        let mut v = CatalogView::new(get_category(home(), cat).unwrap(), de);
+        // Сначала каталог: кнопка есть, экран — плитки, шапка — каталога.
+        assert!(v.has_section_settings(), "{cat}/{de}");
+        assert!(!v.section_settings_open());
+        assert_eq!(v.screen(home()), ap::SCREEN_GRID, "{cat}/{de}");
+        assert_eq!(v.settings_panel_key(), cat);
+        assert!(v.chrome().search, "{cat}/{de}");
+        // «⚙️ Настройки»: те же разделы вкладки «Настройки», без поиска и
+        // магазина.
+        v.section_settings = true;
+        assert!(v.section_settings_open());
+        assert_eq!(v.screen(home()), ap::SCREEN_SETTINGS, "{cat}/{de}");
+        assert_eq!(v.settings_panel_key(), panels);
+        assert_eq!(v.chrome(), ap::Chrome::default(), "{cat}/{de}");
+    }
+    // Чужой раздел вида настроек не открывает, даже если флаг остался.
+    let mut v = CatalogView::new(get_category(home(), "plymouth").unwrap(), "kde");
+    v.section_settings = true;
+    assert_eq!(v.screen(home()), ap::SCREEN_GRID);
+    assert_eq!(v.settings_panel_key(), "plymouth");
+    // В MATE у «Курсоров» кнопки нет (отклика при запуске там нет).
+    let mut v = CatalogView::new(get_category(home(), "cursor").unwrap(), "mate");
+    v.section_settings = true;
+    assert!(!v.has_section_settings());
+    assert_eq!(v.screen(home()), ap::SCREEN_GRID);
+    assert_eq!(ap::section_settings_btn(), "⚙️ Настройки");
+    assert_eq!(ap::detail_back_btn(), "←  Назад к каталогу");
     assert_eq!(
-        keys("kde"),
-        ["windowbuttons", "animations", "desktopeffects", "launchfeedback", "appwidgets", "fontsettings"]
+        ap::section_settings_tooltip(&["windowbuttons", "animations"]).lines().count(),
+        2,
+        "по строке подсказки на раздел"
     );
-    assert_eq!(keys("mate"), ["windowbuttons", "animations", "launchfeedback", "appwidgets", "fontsettings"]);
-    assert!(!keys("deepin").contains(&"appwidgets".to_string()));
-    let links = moved_settings_links("kde");
-    assert_eq!(links[1].1, "Оформление → Анимация");
-    // «Эффектов экрана» во вкладке «Настройки» не было никогда — и ссылки нет.
-    assert!(!keys("hyprland").contains(&"screeneffects".to_string()));
+}
+
+/// Род сеанса выбранного стола (08.11.2026): невозможное в нём не видно.
+/// Эффекты экрана MATE, Xfce и LXQt работают только на X11 (picom) — на
+/// Wayland раздела нет; «сеанс не известен» — видно, если работает хоть в
+/// одном роде.
+#[test]
+fn sections_follow_session_kind() {
+    use rexon_core::appearance_page::CatalogView;
+    use rexon_core::categories::{category_available_in, grouped_sidebar, Session, SCREEN_EFFECTS_KEY};
+    for de in ["mate", "xfce", "lxqt"] {
+        assert!(category_available_in(SCREEN_EFFECTS_KEY, de, Session::X11), "{de}");
+        assert!(!category_available_in(SCREEN_EFFECTS_KEY, de, Session::Wayland), "{de}");
+        assert!(category_available_in(SCREEN_EFFECTS_KEY, de, Session::Any), "{de}");
+        let side = |s: Session| {
+            grouped_sidebar(&sidebar(home()), de)
+                .into_iter()
+                .filter(|c| category_available_in(&c.key, de, s))
+                .any(|c| c.key == SCREEN_EFFECTS_KEY)
+        };
+        assert!(side(Session::X11) && !side(Session::Wayland), "{de}");
+    }
+    for de in ["kde", "gnome", "hyprland", "cinnamon-mint"] {
+        for s in [Session::X11, Session::Wayland, Session::Any] {
+            assert!(category_available_in(SCREEN_EFFECTS_KEY, de, s), "{de} {s:?}");
+        }
+    }
+    let mut v = CatalogView::new(get_category(home(), SCREEN_EFFECTS_KEY).unwrap(), "mate");
+    assert!(!v.de_blocked());
+    v.session = Session::Wayland;
+    assert!(v.de_blocked());
+    // Разделы без условия сеанса от него не зависят.
+    for key in ["icons", "cursor", "marco", "gtk", "fonts"] {
+        assert!(category_available_in(key, "mate", Session::Wayland), "{key}");
+    }
 }

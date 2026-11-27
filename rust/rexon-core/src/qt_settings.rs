@@ -3642,6 +3642,79 @@ pub fn hinting_choices() -> Vec<(&'static str, String)> {
         .collect()
 }
 
+/// Готовые наборы отрисовки — как четыре образца «Внешний вид → Шрифты →
+/// Отрисовка» MATE (и старого GNOME 2), которых нет ни в KDE, ни в GNOME,
+/// ни в XFCE: одним нажатием сглаживание, субпиксели и хинтинг разом.
+/// Значения сверены по `mate-control-center/capplets/appearance/
+/// appearance-font.c` (`setup_font_pair`, 14.11.2026): «Монохромный» — без
+/// сглаживания, полный хинтинг; «Лучшие формы» — оттенки серого, средний;
+/// «Лучший контраст» — оттенки серого, полный; «Субпиксельное» — RGBA,
+/// лёгкий. Пишутся тем же общим путём, что и ручная настройка
+/// ([`FontRendering`]), — значит, во всех окружениях.
+pub const RENDER_PRESETS: &[&str] = &["monochrome", "best_shapes", "best_contrast", "subpixel"];
+
+/// Отрисовка по готовому набору поверх нынешней: диапазон «не сглаживать»
+/// остаётся как был, а у «Субпиксельного» — нынешний порядок субпикселей
+/// (MATE так же не трогает порядок), если он задан, иначе RGB.
+pub fn render_preset(id: &str, current: &FontRendering) -> Option<FontRendering> {
+    let (antialias, subpixel, hinting) = match id {
+        "monochrome" => (false, "none", "full"),
+        "best_shapes" => (true, "none", "medium"),
+        "best_contrast" => (true, "none", "full"),
+        "subpixel" => {
+            let order = if current.subpixel == "none" { "rgb" } else { current.subpixel.as_str() };
+            (true, order, "slight")
+        }
+        _ => return None,
+    };
+    Some(
+        FontRendering {
+            antialias,
+            exclude: current.exclude,
+            subpixel: subpixel.to_string(),
+            hinting: hinting.to_string(),
+        }
+        .normalized(),
+    )
+}
+
+/// Какому готовому набору отвечает отрисовка (`None` — своя, ни одному).
+/// Диапазон «не сглаживать» и порядок субпикселей не различают наборы.
+pub fn render_preset_of(r: &FontRendering) -> Option<&'static str> {
+    RENDER_PRESETS
+        .iter()
+        .copied()
+        .find(|id| render_preset(id, r).is_some_and(|p| p == *r))
+}
+
+/// Готовые наборы для ряда кнопок: `(значение, подпись, подсказка)`.
+pub fn render_preset_choices() -> Vec<(&'static str, String, String)> {
+    RENDER_PRESETS
+        .iter()
+        .map(|id| {
+            let (label, tip) = match *id {
+                "monochrome" => (
+                    trc("font rendering preset", "Monochrome"),
+                    tr("No smoothing, full hinting: sharp pixel-exact letters"),
+                ),
+                "best_shapes" => (
+                    trc("font rendering preset", "Best shapes"),
+                    tr("Grayscale smoothing, medium hinting: letters closest to their drawing"),
+                ),
+                "best_contrast" => (
+                    trc("font rendering preset", "Best contrast"),
+                    tr("Grayscale smoothing, full hinting: the sharpest smoothed text"),
+                ),
+                _ => (
+                    trc("font rendering preset", "Subpixel smoothing (LCDs)"),
+                    tr("Sub-pixel smoothing, slight hinting: the clearest text on flat screens"),
+                ),
+            };
+            (*id, label, tip)
+        })
+        .collect()
+}
+
 /// Чем кончилась запись отрисовки шрифтов.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderingOutcome {
@@ -3990,6 +4063,7 @@ pub fn parse_font_dpi(store: &FontDpiStore, raw: &str) -> Option<i32> {
 /// Пояснение под полем DPI — что именно и когда подействует.
 pub fn font_dpi_note(store: Option<&FontDpiStore>) -> String {
     match store {
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         None => tr("In the Plasma Wayland session fonts follow the display scale: change it in System \
                     Settings → Display"),
         Some(FontDpiStore::Kde) => tr("Takes effect after you log in again"),
@@ -6715,8 +6789,8 @@ pub const SECTIONS: &[(&str, &str, &str)] = &[
     (
         "skinGroup",
         n_("🎨 Interface Skin"),
-        n_("The look of the Rexon app itself (window colors). This is NOT the KDE system \
-            theme — only Rexon's own look changes."),
+        n_("The look of the Rexon app itself (window colors). Your desktop's theme stays \
+            as it is — only Rexon's own look changes."),
     ),
     (
         "obGroup",
@@ -6788,12 +6862,6 @@ pub const SECTIONS: &[(&str, &str, &str)] = &[
         // TRANSLATORS: %1 is the name of the current desktop environment.
         n_("System sound theme for %1: clicks, notifications, errors. Rexon applies it \
             with the desktop's own tools"),
-    ),
-    (
-        "mateIconsGroup",
-        n_("🌽 MATE: Desktop Icons"),
-        n_("Manage icons on the MATE desktop (Caja). Handy when Rexon wallpaper is on and \
-            the icons get in the way"),
     ),
     (
         "fontsGroup",
@@ -7224,8 +7292,8 @@ pub const TEXTS: &[(&str, &str)] = &[
         // TRANSLATORS: %1 is “turned on” or “turned off”.
         n_("✅ Event sounds %1"),
     ),
-    // «включены/выключены» — одно слово на две секции (звуки событий и
-    // иконки рабочего стола MATE), поэтому оно отдельной записью.
+    // «включены/выключены» — отдельной записью: слово вставляется в
+    // итог переключения звуков событий.
     (
         "state.on",
         // TRANSLATORS: Shown as “Event sounds turned on”, “Desktop icons turned on”.
@@ -7238,19 +7306,6 @@ pub const TEXTS: &[(&str, &str)] = &[
     ),
     ("snd.events_failed", n_("⚠️ Could not switch event sounds")),
     ("snd.cannot_play", "🔇 %1"),
-    // MATE: иконки рабочего стола
-    ("mate.icons_on", n_("✅ Show Icons")),
-    ("mate.icons_off", n_("⏹️ Hide Icons")),
-    ("mate.restart_caja", n_("🔄 Restart Caja")),
-    ("mate.no_api", n_("⚠️ MATE settings are unavailable")),
-    (
-        "mate.icons_state",
-        // TRANSLATORS: %1 is “turned on” or “turned off”.
-        n_("✅ Desktop icons %1"),
-    ),
-    ("mate.caja_restarted", n_("🔄 Caja restarted")),
-    ("mate.icons_failed", n_("⚠️ Could not switch MATE desktop icons")),
-    ("mate.caja_failed", n_("⚠️ Could not restart the Caja desktop")),
     // системные шрифты
     // Шрифт не задан — значит, действует шрифт рабочего стола по умолчанию;
     // «не задан» читалось так, будто шрифта нет вовсе.
@@ -7283,6 +7338,7 @@ pub const TEXTS: &[(&str, &str)] = &[
         // TRANSLATORS: abbreviation of “points”, the unit of font size.
         n_("pt"),
     ),
+    ("font.render_presets", n_("Quick choice:")),
     ("font.subpixel", n_("Sub-pixel rendering:")),
     ("font.hinting", n_("Hinting:")),
     (
@@ -7866,41 +7922,8 @@ fn state_word(on: bool) -> String {
     }
 }
 
-// ── MATE: иконки рабочего стола ──────────────────────────────────────
-
-/// Кнопки секции MATE: (подпись, действие — `on` / `off` / `restart`).
-pub fn mate_buttons() -> Vec<(String, String)> {
-    vec![
-        (t("mate.icons_on"), "on".to_string()),
-        (t("mate.icons_off"), "off".to_string()),
-        (t("mate.restart_caja"), "restart".to_string()),
-    ]
-}
-
-/// Итог переключения иконок рабочего стола MATE.
-pub fn mate_icons_status(visible: bool) -> String {
-    tf("mate.icons_state", &[&state_word(visible)])
-}
-
-/// Итог кнопки иконок MATE с учётом того, отработали ли команды.
-///
-/// ⭐ Починка: Python рапортовал «иконки включены», не глядя на итог.
-pub fn mate_icons_result(visible: bool, ok: bool) -> String {
-    if ok {
-        mate_icons_status(visible)
-    } else {
-        t("mate.icons_failed")
-    }
-}
-
-/// Итог перезапуска рабочего стола Caja.
-pub fn caja_restart_result(ok: bool) -> String {
-    if ok {
-        t("mate.caja_restarted")
-    } else {
-        t("mate.caja_failed")
-    }
-}
+// Раздела «MATE: значки рабочего стола» больше нет (08.11.2026): под живыми
+// обоями значки Caja Rexon устраивает сам — `wallpaper_backend::prepare_desktop_icons`.
 
 // ── Шрифты ───────────────────────────────────────────────────────────
 
@@ -8134,8 +8157,6 @@ pub fn restart_args(args: &[String]) -> Vec<String> {
 pub struct SectionFacts {
     /// Обучение вообще доступно (собрано колесо с его API).
     pub onboarding_available: bool,
-    /// Текущее окружение — MATE (иконки рабочего стола есть только там).
-    pub is_mate: bool,
     /// Plasma запущена ЛИБО от неё остались копии панели.
     pub plasma_available: bool,
     /// В системе стоит форк оформления Plasma (AeroShell и родня).
@@ -8146,13 +8167,11 @@ impl SectionFacts {
     /// Факты из ответов живых проб — в том порядке, в каком их собирает окно.
     pub fn new(
         onboarding_available: bool,
-        is_mate: bool,
         plasma_available: bool,
         aeroshell_installed: bool,
     ) -> Self {
         Self {
             onboarding_available,
-            is_mate,
             plasma_available,
             aeroshell_installed,
         }
@@ -8168,7 +8187,6 @@ impl SectionFacts {
 pub fn section_visible(id: &str, facts: &SectionFacts) -> bool {
     match id {
         "obGroup" => facts.onboarding_available,
-        "mateIconsGroup" => facts.is_mate,
         "plasmaGroup" => facts.plasma_available,
         "aeroGroup" => facts.aeroshell_installed,
         _ => true,

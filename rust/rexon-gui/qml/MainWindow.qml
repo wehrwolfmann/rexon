@@ -397,6 +397,16 @@ ApplicationWindow {
                 // правило #16), а не вкусовое число.
                 implicitHeight: 44
                 font.pointSize: 11
+                // Ширина — по НАШЕЙ подписи, а не по стилю платформы. В сеансе
+                // KDE контролы берут стиль org.kde.desktop: тот меряет вкладку
+                // своим шрифтом (10 pt против наших 11) и ещё своей рамкой
+                // выделения, и выделенная «Wallpaper Engine» обрезалась до
+                // «Wallpaper Engin» (стенд 08.11.2026). Поля — с запасом на
+                // отступы плашки с обеих сторон.
+                leftPadding: shell.tabStyle.marginH + 10
+                rightPadding: shell.tabStyle.marginH + 10
+                implicitWidth: Math.ceil(tabButton.contentItem.implicitWidth)
+                               + tabButton.leftPadding + tabButton.rightPadding
 
                 contentItem: RexonText {
                     text: tabButton.text

@@ -14,11 +14,15 @@ MD.Dialog {
 
     property var filters: []
     property var selectedValues: []
+    property var excludedValues: []
+    property var matchModes: ({})
     property var valuePresentation: null
     property var activeFilter: null
     property var confirmationFilter: null
 
     signal apply(var values)
+    signal applyBoth(var values, var excluded)
+    signal applyMatchMode(string filterId, string mode)
 
     function sanitize(values) {
         let out = [];
@@ -55,11 +59,15 @@ MD.Dialog {
         const selected = selectedMap();
         return filterValues(filter).filter(value => selected[value] === true);
     }
+    function excludedFor(filter) {
+        const selected = sanitize(excludedValues);
+        return filterValues(filter).filter(value => selected.indexOf(value) >= 0);
+    }
     function hasFilterValue(filter) {
         return selectedFor(filter).length > 0;
     }
     function usesInlineValues(filter) {
-        return Number(filter?.type ?? 0) === 2 && filterValues(filter).length <= 6;
+        return Number(filter?.type ?? 0) === 2 && !filter?.supportsExclusion && filterValues(filter).length <= 6;
     }
     function toggleFilterValue(filter, value) {
         const selected = selectedFor(filter);
@@ -143,8 +151,16 @@ MD.Dialog {
             dialogTitle: root.activeFilter ? W.I18n.tr(root.activeFilter.titleText) : qsTr("Select values")
             options: root.activeFilter?.options ?? []
             selected: root.selectedFor(root.activeFilter)
+            supportsExclusion: root.activeFilter?.supportsExclusion ?? false
+            excluded: root.excludedFor(root.activeFilter)
             onCommit: function (values) {
-                root.setFilterValues(root.activeFilter, values);
+                if (!supportsExclusion)
+                    root.setFilterValues(root.activeFilter, values);
+            }
+            onCommitBoth: function (values, excluded) {
+                const filterValues = root.filterValues(root.activeFilter);
+                const remaining = root.sanitize(root.excludedValues).filter(value => filterValues.indexOf(value) < 0);
+                root.applyBoth(root.collect(root.activeFilter, values), remaining.concat(excluded));
             }
         }
     }
@@ -218,8 +234,27 @@ MD.Dialog {
                             Layout.fillWidth: true
                             MD.Label {
                                 Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 text: W.I18n.tr(filterRow.modelData.titleText)
                                 typescale: MD.Token.typescale.title_small
+                                elide: Text.ElideRight
+                            }
+                            MD.SegmentedButtonGroup {
+                                size: MD.Enum.XS
+                                visible: (filterRow.modelData.matchModes ?? []).length > 1
+
+                                MD.SegmentedButton {
+                                    text: qsTr("Any")
+                                    visible: (filterRow.modelData.matchModes ?? []).indexOf("any") >= 0
+                                    checked: root.matchModes[filterRow.modelData.id] === "any"
+                                    onCheckedChangeRequested: root.applyMatchMode(filterRow.modelData.id, "any")
+                                }
+                                MD.SegmentedButton {
+                                    text: qsTr("All")
+                                    visible: (filterRow.modelData.matchModes ?? []).indexOf("all") >= 0
+                                    checked: root.matchModes[filterRow.modelData.id] === "all"
+                                    onCheckedChangeRequested: root.applyMatchMode(filterRow.modelData.id, "all")
+                                }
                             }
                             MD.IconButton {
                                 icon.name: MD.Token.icon.edit
@@ -252,7 +287,7 @@ MD.Dialog {
                         }
                         Flow {
                             Layout.fillWidth: true
-                            visible: !root.usesInlineValues(filterRow.modelData) && root.selectedFor(filterRow.modelData).length > 0
+                            visible: !root.usesInlineValues(filterRow.modelData) && (root.selectedFor(filterRow.modelData).length > 0 || root.excludedFor(filterRow.modelData).length > 0)
                             spacing: 6
 
                             Repeater {
@@ -260,6 +295,13 @@ MD.Dialog {
                                 delegate: W.Tag {
                                     required property var modelData
                                     text: root.valueLabel(filterRow.modelData, modelData)
+                                }
+                            }
+                            Repeater {
+                                model: root.excludedFor(filterRow.modelData)
+                                delegate: W.Tag {
+                                    required property var modelData
+                                    text: "− " + root.valueLabel(filterRow.modelData, modelData)
                                 }
                             }
                         }

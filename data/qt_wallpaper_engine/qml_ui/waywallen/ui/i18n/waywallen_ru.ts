@@ -106,7 +106,7 @@
     <name>AddToPlaylistSheetContent</name>
     <message>
         <source>No manual playlists found</source>
-        <translation type="unfinished"></translation>
+        <translation>Обычные плейлисты не найдены</translation>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/AddToPlaylistSheetContent.qml" line="25"/>
@@ -303,6 +303,10 @@
 </context>
 <context>
     <name>DiscoverPage</name>
+    <message>
+        <source>Retry</source>
+        <translation>Повторить</translation>
+    </message>
     <message>
         <location filename="../qml/page/DiscoverPage.qml" line="102"/>
         <source>Sort</source>
@@ -813,35 +817,35 @@
     <name>PlaylistEditPage</name>
     <message>
         <source>Smart playlist</source>
-        <translation type="unfinished"></translation>
+        <translation>Умный плейлист</translation>
     </message>
     <message>
         <source>Wallpapers matching these filters are updated automatically.</source>
-        <translation type="unfinished"></translation>
+        <translation>Обои, подходящие под эти фильтры, обновляются автоматически.</translation>
     </message>
     <message>
         <source>Default order</source>
-        <translation type="unfinished"></translation>
+        <translation>Порядок по умолчанию</translation>
     </message>
     <message>
         <source>Type</source>
-        <translation type="unfinished"></translation>
+        <translation>Тип</translation>
     </message>
     <message>
         <source>Size</source>
-        <translation type="unfinished"></translation>
+        <translation>Размер</translation>
     </message>
     <message>
         <source>Last modified</source>
-        <translation type="unfinished"></translation>
+        <translation>Дата изменения</translation>
     </message>
     <message>
         <source>Reverse order</source>
-        <translation type="unfinished"></translation>
+        <translation>Обратный порядок</translation>
     </message>
     <message>
         <source>Waiting for matching wallpapers</source>
-        <translation type="unfinished"></translation>
+        <translation>Ожидание подходящих обоев</translation>
     </message>
     <message>
         <location filename="../qml/page/PlaylistEditPage.qml" line="14"/>
@@ -943,11 +947,11 @@
     <name>PlaylistListSheet</name>
     <message>
         <source>Create smart playlist</source>
-        <translation type="unfinished"></translation>
+        <translation>Создать умный плейлист</translation>
     </message>
     <message>
         <source>Smart playlist</source>
-        <translation type="unfinished"></translation>
+        <translation>Умный плейлист</translation>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/PlaylistListSheet.qml" line="22"/>
@@ -1460,6 +1464,10 @@
 </context>
 <context>
     <name>RemoteFilterDialog</name>
+    <message>
+        <source>All</source>
+        <translation>Все</translation>
+    </message>
     <message>
         <location filename="../qml/dialog/RemoteFilterDialog.qml" line="10"/>
         <source>Filters</source>
@@ -2180,10 +2188,37 @@ Related display: #%1</source>
     </message>
 </context>
 <context>
+    <name>EditLibraryPage</name>
+    <message>
+        <source>Edit library</source>
+        <translation>Изменить библиотеку</translation>
+    </message>
+    <message>
+        <source>Library name</source>
+        <translation>Название библиотеки</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>Применить</translation>
+    </message>
+</context>
+<context>
     <name>SourceManagePage</name>
     <message>
-        <source>Rename library</source>
-        <translation>Переименовать библиотеку</translation>
+        <source>Apply</source>
+        <translation>Применить</translation>
+    </message>
+    <message>
+        <source>Auto detect libraries</source>
+        <translation>Найти библиотеки автоматически</translation>
+    </message>
+    <message>
+        <source>No new libraries found</source>
+        <translation>Новые библиотеки не найдены</translation>
+    </message>
+    <message>
+        <source>Open folder</source>
+        <translation>Открыть папку</translation>
     </message>
     <message>
         <source>Library name</source>
@@ -2445,6 +2480,14 @@ Unsaved frame state may be lost.</source>
 <context>
     <name>TagPickerDialog</name>
     <message>
+        <source>Include</source>
+        <translation>Включить</translation>
+    </message>
+    <message>
+        <source>Exclude</source>
+        <translation>Исключить</translation>
+    </message>
+    <message>
         <location filename="../qml/component/filter/TagPickerDialog.qml" line="18"/>
         <source>Select tags</source>
         <translation>Выберите метки</translation>
@@ -2457,6 +2500,18 @@ Unsaved frame state may be lost.</source>
 </context>
 <context>
     <name>TweakSheet</name>
+    <message>
+        <source>Layout</source>
+        <translation>Раскладка</translation>
+    </message>
+    <message>
+        <source>Grid</source>
+        <translation>Сетка</translation>
+    </message>
+    <message>
+        <source>Masonry</source>
+        <translation>Каскад</translation>
+    </message>
     <message>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="35"/>
         <source>Tweak</source>
@@ -2471,6 +2526,10 @@ Unsaved frame state may be lost.</source>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="91"/>
         <source>Size</source>
         <translation>Размер</translation>
+    </message>
+    <message>
+        <source>Spacing</source>
+        <translation>Интервал</translation>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="104"/>
@@ -2510,8 +2569,20 @@ Unsaved frame state may be lost.</source>
     </message>
     <message>
         <location filename="../qml/page/wallpaper/TweakSheet.qml" line="160"/>
-        <source>Lower values use less memory but may increase CPU usage when playing animated thumbnails. Set to 0 to disable caching.</source>
-        <translation>Меньшие значения экономят память, но могут повысить нагрузку на процессор при воспроизведении анимированных превью. 0 отключает кэш.</translation>
+        <source>Lower values use less memory but may increase CPU usage when playing animated thumbnails.</source>
+        <translation>Меньшие значения экономят память, но могут повысить нагрузку на процессор при воспроизведении анимированных превью.</translation>
+    </message>
+    <message>
+        <source>Image GPU cache</source>
+        <translation>Кэш изображений GPU</translation>
+    </message>
+    <message>
+        <source>256 MiB</source>
+        <translation>256 MiB</translation>
+    </message>
+    <message>
+        <source>Lower values use less GPU memory but may require more texture uploads.</source>
+        <translation>Меньшее значение снижает расход видеопамяти, но может увеличить частоту загрузки текстур.</translation>
     </message>
 </context>
 <context>
@@ -2543,6 +2614,10 @@ Unsaved frame state may be lost.</source>
         <location filename="../qml/page/WallpaperCard.qml" line="79"/>
         <source>Untitled</source>
         <translation>Без названия</translation>
+    </message>
+    <message>
+        <source>Update available</source>
+        <translation>Доступно обновление</translation>
     </message>
 </context>
 <context>
@@ -2769,12 +2844,20 @@ Unsaved frame state may be lost.</source>
         <source>Flip</source>
         <translation>Отражение</translation>
     </message>
+    <message>
+        <source>Update</source>
+        <translation>Обновление</translation>
+    </message>
+    <message>
+        <source>Update available</source>
+        <translation>Доступно обновление</translation>
+    </message>
 </context>
 <context>
     <name>WallpaperFilter</name>
     <message>
         <source>Library</source>
-        <translation type="unfinished"></translation>
+        <translation>Библиотека</translation>
     </message>
     <message>
         <location filename="../qml/component/filter/WallpaperFilter.qml" line="23"/>
@@ -2821,11 +2904,11 @@ Unsaved frame state may be lost.</source>
     <name>WallpaperFilterDialog</name>
     <message>
         <source>Clear rules</source>
-        <translation type="unfinished"></translation>
+        <translation>Очистить правила</translation>
     </message>
     <message>
         <source>Add group</source>
-        <translation type="unfinished"></translation>
+        <translation>Добавить группу</translation>
     </message>
     <message>
         <location filename="../qml/dialog/WallpaperFilterDialog.qml" line="11"/>
@@ -2975,9 +3058,21 @@ Unsaved frame state may be lost.</source>
         <source>Overrides</source>
         <translation>Изменённые свойства</translation>
     </message>
+    <message>
+        <source>Update</source>
+        <translation>Обновление</translation>
+    </message>
+    <message>
+        <source>Update available</source>
+        <translation>Доступно обновление</translation>
+    </message>
 </context>
 <context>
     <name>WallpaperPage</name>
+    <message>
+        <source>Retry</source>
+        <translation>Повторить</translation>
+    </message>
     <message>
         <location filename="../qml/page/WallpaperPage.qml" line="40"/>
         <source>Removed %1</source>
@@ -3494,19 +3589,19 @@ Unsaved frame state may be lost.</source>
     <name>LibraryFilter</name>
     <message>
         <source>includes</source>
-        <translation type="unfinished"></translation>
+        <translation>включить</translation>
     </message>
     <message>
         <source>excludes</source>
-        <translation type="unfinished"></translation>
+        <translation>исключить</translation>
     </message>
     <message>
         <source>Unavailable library #%1</source>
-        <translation type="unfinished"></translation>
+        <translation>Недоступная библиотека #%1</translation>
     </message>
     <message>
         <source>Select library</source>
-        <translation type="unfinished"></translation>
+        <translation>Выберите библиотеку</translation>
     </message>
 </context>
 

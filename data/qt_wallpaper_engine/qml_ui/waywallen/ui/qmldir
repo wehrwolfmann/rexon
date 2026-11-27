@@ -15,11 +15,14 @@ KdeDisplaysHelp 0.3 qml/component/KdeDisplaysHelp.qml
 GnomeDisplaysHelp 0.3 qml/component/GnomeDisplaysHelp.qml
 LayerShellDisplaysHelp 0.3 qml/component/LayerShellDisplaysHelp.qml
 ThumbnailImage 0.3 qml/component/ThumbnailImage.qml
+singleton ThumbnailLoading 0.3 qml/component/ThumbnailLoading.qml
+WallpaperView 0.3 qml/component/WallpaperView.qml
 SearchChip 0.3 qml/component/SearchChip.qml
 ValueSlider 0.3 qml/component/ValueSlider.qml
 FlipButtons 0.3 qml/component/FlipButtons.qml
 ApplyTextField 0.3 qml/component/ApplyTextField.qml
 DetailActionBar 0.3 qml/component/DetailActionBar.qml
+RemoteDetailFields 0.3 qml/component/RemoteDetailFields.qml
 PresentationTargetState 0.3 qml/component/PresentationTargetState.qml
 PresentationTargetFlow 0.3 qml/component/PresentationTargetFlow.qml
 SidebarNowPlaying 0.3 qml/component/SidebarNowPlaying.qml
@@ -34,6 +37,7 @@ EmptyFilter 0.3 qml/component/filter/EmptyFilter.qml
 WallpaperFilter 0.3 qml/component/filter/WallpaperFilter.qml
 WallpaperFilterRules 0.3 qml/component/filter/WallpaperFilterRules.qml
 SettingField 0.3 qml/component/settings/SettingField.qml
+LibrarySettingsFields 0.3 qml/component/settings/LibrarySettingsFields.qml
 DaemonNotRunDialog 0.3 qml/dialog/DaemonNotRunDialog.qml
 WallpaperFilterDialog 0.3 qml/dialog/WallpaperFilterDialog.qml
 RemoteFilterDialog 0.3 qml/dialog/RemoteFilterDialog.qml
@@ -72,6 +76,7 @@ CanvasDisplayList 0.3 qml/page/display/CanvasDisplayList.qml
 DisplayLayoutControls 0.3 qml/page/display/DisplayLayoutControls.qml
 RendererConnectionPanel 0.3 qml/page/display/RendererConnectionPanel.qml
 SourceManagePage 0.3 qml/page/SourceManagePage.qml
+EditLibraryPage 0.3 qml/page/EditLibraryPage.qml
 AddLibraryPage 0.3 qml/page/AddLibraryPage.qml
 AboutPage 0.3 qml/page/AboutPage.qml
 PluginSettingsPage 0.3 qml/page/PluginSettingsPage.qml

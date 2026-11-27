@@ -107,6 +107,7 @@ message Request {
     DisplayPauseSetRequest      display_pause_set = 90;
     WallpaperHideRequest        wallpaper_hide = 91;
     LibraryRenameRequest        library_rename = 92;
+    LibraryEditRequest          library_edit = 93;
   }
 }
 
@@ -201,6 +202,7 @@ message Response {
     DisplayPauseSetResponse      display_pause_set = 90;
     WallpaperHideResponse        wallpaper_hide = 91;
     Empty                        library_rename = 92;
+    Empty                        library_edit = 93;
   }
 }
 
@@ -491,6 +493,7 @@ message SettingSchema {
   PluginMessage label = 13;
   PluginMessage description = 14;
   PluginMessage group_label = 15;
+  repeated PluginMessage choice_labels = 16;
 }
 
 enum SettingValueType {
@@ -505,6 +508,11 @@ enum SettingValueType {
 // ---------------------------------------------------------------------------
 // Wallpapers / sources
 // ---------------------------------------------------------------------------
+
+enum WallpaperSubType {
+  WALLPAPER_SUB_TYPE_NONE = 0;
+  WALLPAPER_SUB_TYPE_TIMELINE = 1;
+}
 
 message WallpaperEntry {
   string id = 1;
@@ -554,6 +562,8 @@ message WallpaperEntry {
   // When true, the library browser hides this item unless the
   // WallpaperListRequest hidden_filter includes it.
   bool hidden = 21;
+  bool update_available = 22;
+  WallpaperSubType sub_type = 23;
 }
 
 message WallpaperLibraryVisibility {
@@ -712,6 +722,7 @@ message SourcePluginInfo {
   repeated SettingSchema settings = 7;
   PluginMessage library_label_text = 8;
   PluginMessage library_hint_text = 9;
+  repeated SettingSchema library_settings = 10;
 }
 
 message WallpaperApplyRequest {
@@ -945,6 +956,7 @@ message CanvasMemberInfo {
   // Absent while the member is offline.
   CanvasSize minimum_scale_to = 4;
   bool aspect_locked = 5;
+  CanvasRect effective_rect = 6;
 }
 
 message CanvasInfo {
@@ -1083,6 +1095,9 @@ message RemoteFilterDef {
   PluginMessage title_text = 7;
   PluginMessage description_text = 8;
   PluginMessage confirmation_text = 9;
+  repeated string match_modes = 10;
+  string default_match_mode = 11;
+  bool supports_exclusion = 12;
 }
 
 message RemoteSourceInfo {
@@ -1113,6 +1128,22 @@ message RemoteSourceInfo {
   repeated RemoteFilterDef filters = 15;
   PluginMessage display_name_text = 16;
   PluginMessage remote_hint_text = 17;
+  RemotePagination pagination = 18;
+  DownloadAction download_action = 19;
+}
+
+message DownloadAction {
+  bool enabled = 1;
+  string label = 2;
+  string tooltip = 3;
+  PluginMessage label_text = 4;
+  PluginMessage tooltip_text = 5;
+}
+
+enum RemotePagination {
+  REMOTE_PAGINATION_UNSPECIFIED = 0;
+  REMOTE_PAGINATION_PAGE = 1;
+  REMOTE_PAGINATION_CURSOR = 2;
 }
 
 enum RemoteCapability {
@@ -1204,6 +1235,10 @@ message RemoteItem {
   // Optional picture of the author, as a URL the source plugin supplied.
   // Empty when the source has none; the UI sizes it, not the source.
   string author_avatar_url = 8;
+  // Resource dimensions, not the potentially cropped preview dimensions.
+  // Absent when the search result has no reliable dimensions.
+  optional uint32 width = 9;
+  optional uint32 height = 10;
 }
 
 message RemoteSearchRequest {
@@ -1212,11 +1247,15 @@ message RemoteSearchRequest {
   string sort_key = 3;
   uint32 page = 4;
   repeated string required_tags = 5;
+  string cursor = 6;
+  map<string, string> filter_match_modes = 7;
+  repeated string excluded_tags = 8;
 }
 message RemoteSearchResponse {
   repeated RemoteItem items = 1;
   bool   has_more = 2;
   string error = 3;
+  string next_cursor = 4;
 }
 
 message RemoteDownloadRequest {
@@ -1255,6 +1294,16 @@ message RemoteDetailsResponse {
   // Same as RemoteItem.author_avatar_url, for sources that only learn the
   // author from their per-item endpoint.
   string author_avatar_url = 9;
+  repeated RemoteDetailField fields = 10;
+  string author_url = 11;
+}
+
+message RemoteDetailField {
+  string key = 1;
+  string label = 2;
+  string value = 3;
+  string url = 4;
+  PluginMessage label_text = 5;
 }
 
 enum RemoteDownloadState {
@@ -1270,6 +1319,12 @@ message RemoteDownloadProgress {
   string id = 2;
   RemoteDownloadState state = 3;
   string error = 4;
+  RemoteDownloadTransfer transfer = 5;
+}
+
+message RemoteDownloadTransfer {
+  uint64 received_bytes = 1;
+  optional uint64 total_bytes = 2;
 }
 
 enum SubscriptionState {
@@ -1393,6 +1448,7 @@ message DisplayLayoutSetResponse {
 // ---------------------------------------------------------------------------
 
 message LibraryInstance {
+  map<string, string> settings = 5;
   int64 id = 1;
   string path = 2;
   string plugin_name = 3;
@@ -1405,9 +1461,16 @@ message LibraryListResponse {
 }
 
 message LibraryAddRequest {
+  map<string, string> settings = 4;
   string path = 1;
   string plugin_name = 2;
   optional string name = 3;
+}
+
+message LibraryEditRequest {
+  int64 id = 1;
+  map<string, string> settings = 2;
+  string name = 3;
 }
 
 message LibraryRenameRequest {

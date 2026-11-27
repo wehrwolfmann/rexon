@@ -20,9 +20,16 @@ import org.rexon.gui 1.0
 
 Rectangle {
     id: section
+    RexonBidi { id: bidi }
 
     /// Палитра скина и раскладка вкладки — от хозяина страницы.
     property var pal: ({})
+    /// Окружение, выбранное в «Текущее окружение» вкладки «Оформление»
+    /// (пусто — запущенное сейчас). Пояснение, «Применить» и запись идут за
+    /// ним: 08.11.2026 при выбранном «Tiling and Wayfire» в сеансе KDE
+    /// раздел говорил про KWin.
+    property string de: ""
+    onDeChanged: section.reload()
     property var sty: ({})
 
     /// Итог действия для всплывающей плашки хозяина.
@@ -55,7 +62,7 @@ Rectangle {
                                           || Math.abs(section.speed - (section.st.speed || 0)) > 0.001))
 
     function reload() {
-        section.st = JSON.parse(actions.state());
+        section.st = JSON.parse(actions.state(section.de));
         section.selected = section.st.preset || "";
         section.strength = section.st.strength !== undefined ? section.st.strength : 0.6;
         section.speed = section.st.speed !== undefined ? section.st.speed : 1.0;
@@ -79,9 +86,12 @@ Rectangle {
 
     function applySelected() {
         const before = { preset: section.st.preset || "", strength: section.st.strength, speed: section.st.speed };
-        const text = actions.apply(section.selected, section.strength, section.speed);
+        const text = actions.apply(section.de, section.selected, section.strength, section.speed);
         section.did(text);
-        if (section.selected !== "" && (section.st.preset || "") === section.selected) {
+        // Пробный показ — только своему шейдеру (`trial` ядра): штатный
+        // чёрно-белый фильтр KDE/Pantheon/COSMIC чёрного экрана не оставит.
+        if (section.st.trial === true && section.selected !== ""
+                && (section.st.preset || "") === section.selected) {
             section.previous = before;
             section.secondsLeft = section.confirmSeconds;
             section.confirming = true;
@@ -98,7 +108,7 @@ Rectangle {
         section.confirming = false;
         section.previous = null;
         if (p)
-            section.did(actions.apply(p.preset, p.strength, p.speed));
+            section.did(actions.apply(section.de, p.preset, p.strength, p.speed));
     }
 
     Timer {
@@ -295,7 +305,7 @@ Rectangle {
             Layout.fillWidth: true
             visible: (section.st.needs || "") !== ""
             // TRANSLATORS: %1 is what must be installed, e.g. "picom instead of the built-in compositor".
-            text: qsTranslate("rexon", "Needs: %1").arg(section.st.needs || "")
+            text: bidi.arg(qsTranslate("rexon", "Needs: %1"), section.st.needs || "")
             color: section.pal.text_secondary
             wrapMode: Text.WordWrap
         }
@@ -385,6 +395,8 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
+            // У штатного фильтра COSMIC силы нет — ползунок ничего бы не менял.
+            visible: section.st.has_strength !== false
 
             RexonText {
                 Layout.preferredWidth: section.labelWidth
@@ -487,7 +499,7 @@ Rectangle {
                 RexonText {
                     Layout.fillWidth: true
                     // TRANSLATORS: %1 is the number of seconds left.
-                    text: qsTranslate("rexon", "Keep this effect? Otherwise the screen goes back as it was in %1 s.").arg(section.secondsLeft)
+                    text: bidi.arg(qsTranslate("rexon", "Keep this effect? Otherwise the screen goes back as it was in %1 s."), section.secondsLeft)
                     color: section.pal.text_primary
                     wrapMode: Text.WordWrap
                 }
@@ -529,7 +541,9 @@ Rectangle {
                 pal: section.pal
                 visible: (section.st.preset || "") !== ""
                 text: qsTranslate("rexon", "Restore as it was")
-                onClicked: section.did(actions.apply("", section.strength, section.speed))
+                // Окружение — первым аргументом, как у «Применить»: без него
+                // пустая строка уходила вместо окружения, а сила — вместо пресета.
+                onClicked: section.did(actions.apply(section.de, "", section.strength, section.speed))
             }
 
             Item { Layout.fillWidth: true }

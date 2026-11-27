@@ -437,6 +437,10 @@
   [
    "library_rename",
    92
+  ],
+  [
+   "library_edit",
+   93
   ]
  ],
  "requests": [

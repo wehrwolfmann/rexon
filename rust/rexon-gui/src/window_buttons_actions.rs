@@ -84,17 +84,17 @@ pub struct WindowButtonsActionsRust;
 
 impl qobject::WindowButtonsActions {
     fn state(&self) -> cxx_qt_lib::QString {
-        let state = wb::read_state(&SystemIo, &LookCtx::from_env());
+        let state = wb::read_state(&SystemIo, &LookCtx::for_look());
         cxx_qt_lib::QString::from(&serde_json::to_string(&state).unwrap_or_default())
     }
 
     fn set_layout(&self, side: &cxx_qt_lib::QString, buttons: &cxx_qt_lib::QString) -> cxx_qt_lib::QString {
         let buttons: Vec<String> = buttons.to_string().split(',').filter(|b| !b.is_empty()).map(String::from).collect();
-        cxx_qt_lib::QString::from(&wb::apply_preset(&SystemIo, &LookCtx::from_env(), &side.to_string(), &buttons))
+        cxx_qt_lib::QString::from(&wb::apply_preset(&SystemIo, &LookCtx::for_look(), &side.to_string(), &buttons))
     }
 
     fn toggle_button(&self, side: &cxx_qt_lib::QString, id: &cxx_qt_lib::QString, on: bool) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&wb::apply_toggle(&SystemIo, &LookCtx::from_env(), &side.to_string(), &id.to_string(), on))
+        cxx_qt_lib::QString::from(&wb::apply_toggle(&SystemIo, &LookCtx::for_look(), &side.to_string(), &id.to_string(), on))
     }
 
     fn move_button(
@@ -107,7 +107,7 @@ impl qobject::WindowButtonsActions {
     ) -> cxx_qt_lib::QString {
         let msg = wb::apply_move(
             &SystemIo,
-            &LookCtx::from_env(),
+            &LookCtx::for_look(),
             &id.to_string(),
             &from.to_string(),
             from_index.max(0) as usize,
@@ -119,23 +119,23 @@ impl qobject::WindowButtonsActions {
 
     fn nudge_button(&self, side: &cxx_qt_lib::QString, index: i32, dir: &cxx_qt_lib::QString) -> cxx_qt_lib::QString {
         let (message, at) =
-            wb::apply_nudge(&SystemIo, &LookCtx::from_env(), &side.to_string(), index.max(0) as usize, &dir.to_string());
+            wb::apply_nudge(&SystemIo, &LookCtx::for_look(), &side.to_string(), index.max(0) as usize, &dir.to_string());
         cxx_qt_lib::QString::from(&serde_json::json!({ "message": message, "at": at }).to_string())
     }
 
     fn add_button(&self, id: &cxx_qt_lib::QString, side: &cxx_qt_lib::QString) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&wb::apply_add(&SystemIo, &LookCtx::from_env(), &id.to_string(), &side.to_string()))
+        cxx_qt_lib::QString::from(&wb::apply_add(&SystemIo, &LookCtx::for_look(), &id.to_string(), &side.to_string()))
     }
 
     fn set_border(&self, value: &cxx_qt_lib::QString) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&wb::apply_border(&SystemIo, &LookCtx::from_env(), &value.to_string()))
+        cxx_qt_lib::QString::from(&wb::apply_border(&SystemIo, &LookCtx::for_look(), &value.to_string()))
     }
 
     fn set_flag(&self, id: &cxx_qt_lib::QString, on: bool) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&wb::apply_flag(&SystemIo, &LookCtx::from_env(), &id.to_string(), on))
+        cxx_qt_lib::QString::from(&wb::apply_flag(&SystemIo, &LookCtx::for_look(), &id.to_string(), on))
     }
 
     fn defaults(&self) -> cxx_qt_lib::QString {
-        cxx_qt_lib::QString::from(&wb::apply_defaults(&SystemIo, &LookCtx::from_env()))
+        cxx_qt_lib::QString::from(&wb::apply_defaults(&SystemIo, &LookCtx::for_look()))
     }
 }

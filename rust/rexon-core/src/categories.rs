@@ -366,21 +366,17 @@ pub fn sidebar(home: &Path) -> Vec<ThemeCategory> {
         pick(104),
         pick(112),
         pick(114),
-        // Разделы настроек (01.11.2026) стоят там, где их держит KDE 6.8:
-        // кнопки заголовка и размер рамки — в модуле «Оформление окон»,
-        // отклик при запуске — в «Курсорах», значки и панели инструментов —
-        // в «Стиле приложений», шрифты — в «Тексте и шрифтах»
-        // ([`SETTINGS_PANELS`]).
-        settings_panel(WINDOW_BUTTONS_KEY),
+        // Кнопки заголовка окна, системные шрифты, значки с панелями
+        // инструментов в программах и отклик при запуске своей строки не
+        // имеют (08.11.2026): они — вид «⚙️ Настройки» разделов рамок окон,
+        // «Шрифты», «Значки» и «Курсоры» ([`SECTION_SETTINGS`]), как вкладки
+        // модулей KDE 6.8.
         pick(132),
         pick(107),
-        settings_panel("launchfeedback"),
         pick(135),
         pick(901),
-        settings_panel("appwidgets"),
         pick(299),
         pick(715),
-        settings_panel("fontsettings"),
         pick(103),
         pick(316),
         pick(705),
@@ -400,11 +396,14 @@ pub fn sidebar(home: &Path) -> Vec<ThemeCategory> {
     // среди разделов рабочего стола MATE.
     .chain(std::iter::once(mate_panel_category()))
     // «Анимация» — последним разделом «Внешнего вида», как в KDE 6.8
-    // (`kcm_animations`, вес 40 в категории `appearance`); «Эффекты
-    // рабочего стола» — рядом с ней: в KDE они в «Управлении окнами», а
+    // (`kcm_animations`, вес 40 в категории `appearance`). «Эффекты
+    // рабочего стола» своей строки не имеют (решение Wehrwolfmann
+    // 08.11.2026): это вид «⚙️ Настройки» раздела «Эффекты KWin»
+    // ([`SECTION_SETTINGS`]) — каталог и включение эффектов в одном месте.
+    // (Прежде строка стояла здесь: в KDE они в «Управлении окнами», а
     // такой вкладки у Rexon нет. «Эффекты экрана» (02.11.2026) — между
     // ними: тоже «как выглядит весь стол», и в KDE ближе всего к ним.
-    .chain(["animations", SCREEN_EFFECTS_KEY, "desktopeffects"].into_iter().map(settings_panel))
+    .chain(["animations", SCREEN_EFFECTS_KEY].into_iter().map(settings_panel))
     .collect()
 }
 
@@ -417,24 +416,108 @@ pub fn sidebar(home: &Path) -> Vec<ThemeCategory> {
 /// только место в боковой панели. Где какой стоит — [`sidebar`],
 /// в какой группе — [`category_group`], где виден — [`category_available`].
 pub const SETTINGS_PANELS: &[(i64, &str)] = &[
-    (921, WINDOW_BUTTONS_KEY),
-    (922, "launchfeedback"),
-    (923, "appwidgets"),
-    (924, "fontsettings"),
     (925, "animations"),
-    (926, "desktopeffects"),
+    // 926 — «Эффекты рабочего стола», с 08.11.2026 вид «⚙️ Настройки»
+    // раздела «Эффекты KWin» ([`DESKTOP_EFFECTS_PANEL`]).
     (928, SCREEN_EFFECTS_KEY),
 ];
 
+/// Раздел «Эффекты рабочего стола» (`DesktopEffectsSection`): включение и
+/// настройки эффектов, которые уже есть в KWin, — вид «⚙️ Настройки»
+/// раздела «Эффекты KWin» (каталог KDE Store); своей строки в боковой панели
+/// с 08.11.2026 нет (решение Wehrwolfmann).
+pub const DESKTOP_EFFECTS_PANEL: &str = "desktopeffects";
+/// Раздел «Системные шрифты» вкладки «Настройки» (`SettingsPage.qml`,
+/// режим `panel`) — вид «⚙️ Настройки» раздела «Шрифты».
+pub const FONT_SETTINGS_PANEL: &str = "fontsettings";
+/// Раздел «Значки и панели инструментов в программах» (`AppWidgetsSection`)
+/// — вид «⚙️ Настройки» раздела «Значки».
+pub const APP_WIDGETS_PANEL: &str = "appwidgets";
+/// Раздел «Отклик при запуске» (`LaunchFeedbackSection`) — вид
+/// «⚙️ Настройки» раздела «Курсоры», как вкладка модуля «Курсоры» KDE.
+pub const LAUNCH_FEEDBACK_PANEL: &str = "launchfeedback";
+/// Рамка «Размытие обоев» вкладки «Настройки» (`blurGroup`) — вид
+/// «⚙️ Настройки» раздела «Обои HD» (08.11.2026); во вкладке «Настройки»
+/// её больше нет.
+pub const WALLPAPER_BLUR_PANEL: &str = "wallpaperblur";
+/// Рамки «Фоновые звуки» (`ambientGroup`) и «Звуки событий»
+/// (`soundThemeGroup`) вкладки «Настройки» — вид «⚙️ Настройки» раздела
+/// «Звуки» (08.11.2026); во вкладке «Настройки» их больше нет.
+pub const AMBIENT_SOUNDS_PANEL: &str = "ambientsounds";
+pub const EVENT_SOUNDS_PANEL: &str = "eventsounds";
+/// Раздел «Анимация» (`AnimationsSection`). Где у оконного менеджера нет
+/// анимаций окон (`animations::has_window_animations`), его строки нет, а
+/// галочка «Без анимаций» для программ — вид «⚙️ Настройки» раздела
+/// «GTK-темы».
+pub const ANIMATIONS_KEY: &str = "animations";
+
+/// Разделы каталога, у которых настройки того же рода открываются кнопкой
+/// «⚙️ Настройки» в шапке, а не своей строкой боковой панели (решение
+/// Wehrwolfmann 08.11.2026): `(раздел каталога, раздел настроек)`. Каталог и
+/// настройки одного рода — в одном месте, как вкладки модулей KDE
+/// («Оформление окон → Кнопки заголовка», «Курсоры → Отклик при запуске»).
+/// Механизм один на все пары (`appearance_page::CatalogView::section_settings_panels`),
+/// новая пара — строка здесь. У раздела может быть несколько строк: в
+/// «GTK-темах» стола без своих рамок окон — и кнопки заголовка, и галочка
+/// анимации. Номера 921–924 освобождены вместе со строками.
+pub const SECTION_SETTINGS: &[(&str, &str)] = &[
+    ("fonts", FONT_SETTINGS_PANEL),
+    ("icons", APP_WIDGETS_PANEL),
+    ("cursor", LAUNCH_FEEDBACK_PANEL),
+    ("wallpapers", WALLPAPER_BLUR_PANEL),
+    ("sounds", EVENT_SOUNDS_PANEL),
+    ("sounds", AMBIENT_SOUNDS_PANEL),
+    ("kwineffects", DESKTOP_EFFECTS_PANEL),
+    // Кнопки заголовка — при рамках окон этого стола
+    // ([`WINDOW_BORDER_SECTIONS`]); у стола без раздела рамок (GNOME,
+    // Budgie, Pantheon, COSMIC, Deepin, тайловые) — в «GTK-темах»: там
+    // заголовки рисует тема GTK или сами программы GTK.
+    ("aurorae", WINDOW_BUTTONS_KEY),
+    ("xfwm4", WINDOW_BUTTONS_KEY),
+    ("marco", WINDOW_BUTTONS_KEY),
+    ("cinnamontheme", WINDOW_BUTTONS_KEY),
+    (OPENBOX_KEY, WINDOW_BUTTONS_KEY),
+    ("gtk", WINDOW_BUTTONS_KEY),
+    ("gtk", ANIMATIONS_KEY),
+];
+
+/// Разделы настроек при разделе каталога `cat_key`, в которых в окружении
+/// `de_id` есть что настраивать, в порядке [`SECTION_SETTINGS`]. Настройку,
+/// которой у стола нет, не показываем вовсе — ни строкой, ни кнопкой
+/// (решение Wehrwolfmann 08.11.2026: «в MATE нет настройки отклика…» над
+/// пустой страницей — тупик). «Значки и панели инструментов» — везде, кроме
+/// Deepin (`app_widgets::available`; неизвестное окружение — видно), отклик
+/// при запуске — только KDE (`launch_feedback::supported`), анимация
+/// программ в «GTK-темах» — только там, где своей строки «Анимация» нет
+/// (известный стол без анимаций окон), кнопки заголовка в «GTK-темах» —
+/// только там, где нет раздела рамок, шрифты — везде.
+pub fn section_settings_panels(cat_key: &str, de_id: &str) -> Vec<&'static str> {
+    let known = crate::de_customization::de_from_id(de_id).is_some();
+    SECTION_SETTINGS
+        .iter()
+        .filter(|(k, _)| *k == cat_key)
+        .map(|(_, panel)| *panel)
+        .filter(|panel| match *panel {
+            APP_WIDGETS_PANEL => !known || crate::app_widgets::available(de_id),
+            LAUNCH_FEEDBACK_PANEL => crate::launch_feedback::supported(de_id),
+            DESKTOP_EFFECTS_PANEL => !known || de_id == "kde",
+            ANIMATIONS_KEY => known && !crate::animations::has_window_animations(de_id),
+            WINDOW_BUTTONS_KEY if cat_key == "gtk" => {
+                !WINDOW_BORDER_SECTIONS.iter().any(|b| category_available(b, de_id))
+            }
+            _ => true,
+        })
+        .collect()
+}
+
 /// Ключ раздела «Эффекты экрана» (`screen_effects`). Во вкладке
-/// «Настройки» его никогда не было — ссылки «Оформление → …» на него нет
-/// ([`moved_settings_links`]).
+/// «Настройки» его никогда не было.
 pub const SCREEN_EFFECTS_KEY: &str = "screeneffects";
 
 /// Ключ раздела «Кнопки заголовка окна» (с размером рамки и флажками рамок).
 pub const WINDOW_BUTTONS_KEY: &str = "windowbuttons";
 
-/// Разделы рамок окон, за которыми встаёт [`WINDOW_BUTTONS_KEY`]: в KDE
+/// Разделы рамок окон, в шапке которых — «⚙️ Настройки» с [`WINDOW_BUTTONS_KEY`]: в KDE
 /// кнопки заголовка — вкладка модуля «Оформление окон», и в каждом
 /// окружении они идут сразу за его разделом рамок (Aurorae, XFWM4, Marco).
 /// У Cinnamon своего раздела рамок нет: с 5.4 рамки Muffin рисует тема GTK
@@ -450,16 +533,7 @@ pub fn is_settings_panel(key: &str) -> bool {
 /// Подпись раздела настроек — тот же заголовок, что у самого раздела.
 fn settings_panel_name(key: &str) -> String {
     match key {
-        WINDOW_BUTTONS_KEY => tr("Window title bar buttons"),
-        "launchfeedback" => tr("Launch feedback"),
-        "appwidgets" => tr("Icons and toolbars in applications"),
-        // Заголовок раздела шрифтов вкладки «Настройки» без значка в начале:
-        // значок у строки боковой панели свой.
-        "fontsettings" => crate::qt_settings::section_texts("fontsGroup", "")
-            .map(|(title, _)| title.trim_start_matches(|c: char| !c.is_alphanumeric()).trim().to_string())
-            .unwrap_or_default(),
         "animations" => tr("Animation"),
-        "desktopeffects" => tr("Desktop effects"),
         SCREEN_EFFECTS_KEY => tr("Screen effects"),
         other => other.to_string(),
     }
@@ -474,10 +548,6 @@ fn settings_panel(key: &str) -> ThemeCategory {
         .find(|(_, k)| *k == key)
         .expect("раздел настроек есть в SETTINGS_PANELS");
     let icon = match key {
-        WINDOW_BUTTONS_KEY => "🔘",
-        "launchfeedback" => "⏳",
-        "appwidgets" => "🛠️",
-        "fontsettings" => "🔠",
         "animations" => "💫",
         SCREEN_EFFECTS_KEY => "📺",
         _ => "🪄",
@@ -488,42 +558,69 @@ fn settings_panel(key: &str) -> ThemeCategory {
     }
 }
 
-/// Ссылки «Оформление → …» во вкладке «Настройки» на месте переехавших
-/// разделов: ключ раздела и подпись, в порядке боковой панели
-/// «Оформления», только разделы, видимые в окружении `de_id` (запущенном).
-/// ⏳ Переходные — на одну версию, чтобы человек, привыкший искать
-/// анимацию и шрифты в «Настройках», не потерялся; затем снять вместе с
-/// [`moved_settings_heading`].
-pub fn moved_settings_links(de_id: &str) -> Vec<(String, String)> {
-    grouped_sidebar(&sidebar(Path::new("/")), de_id)
-        .into_iter()
-        .filter(|c| is_settings_panel(&c.key) && c.key != SCREEN_EFFECTS_KEY && category_available(&c.key, de_id))
-        // TRANSLATORS: link in the Settings tab to a section that moved; %1 is the section name.
-        // Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
-        .map(|c| (c.key.clone(), crate::i18n::trf("Appearance → %1", &[&c.name])))
-        .collect()
-}
-
-/// Пояснение над ссылками [`moved_settings_links`].
-pub fn moved_settings_heading() -> String {
-    tr("These settings have moved to the Appearance tab — where KDE System Settings keeps them too.")
-}
+// Ссылок «Оформление → …» на месте переехавших разделов во вкладке
+// «Настройки» больше нет (решение Wehrwolfmann 08.11.2026): переезд давний,
+// разделы и так стоят в боковой панели «Оформления».
 
 /// Где раздел настроек виден — по тем же правилам, по которым его раздел
-/// прячется сам: «Эффекты рабочего стола» — только KDE
-/// (`animations::desktop_effects_state`), «Значки и панели инструментов» —
-/// везде, кроме Deepin (`app_widgets::available`). Остальные разделы
-/// говорят о своём окружении сами и видны везде. Неизвестное окружение —
-/// видно всё.
-fn settings_panel_available(key: &str, de_id: &str) -> bool {
+/// прячется сам: «Анимация» — где у оконного
+/// менеджера есть анимации окон (`animations::has_window_animations`, иначе
+/// её галочка — в «GTK-темах → ⚙️ Настройки»); «Эффекты экрана» — там, где их
+/// можно включить хотя бы в одном роде сеанса (`screen_effects::support`:
+/// sway, river, labwc, niri, Budgie и Deepin не умеют никак — раздел с одной
+/// фразой «нельзя» не показываем, 08.11.2026). Остальные разделы работают в
+/// каждом окружении (хотя бы отчасти) и говорят об оговорках сами.
+/// Неизвестное окружение — видно всё. Род сеанса — [`Session`].
+fn settings_panel_available(key: &str, de_id: &str, session: Session) -> bool {
     if crate::de_customization::de_from_id(de_id).is_none() {
         return true;
     }
     match key {
-        "desktopeffects" => de_id == "kde",
-        "appwidgets" => crate::app_widgets::available(de_id),
+        ANIMATIONS_KEY => crate::animations::has_window_animations(de_id),
+        SCREEN_EFFECTS_KEY => screen_effects_possible(de_id, session),
         _ => true,
     }
+}
+
+/// Род сеанса, в котором смотрят раздел (08.11.2026): то, что в сеансе
+/// выбранного стола невозможно («только на X11», «только на Wayland»), не
+/// показываем. `Any` — сеанс не известен (вкладка «Настройки», сверки без
+/// окна): видно, если работает хоть в одном роде сеанса. Окно вкладки
+/// «Оформление» берёт род сеанса выбранного стола (`LookCtx::for_chosen`:
+/// стол сеанса — как есть, выбранный вручную — его род из
+/// `screen_effects::KNOWN_DESKTOPS`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Session {
+    #[default]
+    Any,
+    X11,
+    Wayland,
+}
+
+impl Session {
+    pub fn from_wayland(wayland: bool) -> Self {
+        if wayland { Session::Wayland } else { Session::X11 }
+    }
+    /// Роды сеанса, которые надо проверить: «любой» — оба.
+    fn kinds(self) -> &'static [bool] {
+        match self {
+            Session::Any => &[true, false],
+            Session::X11 => &[false],
+            Session::Wayland => &[true],
+        }
+    }
+}
+
+/// Можно ли включить эффекты экрана в окружении `de_id` в этом роде сеанса
+/// (MATE, Xfce и LXQt — только на X11, через picom). Имя, которого нет в
+/// таблице окружений эффектов (`screen_effects::KNOWN_DESKTOPS`), — видно:
+/// «не знаю» не повод прятать.
+fn screen_effects_possible(de_id: &str, session: Session) -> bool {
+    use crate::screen_effects::{support, Coverage, KNOWN_DESKTOPS};
+    if !KNOWN_DESKTOPS.iter().any(|(de, _)| *de == de_id) {
+        return true;
+    }
+    session.kinds().iter().any(|wayland| support(de_id, *wayland).coverage != Coverage::None)
 }
 
 /// Ключ раздела рамок Openbox и labwc.
@@ -761,15 +858,22 @@ pub fn category_kind(key: &str) -> Option<&'static str> {
 /// Показывать ли раздел каталога в этом окружении.
 ///
 /// Неизвестный идентификатор окружения — показываем всё: «не знаю, где я»
-/// не повод прятать от человека половину программы.
+/// не повод прятать от человека половину программы. Род сеанса не учтён
+/// (видно, если работает хоть в одном) — с ним [`category_available_in`].
 pub fn category_available(cat_key: &str, de_id: &str) -> bool {
+    category_available_in(cat_key, de_id, Session::Any)
+}
+
+/// [`category_available`] в роде сеанса `session`: одно правило на все
+/// разделы, которые возможны только на X11 или только на Wayland.
+pub fn category_available_in(cat_key: &str, de_id: &str, session: Session) -> bool {
     // Раскладки mate-panel есть только у MATE; есть ли сама панель на этой
     // машине, решает окно (`mate_panel::is_available`).
     if cat_key == MATE_PANEL_KEY {
         return crate::de_customization::de_from_id(de_id) == Some(crate::de_customization::De::Mate);
     }
     if is_settings_panel(cat_key) {
-        return settings_panel_available(cat_key, de_id);
+        return settings_panel_available(cat_key, de_id, session);
     }
     if cat_key == OPENBOX_KEY {
         return openbox_available(de_id);
@@ -969,9 +1073,6 @@ pub fn category_group(key: &str, de_id: &str) -> SidebarGroup {
     match key {
         "active" | "downloaded" | "system" | "favorites" | "popular" | "new" => SidebarGroup::Overview,
         "icons" | "cursor" | "gtk" | "fonts" | "sounds" | "wallpapers" => SidebarGroup::AllApps,
-        // Разделы настроек, которые действуют на программы, а не на сам
-        // стол: отклик при запуске, значки и панели инструментов, шрифты.
-        "launchfeedback" | "appwidgets" | "fontsettings" => SidebarGroup::AllApps,
         "colors" | "widgetstyle" | "kvantum" => {
             if qt_native(de_id) {
                 SidebarGroup::Desktop
@@ -992,19 +1093,6 @@ pub fn category_group(key: &str, de_id: &str) -> SidebarGroup {
 pub fn grouped_sidebar(sidebar: &[ThemeCategory], de_id: &str) -> Vec<ThemeCategory> {
     let mut out = sidebar.to_vec();
     out.sort_by_key(|c| (category_group(&c.key, de_id), c.key == "conky"));
-    // «Кнопки заголовка окна» — сразу за рамками окон этого стола, как
-    // вкладка модуля «Оформление окон» KDE: у MATE рамки — раздел Marco в
-    // хвосте разделов окружений, а не Aurorae в начале списка.
-    if let Some(from) = out.iter().position(|c| c.key == WINDOW_BUTTONS_KEY) {
-        let anchor = out
-            .iter()
-            .rposition(|c| WINDOW_BORDER_SECTIONS.contains(&c.key.as_str()) && category_available(&c.key, de_id));
-        if let Some(anchor) = anchor {
-            let buttons = out.remove(from);
-            let at = if anchor > from { anchor } else { anchor + 1 };
-            out.insert(at, buttons);
-        }
-    }
     out
 }
 
