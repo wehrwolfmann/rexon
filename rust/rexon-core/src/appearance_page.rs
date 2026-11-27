@@ -107,6 +107,22 @@ pub const GRID_SPACING: i32 = 14;
 pub const GRID_MARGIN_H: i32 = 16;
 /// Поля сетки сверху и снизу.
 pub const GRID_MARGIN_V: i32 = 12;
+
+/// Сколько столбцов плиток влезает в ширину `usable` (поля сетки уже
+/// вычтены; зазор после последнего столбца входит в ширину): сколько
+/// плиток наименьшей ширины [`CARD_W`] с зазором помещается, не меньше
+/// одного. Один расчёт на все сетки плиток «Оформления» (каталог магазина,
+/// библиотека Razer Axon) — иначе одна растягивается, а другая оставляет
+/// справа пустую полосу.
+pub fn grid_columns(usable: i32) -> i32 {
+    (usable / (CARD_W + GRID_SPACING)).max(1)
+}
+
+/// Ширина ячейки (плитка плюс зазор) при ширине `usable`: остаток ширины
+/// делится между столбцами [`grid_columns`], но не уже наименьшей плитки.
+pub fn grid_cell_width(usable: i32) -> i32 {
+    (usable / grid_columns(usable)).max(CARD_W + GRID_SPACING)
+}
 /// Поля шапки каталога по бокам.
 pub const HEADER_MARGIN_H: i32 = 16;
 /// Поля шапки каталога сверху и снизу.
@@ -1284,6 +1300,13 @@ pub const SOURCE_SPICES: &str = crate::cinnamon_spices::SOURCE_KEY;
 /// Wallhaven — второй магазин «Обоев HD» рядом с KDE Store
 /// (`crate::wallhaven`).
 pub const SOURCE_WALLHAVEN: &str = crate::wallhaven::SOURCE_KEY;
+/// extensions.gnome.org — единственный магазин «Расширений GNOME»
+/// (`crate::gnome_ego`).
+pub const SOURCE_EGO: &str = crate::gnome_ego::SOURCE_KEY;
+/// Razer Axon — библиотека Axon на этом компьютере, чип «Обоев HD» рядом с
+/// KDE Store и Wallhaven (`crate::axon_window`). Есть, только если Axon
+/// найден ([`CatalogView::axon`]).
+pub const SOURCE_AXON: &str = crate::axon_window::SOURCE_KEY;
 
 /// Ключи источников, которые есть в разделе `category_key` (порядок чипов).
 /// Чего здесь нет, того в разделе нет: выбор помнится при переходе между
@@ -1299,6 +1322,11 @@ pub fn source_keys_for(category_key: &str) -> Vec<&'static str> {
     if crate::cinnamon_spices::type_for_section(category_key).is_some() {
         return vec![SOURCE_SPICES];
     }
+    // Расширения GNOME — только сайт расширений: KDE Store и AUR их не
+    // держат, а ставит их сама оболочка.
+    if crate::gnome_ego::has_section(category_key) {
+        return vec![SOURCE_EGO];
+    }
     let mut keys = vec![SOURCE_OCS];
     if crate::aur::has_category(category_key) {
         keys.extend([SOURCE_AUR, SOURCE_BOTH]);
@@ -1311,6 +1339,18 @@ pub fn source_keys_for(category_key: &str) -> Vec<&'static str> {
     }
     if crate::wallhaven::has_section(category_key) {
         keys.push(SOURCE_WALLHAVEN);
+    }
+    keys
+}
+
+/// [`source_keys_for`] вместе с источником «Razer Axon»: он стоит последним
+/// чипом в разделах `axon_window::SECTIONS`, и только если Axon найден
+/// (`axon` — `axon_window::show_source`, ставит окно). Без Axon источника
+/// нет вовсе — ни чипа, ни действующего выбора.
+pub fn source_keys_in(category_key: &str, axon: bool) -> Vec<&'static str> {
+    let mut keys = source_keys_for(category_key);
+    if axon && crate::axon_window::has_section(category_key) {
+        keys.push(SOURCE_AXON);
     }
     keys
 }
@@ -1387,6 +1427,14 @@ pub struct CatalogView {
     /// экрана MATE на Wayland), не видны (`categories::category_available_in`).
     /// Ставит окно; по умолчанию — «любой».
     pub session: categories::Session,
+    /// Переключатель «Только для вашей версии GNOME» витрины
+    /// extensions.gnome.org: включён — сайт отдаёт только совместимые,
+    /// выключен — все, несовместимые помечены. По умолчанию включён.
+    pub ego_compatible_only: bool,
+    /// Найден ли Razer Axon (`axon_window::show_source`): без него
+    /// источника «Razer Axon» и блока его настроек нет. Ставит окно; по
+    /// умолчанию — нет.
+    pub axon: bool,
 }
 
 impl CatalogView {
@@ -1415,6 +1463,8 @@ impl CatalogView {
             wayland: false,
             section_settings: false,
             session: categories::Session::Any,
+            ego_compatible_only: true,
+            axon: false,
         }
     }
 
@@ -1468,7 +1518,12 @@ impl CatalogView {
         if self.de_blocked() || self.steamos_blocked() {
             return Vec::new();
         }
-        categories::section_settings_panels(&self.category.key, &self.de)
+        let mut panels = categories::section_settings_panels(&self.category.key, &self.de);
+        // Блок «Razer Axon» — только там, где есть сам источник.
+        if !self.axon {
+            panels.retain(|p| *p != categories::AXON_SETTINGS_PANEL);
+        }
+        panels
     }
 
     /// Есть ли у раздела вид «⚙️ Настройки».
@@ -1512,6 +1567,8 @@ impl CatalogView {
             SCREEN_MATE_PANEL
         } else if self.is_settings_panel() {
             SCREEN_SETTINGS
+        } else if self.axon_mode() {
+            SCREEN_AXON
         } else {
             SCREEN_GRID
         }
@@ -1598,7 +1655,13 @@ impl CatalogView {
     /// чип «AUR» вёл бы в заведомо пустую полку.
     pub fn source_applicable(&self) -> bool {
         let ocs = matches!(self.category.store, CatalogSource::Ocs(_) | CatalogSource::OcsShowcase);
-        !self.is_local() && ocs && source_keys_for(&self.category.key).len() > 1
+        !self.is_local() && ocs && self.source_keys().len() > 1
+    }
+
+    /// Источники раздела с поправкой на то, найден ли Axon
+    /// ([`source_keys_in`]).
+    pub fn source_keys(&self) -> Vec<&'static str> {
+        source_keys_in(&self.category.key, self.axon)
     }
 
     /// Активен ли чистый AUR-источник.
@@ -1617,7 +1680,7 @@ impl CatalogView {
     /// помнится, но действует первый источник раздела (KDE Store, у
     /// разделов Cinnamon — Cinnamon Spices).
     pub fn effective_source(&self) -> &str {
-        let keys = source_keys_for(&self.category.key);
+        let keys = self.source_keys();
         if keys.contains(&self.source.as_str()) {
             &self.source
         } else {
@@ -1658,16 +1721,33 @@ impl CatalogView {
             && crate::wallhaven::has_section(&self.category.key)
     }
 
-    /// Открыт ли магазин со своим листингом (Cinnamon Spices, Wallhaven):
-    /// подсказок и фонового прогрева KDE Store у него нет.
+    /// Открыт ли источник «Razer Axon» («Обои HD», чип рядом с KDE Store):
+    /// вместо сетки магазина — свой экран [`SCREEN_AXON`] с библиотекой Axon.
+    pub fn axon_mode(&self) -> bool {
+        self.axon
+            && self.source_applicable()
+            && self.source == SOURCE_AXON
+            && crate::axon_window::has_section(&self.category.key)
+    }
+
+    /// Открыт ли магазин extensions.gnome.org («Расширения GNOME»).
+    pub fn ego_mode(&self) -> bool {
+        !self.is_local() && self.category.store == CatalogSource::GnomeExtensions
+    }
+
+    /// Открыт ли магазин со своим листингом (Cinnamon Spices, Wallhaven,
+    /// extensions.gnome.org): подсказок и фонового прогрева KDE Store у
+    /// него нет.
     pub fn own_site_store(&self) -> bool {
-        self.spices_mode() || self.wallhaven_mode()
+        self.spices_mode() || self.wallhaven_mode() || self.ego_mode() || self.axon_mode()
     }
 
     /// Сортировки выпадающего списка у открытого магазина: `(подпись, ключ)`.
     pub fn sorts(&self) -> &'static [(&'static str, &'static str)] {
         if self.wallhaven_mode() {
             crate::wallhaven::SORTS
+        } else if self.ego_mode() {
+            crate::gnome_ego::SORTS
         } else {
             SORTS
         }
@@ -1713,6 +1793,9 @@ impl CatalogView {
         if self.wallhaven_mode() {
             return crate::wallhaven::effective_sort(&sort).to_string();
         }
+        if self.ego_mode() {
+            return crate::gnome_ego::effective_sort(&sort).to_string();
+        }
         sort
     }
 
@@ -1748,6 +1831,12 @@ impl CatalogView {
         // Под фильтром «только установленное» магазина нет — и его
         // переключателя, сортировки и страниц тоже (`installed_only`).
         let store = !self.installed_only();
+        // У источника «Razer Axon» поиск, сортировка и фильтры — свои, как у
+        // самого Axon, на его экране; листать нечего (библиотека целиком),
+        // ставить из файла — не сюда.
+        if self.axon_mode() {
+            return Chrome { source_bar: store, caveat: self.caveat(), ..Chrome::default() };
+        }
         Chrome {
             search: true,
             search_placeholder: self.search_placeholder(),
@@ -1780,6 +1869,10 @@ impl CatalogView {
             tr("🔍 Search Cinnamon Spices…")
         } else if self.wallhaven_mode() {
             crate::wallhaven::search_placeholder()
+        } else if self.ego_mode() {
+            crate::gnome_ego::search_placeholder()
+        } else if self.axon_mode() {
+            crate::axon_window::search_placeholder()
         } else {
             tr("🔍 Search themes…")
         }
@@ -1924,6 +2017,15 @@ impl CatalogView {
         if self.wallhaven_mode() {
             return format!("wallhaven:{}:{}:{}", self.page, self.active_sort(), self.query);
         }
+        // Библиотеку Axon читает модель источника, не каталог: ключ свой,
+        // чтобы не слиться с витриной KDE Store того же раздела.
+        if self.axon_mode() {
+            return "axon".to_string();
+        }
+        if self.ego_mode() {
+            let only = if self.ego_compatible_only { "mine" } else { "all" };
+            return format!("ego:{only}:{}:{}:{}", self.page, self.active_sort(), self.query);
+        }
         format!(
             "ocs:{}:{}:{}:{}",
             self.query_category_id(),
@@ -1979,6 +2081,9 @@ pub const SCREEN_MATE_PANEL: &str = "matepanel";
 /// Раздел настроек (`categories::SETTINGS_PANELS`): тот же раздел, что во
 /// вкладке «Настройки», ключ раздела — ключ категории.
 pub const SCREEN_SETTINGS: &str = "settings";
+/// Библиотека Razer Axon — источник «Razer Axon» раздела обоев
+/// ([`CatalogView::axon_mode`]): свой экран, сетку каталога не спрашиваем.
+pub const SCREEN_AXON: &str = "axon";
 
 /// Модуль «Параметров системы», которым настраивается Plasma Login Manager
 /// (`/usr/share/applications/kcm_plasmalogin.desktop`,
@@ -4740,6 +4845,8 @@ fn section_settings_tooltip_one(panel: &str) -> String {
         categories::LAUNCH_FEEDBACK_PANEL => launch_feedback_settings_tooltip(),
         categories::ANIMATIONS_KEY => app_animations_settings_tooltip(),
         categories::DESKTOP_EFFECTS_PANEL => desktop_effects_settings_tooltip(),
+        categories::AXON_SETTINGS_PANEL => crate::axon_window::settings_description(),
+        categories::WALLPAPER_PLAYLIST_PANEL => crate::wallpaper_playlist::settings_tooltip(),
         _ => font_settings_tooltip(),
     }
 }
@@ -4812,7 +4919,13 @@ pub fn source_chips() -> Vec<Chip> {
 /// Чипы «Магазин:» раздела — ровно те источники, что в нём есть
 /// ([`source_keys_for`]): общие плюс Cinnamon Spices в разделах тем по составу.
 pub fn source_chips_for(category_key: &str) -> Vec<Chip> {
-    let keys = source_keys_for(category_key);
+    source_chips_in(category_key, false)
+}
+
+/// [`source_chips_for`] с чипом «Razer Axon», если Axon найден
+/// ([`source_keys_in`]).
+pub fn source_chips_in(category_key: &str, axon: bool) -> Vec<Chip> {
+    let keys = source_keys_in(category_key, axon);
     let mut chips: Vec<Chip> = source_chips().into_iter().filter(|c| keys.contains(&c.key)).collect();
     if keys.contains(&SOURCE_SPICES) && keys.len() > 1 {
         chips.push(Chip {
@@ -4826,6 +4939,13 @@ pub fn source_chips_for(category_key: &str) -> Vec<Chip> {
             key: SOURCE_WALLHAVEN,
             label: crate::wallhaven::chip_label(),
             tooltip: crate::wallhaven::chip_tooltip(),
+        });
+    }
+    if keys.contains(&SOURCE_AXON) {
+        chips.push(Chip {
+            key: SOURCE_AXON,
+            label: crate::axon_window::chip_label(),
+            tooltip: crate::axon_window::chip_tooltip(),
         });
     }
     chips
@@ -5349,6 +5469,27 @@ mod tests {
             assert!(journal::view_at(&rexon).applied.is_empty());
             assert!(!applied_revert_banner("colors", None, sp::read_layer_memo(&palette).has_changes(), false).visible);
             let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+}
+
+#[cfg(test)]
+mod grid_width_tests {
+    use super::*;
+
+    #[test]
+    fn grid_fills_the_width() {
+        let cell = CARD_W + GRID_SPACING;
+        // Уже одной плитки — один столбец наименьшей ширины.
+        assert_eq!((grid_columns(100), grid_cell_width(100)), (1, cell));
+        assert_eq!((grid_columns(-5), grid_cell_width(-5)), (1, cell));
+        // Ровно две плитки и чуть больше: остаток уходит в ширину.
+        assert_eq!((grid_columns(2 * cell), grid_cell_width(2 * cell)), (2, cell));
+        assert_eq!((grid_columns(3 * cell - 1), grid_cell_width(3 * cell - 1)), (2, (3 * cell - 1) / 2));
+        // Полный экран 1920 без боковой панели: ряд без пустой полосы.
+        for usable in [500, 1100, 1586, 1904, 2540] {
+            let (c, w) = (grid_columns(usable), grid_cell_width(usable));
+            assert!(c * w <= usable && usable - c * w < c, "{usable}: {c}×{w}");
         }
     }
 }

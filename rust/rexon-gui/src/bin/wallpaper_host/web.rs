@@ -42,12 +42,17 @@ pub fn plan(argv: &[String]) -> Result<QmlPlan, String> {
     }
     env.common_properties(&mut properties, cli.selftest_ms)?;
 
-    // Подмешиваемый в страницу JS: заглушки Wallpaper Engine (до первого
-    // скрипта страницы) и передача свойств обоев со следующим за ней тиком
-    // звука (после загрузки документа). Все три текста — из ядра.
+    // Подмешиваемый в страницу JS: заглушки Wallpaper Engine и обёртки
+    // паузы/громкости общей модели звука обоев (до первого скрипта
+    // страницы), передача свойств обоев со следующим за ней тиком звука
+    // (после загрузки документа). Все тексты — из ядра.
     properties.insert(
         QString::from("polyfillJs"),
-        variant_str(rexon_core::wallpaper::WE_POLYFILL_JS),
+        variant_str(&format!(
+            "{}\n{}",
+            rexon_core::wallpaper::WE_POLYFILL_JS,
+            rexon_core::wallpaper::WEB_PAUSE_JS
+        )),
     );
     let after_load = format!(
         "{}\n{}",

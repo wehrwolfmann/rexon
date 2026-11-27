@@ -46,6 +46,8 @@ pub const ID_ROTATE_BASE: i32 = 40;
 pub const ID_PAUSE: i32 = 50;
 /// Звук обоев.
 pub const ID_MUTE: i32 = 51;
+/// Пауза/продолжение плейлиста обоев Rexon (`wallpaper_playlist`).
+pub const ID_PLAYLIST_PAUSE: i32 = 52;
 /// Пересканировать библиотеку обоев.
 pub const ID_RESCAN: i32 = 60;
 /// Запускать Rexon при входе в систему (флажок).
@@ -82,6 +84,10 @@ const LABELS: &[(&str, &str)] = &[
     ("mute", n_("Mute")),
     ("unmute", n_("Unmute")),
     ("rescan", n_("Rescan Wallpapers")),
+    // Плейлист обоев Rexon (видео, веб, Flash, картинки, Razer Axon) —
+    // подписи те же, что у кнопок блока «Плейлист обоев».
+    ("playlist.pause", n_("Pause Playlist")),
+    ("playlist.resume", n_("Resume Playlist")),
     // Одна подпись с флажком в «Настройках» (`qt_settings`, ключ
     // `tray.autostart`): это одна и та же настройка.
     ("autostart", n_("Start at login")),
@@ -254,6 +260,11 @@ pub struct TrayState {
     pub muted: bool,
     /// Включён автозапуск Rexon при входе.
     pub autostart: bool,
+    /// Играет плейлист обоев Rexon: «Следующие/Предыдущие» ведут его, а не
+    /// демона WE (один вход на оба плейлиста).
+    pub playlist: bool,
+    /// Плейлист обоев Rexon на паузе.
+    pub playlist_paused: bool,
     /// Есть сеанс прав окна (`privilege::run::has_session`): пароль уже
     /// введён, и Rexon может изменять систему до закрытия окна.
     pub admin_session: bool,
@@ -359,8 +370,17 @@ pub fn menu(tab_ids: &[String], state: TrayState) -> Vec<MenuItem> {
     // играть нечему, покупателю нечего (правило #13 — защита от дурака).
     let live = state.daemon;
     out.push(MenuItem::sep());
-    out.push(MenuItem::new(ID_NEXT, ItemKind::Action, t("next")).enabled(live));
-    out.push(MenuItem::new(ID_PREV, ItemKind::Action, t("prev")).enabled(live));
+    // Играет плейлист Rexon — смена обоев работает и без демона.
+    let switch = live || state.playlist;
+    out.push(MenuItem::new(ID_NEXT, ItemKind::Action, t("next")).enabled(switch));
+    out.push(MenuItem::new(ID_PREV, ItemKind::Action, t("prev")).enabled(switch));
+    if state.playlist {
+        out.push(MenuItem::new(
+            ID_PLAYLIST_PAUSE,
+            ItemKind::Action,
+            t(if state.playlist_paused { "playlist.resume" } else { "playlist.pause" }),
+        ));
+    }
     out.push(
         MenuItem::new(ID_SHUFFLE, ItemKind::Check, t("shuffle"))
             .checked(state.shuffle)
@@ -669,6 +689,19 @@ mod tests {
     }
 
     #[test]
+    fn плейлист_rexon_ведёт_смену_и_без_демона() {
+        english();
+        let m = menu(&ids(), TrayState { playlist: true, ..Default::default() });
+        let by = |id: i32| m.iter().find(|i| i.id == id).unwrap();
+        assert!(by(ID_NEXT).enabled && by(ID_PREV).enabled);
+        assert_eq!(by(ID_PLAYLIST_PAUSE).label, "Pause Playlist");
+        // Полоса демона без демона по-прежнему погашена.
+        assert!(!by(ID_PAUSE).enabled);
+        let paused = menu(&ids(), TrayState { playlist: true, playlist_paused: true, ..Default::default() });
+        assert_eq!(paused.iter().find(|i| i.id == ID_PLAYLIST_PAUSE).unwrap().label, "Resume Playlist");
+    }
+
+    #[test]
     fn право_изменять_систему_видно_только_с_сеансом() {
         english();
         let without = menu(&ids(), TrayState::default());
@@ -704,6 +737,7 @@ mod tests {
     fn отмечен_ровно_один_интервал_смены() {
         english();
         let st = TrayState { daemon: true, rotation_secs: 300, ..Default::default() };
+        assert!(!menu(&ids(), st).iter().any(|i| i.id == ID_PLAYLIST_PAUSE), "без плейлиста пункта нет");
         let m = menu(&ids(), st);
         let marked: Vec<&MenuItem> = m
             .iter()

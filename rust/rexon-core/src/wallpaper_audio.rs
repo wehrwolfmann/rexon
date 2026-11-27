@@ -209,13 +209,21 @@ impl Action {
 }
 
 /// Имена условий — одни на оба хранилища.
-pub const CONDITIONS: [&str; 6] = [
+///
+/// Последние два (`gamemode`, `onBattery`) названы ровно так, как их зовёт
+/// протокол чужого движка (повод паузы GameMode и питания от батареи): в его
+/// карту таблица ложится одним и тем же [`AutoActions::to_map`], и своё
+/// второе имя у одного и того же условия значило бы, что выбор человека до
+/// демона не доезжает.
+pub const CONDITIONS: [&str; 8] = [
     "anyWindow",
     "focused",
     "maximized",
     "fullscreen",
     "sessionLocked",
     "sessionInactive",
+    "gamemode",
+    "onBattery",
 ];
 
 /// Таблица «условие → действие».
@@ -233,6 +241,12 @@ pub struct AutoActions {
     pub session_locked: Action,
     /// Сеанс неактивен (переключились на другой).
     pub session_inactive: Action,
+    /// Идёт игра: включён игровой режим (Feral GameMode) или запущен
+    /// gamescope.
+    pub gamemode: Action,
+    /// Компьютер работает от батареи. На машине без батареи не бывает
+    /// никогда.
+    pub on_battery: Action,
 }
 
 impl Default for AutoActions {
@@ -245,6 +259,15 @@ impl Default for AutoActions {
     /// не видно вовсе, значит и работать им незачем — пауза. Окно во весь
     /// экран — обоев тоже не видно, но пауза дала бы рывок при каждом
     /// сворачивании, поэтому только тишина.
+    ///
+    /// Батарея и игра — пауза, а не «ничего» (у чужого движка там «ничего»).
+    /// Разница намеренная, решение Wehrwolfmann 15.11.2026: живые обои на
+    /// ноутбуке от батареи — это заметно короче работа без розетки, а во
+    /// время игры — кадры, отнятые у игры той же видеокартой. Человек,
+    /// который этого не знает, чинить не пойдёт — он решит, что «ноутбук
+    /// слабый» (правило #13: безопасное поведение по умолчанию). Пауза, а не
+    /// «остановить»: вернулся к розетке — обои идут дальше с того же места,
+    /// без рывка в начало.
     fn default() -> Self {
         Self {
             any_window: Action::None,
@@ -253,6 +276,8 @@ impl Default for AutoActions {
             fullscreen: Action::Pause,
             session_locked: Action::Stop,
             session_inactive: Action::Stop,
+            gamemode: Action::Pause,
+            on_battery: Action::Pause,
         }
     }
 }
@@ -283,11 +308,13 @@ impl AutoActions {
             fullscreen: pick("fullscreen", d.fullscreen),
             session_locked: pick("sessionLocked", d.session_locked),
             session_inactive: pick("sessionInactive", d.session_inactive),
+            gamemode: pick("gamemode", d.gamemode),
+            on_battery: pick("onBattery", d.on_battery),
         }
     }
 
     /// Действия в порядке [`CONDITIONS`].
-    pub fn list(self) -> [Action; 6] {
+    pub fn list(self) -> [Action; 8] {
         [
             self.any_window,
             self.focused,
@@ -295,7 +322,23 @@ impl AutoActions {
             self.fullscreen,
             self.session_locked,
             self.session_inactive,
+            self.gamemode,
+            self.on_battery,
         ]
+    }
+
+    /// Нужно ли вообще спрашивать про окна: хоть одно из «оконных» условий
+    /// что-то делает. Опрос оконного менеджера — это процесс на каждом тике,
+    /// и ради одной батареи его гонять незачем.
+    pub fn windows_matter(self) -> bool {
+        [self.any_window, self.focused, self.maximized, self.fullscreen]
+            .iter()
+            .any(|a| *a != Action::None)
+    }
+
+    /// Нужно ли спрашивать logind о сеансе (заблокирован / неактивен).
+    pub fn session_matters(self) -> bool {
+        self.session_locked != Action::None || self.session_inactive != Action::None
     }
 }
 
@@ -311,13 +354,17 @@ pub struct Conditions {
     pub fullscreen: bool,
     pub session_locked: bool,
     pub session_inactive: bool,
+    /// Идёт игра: игровой режим включён или запущен gamescope.
+    pub gamemode: bool,
+    /// Питание от батареи.
+    pub on_battery: bool,
     /// Звук играет кто-то ещё (не мы).
     pub other_audio: bool,
 }
 
 impl Conditions {
     /// Флаги в порядке [`CONDITIONS`].
-    pub fn list(self) -> [bool; 6] {
+    pub fn list(self) -> [bool; 8] {
         [
             self.any_window,
             self.focused,
@@ -325,6 +372,8 @@ impl Conditions {
             self.fullscreen,
             self.session_locked,
             self.session_inactive,
+            self.gamemode,
+            self.on_battery,
         ]
     }
 }
@@ -502,26 +551,65 @@ impl AudioSettings {
 /// разворачивает её в таблицу ядро — чтобы значение галочки и значения
 /// таблицы не могли разойтись.
 pub fn actions_for_hide_when_covered(on: bool) -> AutoActions {
-    if on {
-        AutoActions::default()
-    } else {
-        AutoActions {
-            any_window: Action::None,
-            focused: Action::None,
-            maximized: Action::None,
-            fullscreen: Action::None,
-            // Заблокированный и неактивный сеанс из галочки не выключаются:
-            // играть обоями в чужом сеансе или на замке — это не «настройка
-            // на любителя», а разряженная батарея и звук из ниоткуда.
-            session_locked: Action::Stop,
-            session_inactive: Action::Stop,
-        }
-    }
+    actions_for_choices(SimpleChoices {
+        hide_when_covered: on,
+        ..SimpleChoices::default()
+    })
 }
 
 /// Обратный вопрос: включена ли эта галочка сейчас.
 pub fn hide_when_covered(actions: &AutoActions) -> bool {
     actions.fullscreen != Action::None || actions.maximized != Action::None
+}
+
+/// Три галочки раздела «Обои» вместо таблицы «условие × действие».
+///
+/// Каждая галочка разворачивается в строки таблицы здесь, в ядре, — чтобы
+/// окно настроек и хост обоев не могли понять одну и ту же галочку
+/// по-разному (правило #12). Умолчание — все три включены: то же, что
+/// [`AutoActions::default`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SimpleChoices {
+    /// «Останавливать обои, когда их не видно за окном».
+    pub hide_when_covered: bool,
+    /// «Ставить обои на паузу при работе от батареи».
+    pub pause_on_battery: bool,
+    /// «Ставить обои на паузу во время игры».
+    pub pause_in_game: bool,
+}
+
+impl Default for SimpleChoices {
+    fn default() -> Self {
+        choices_of(&AutoActions::default())
+    }
+}
+
+/// Галочки → таблица.
+pub fn actions_for_choices(c: SimpleChoices) -> AutoActions {
+    let d = AutoActions::default();
+    let covered = |on: bool, action: Action| if on { action } else { Action::None };
+    AutoActions {
+        any_window: covered(c.hide_when_covered, d.any_window),
+        focused: covered(c.hide_when_covered, d.focused),
+        maximized: covered(c.hide_when_covered, d.maximized),
+        fullscreen: covered(c.hide_when_covered, d.fullscreen),
+        // Заблокированный и неактивный сеанс галочками не выключаются:
+        // играть обоями в чужом сеансе или на замке — это не «настройка
+        // на любителя», а разряженная батарея и звук из ниоткуда.
+        session_locked: d.session_locked,
+        session_inactive: d.session_inactive,
+        gamemode: if c.pause_in_game { Action::Pause } else { Action::None },
+        on_battery: if c.pause_on_battery { Action::Pause } else { Action::None },
+    }
+}
+
+/// Таблица → галочки (что показать в окне настроек).
+pub fn choices_of(actions: &AutoActions) -> SimpleChoices {
+    SimpleChoices {
+        hide_when_covered: hide_when_covered(actions),
+        pause_on_battery: actions.on_battery != Action::None,
+        pause_in_game: actions.gamemode != Action::None,
+    }
 }
 
 /// Что хост должен сделать прямо сейчас.
@@ -656,6 +744,130 @@ pub fn screensaver_argv() -> Vec<String> {
 /// Разбор ответа хранителя экрана.
 pub fn parse_screensaver_active(stdout: &str) -> bool {
     stdout.trim().eq_ignore_ascii_case("true")
+}
+
+fn argv(parts: &[&str]) -> Vec<String> {
+    parts.iter().map(|s| (*s).to_string()).collect()
+}
+
+/// Свойство D-Bus — вызовом `Properties.Get`, а не `busctl get-property`.
+///
+/// ⚠️ `--auto-start=no` обязателен, и именно поэтому `call`: служба
+/// игрового режима запускается шиной по первому обращению. Опрос «идёт ли
+/// игра» раз в пару секунд сам поднимал бы демон игрового режима на каждой
+/// машине, где его поставили, но не пользуются. Ключ `--auto-start` у
+/// `busctl` действует только на `call`.
+fn dbus_property_argv(bus: &str, service: &str, path: &str, iface: &str, prop: &str) -> Vec<String> {
+    argv(&[
+        "busctl",
+        bus,
+        "--auto-start=no",
+        "call",
+        service,
+        path,
+        "org.freedesktop.DBus.Properties",
+        "Get",
+        "ss",
+        iface,
+        prop,
+    ])
+}
+
+/// Работает ли машина от батареи — свойство `OnBattery` службы UPower
+/// (системная шина). На компьютере без батареи UPower отвечает `false`.
+pub fn upower_on_battery_argv() -> Vec<String> {
+    dbus_property_argv(
+        "--system",
+        "org.freedesktop.UPower",
+        "/org/freedesktop/UPower",
+        "org.freedesktop.UPower",
+        "OnBattery",
+    )
+}
+
+/// Сколько программ попросили игровой режим — свойство `ClientCount`
+/// службы Feral GameMode (шина сеанса). Больше нуля — идёт игра.
+pub fn gamemode_client_count_argv() -> Vec<String> {
+    dbus_property_argv(
+        "--user",
+        "com.feralinteractive.GameMode",
+        "/com/feralinteractive/GameMode",
+        "com.feralinteractive.GameMode",
+        "ClientCount",
+    )
+}
+
+/// Последнее слово ответа `busctl call … Properties.Get`: `v b true`,
+/// `v i 2`. Пусто — ответа нет.
+fn dbus_value(stdout: &str) -> Option<&str> {
+    let mut words = stdout.split_whitespace();
+    // Ответ начинается с подписи варианта `v` и типа значения.
+    if words.next()? != "v" {
+        return None;
+    }
+    words.nth(1)
+}
+
+/// Разбор логического свойства (`v b true`). Непонятный ответ — `None`.
+pub fn parse_dbus_bool(stdout: &str) -> Option<bool> {
+    match dbus_value(stdout)? {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+/// Разбор целого свойства (`v i 2`, `v u 2`). Непонятный ответ — `None`.
+pub fn parse_dbus_int(stdout: &str) -> Option<i64> {
+    dbus_value(stdout)?.parse().ok()
+}
+
+/// Запасной путь для батареи, когда UPower нет или он молчит: состояние
+/// батарей из `/sys/class/power_supply/BAT*/status`. От батареи — когда
+/// хоть одна разряжается. Батарей нет — никогда.
+pub fn sysfs_on_battery(statuses: &[String]) -> bool {
+    statuses
+        .iter()
+        .any(|s| s.trim().eq_ignore_ascii_case("Discharging"))
+}
+
+/// Имена процесса gamescope в `/proc/PID/comm`. Отдельный gamescope на
+/// рабочем столе — это игра, запущенная в нём (Steam так запускает игры с
+/// параметром `gamescope %command%`), даже когда игровой режим не включён.
+pub const GAMESCOPE_COMMS: [&str; 2] = ["gamescope", "gamescope-wl"];
+
+/// Процесс с таким `comm` — gamescope.
+pub fn is_gamescope_comm(comm: &str) -> bool {
+    let comm = comm.trim();
+    GAMESCOPE_COMMS.iter().any(|g| *g == comm)
+}
+
+/// Состояние сеанса — один вопрос logind: активен ли он и заблокирован ли.
+///
+/// `session_id` — `XDG_SESSION_ID` процесса. Если его нет (хост запущен
+/// службой пользователя, вне сеанса) или он негоден для командной строки,
+/// спрашиваем про `auto` — так logind называет сеанс вызывающего, а без
+/// него — графический сеанс того же пользователя.
+pub fn logind_session_argv(session_id: &str) -> Vec<String> {
+    let id = if crate::privilege::revoke::valid_session_id(session_id) {
+        session_id
+    } else {
+        "auto"
+    };
+    argv(&["loginctl", "show-session", id, "-p", "Active", "-p", "LockedHint"])
+}
+
+/// Разбор ответа logind в `(неактивен, заблокирован)`.
+///
+/// ⚠️ Непонятный ответ (нет logind, сеанс не нашёлся) — `(false, false)`:
+/// «сеанс неактивен» по ошибке опроса оставил бы человека с вечно стоящими
+/// обоями, и чинить это он не пошёл бы — решил бы, что обои сломаны.
+pub fn parse_logind_session(stdout: &str) -> (bool, bool) {
+    use crate::privilege::revoke::{parse_active_locked, SessionAnswer};
+    match parse_active_locked(stdout) {
+        SessionAnswer::Seen { active, locked } => (!active, locked),
+        _ => (false, false),
+    }
 }
 
 /// Разбор геометрии активного окна X11 в наблюдаемые условия.
@@ -1149,6 +1361,169 @@ width: 1920
         // Замок и чужой сеанс галочкой не отключаются.
         assert_eq!(off.session_locked, Action::Stop);
         assert_eq!(off.session_inactive, Action::Stop);
+    }
+
+    #[test]
+    fn умолчания_новых_условий_берегут_батарею_и_игру() {
+        let a = AutoActions::default();
+        assert_eq!(a.on_battery, Action::Pause, "от батареи — пауза");
+        assert_eq!(a.gamemode, Action::Pause, "игра — пауза");
+        assert!(a.session_inactive.pauses(), "чужой сеанс — обои стоят");
+        assert_eq!(CONDITIONS.len(), a.list().len());
+        assert_eq!(CONDITIONS.len(), Conditions::default().list().len());
+        // Имена — ровно как у протокола чужого движка.
+        assert_eq!(&CONDITIONS[6..], &["gamemode", "onBattery"]);
+    }
+
+    /// Каждое новое условие × каждое действие: решение то, что обещает
+    /// действие, и только когда условие выполнено.
+    #[test]
+    fn новые_условия_на_все_действия() {
+        type Set = fn(&mut AutoActions, Action);
+        type Flag = fn(&mut Conditions);
+        let rows: [(&str, Set, Flag); 3] = [
+            ("батарея", |a, x| a.on_battery = x, |c| c.on_battery = true),
+            ("игра", |a, x| a.gamemode = x, |c| c.gamemode = true),
+            ("сеанс неактивен", |a, x| a.session_inactive = x, |c| c.session_inactive = true),
+        ];
+        for (name, set, flag) in rows {
+            for action in [Action::None, Action::Mute, Action::Pause, Action::Stop] {
+                // Остальные условия выключены — проверяется одна строка.
+                let mut actions = actions_for_choices(SimpleChoices {
+                    hide_when_covered: false,
+                    pause_on_battery: false,
+                    pause_in_game: false,
+                });
+                actions.session_locked = Action::None;
+                actions.session_inactive = Action::None;
+                set(&mut actions, action);
+                let s = AudioSettings { actions, ..AudioSettings::default() };
+                let mut c = Conditions::default();
+                flag(&mut c);
+                let d = s.decide(&c);
+                assert_eq!(d.audio_on, !action.mutes(), "{name} × {action:?}: звук");
+                assert_eq!(d.paused, action.pauses(), "{name} × {action:?}: пауза");
+                assert_eq!(d.rewind, action == Action::Stop, "{name} × {action:?}: в начало");
+                // Условие не выполнено — действие не срабатывает.
+                let calm = s.decide(&Conditions::default());
+                assert!(calm.audio_on && !calm.paused, "{name} × {action:?}: спокойно");
+            }
+        }
+    }
+
+    #[test]
+    fn батарея_и_игра_по_умолчанию_ставят_на_паузу() {
+        let s = AudioSettings::default();
+        for c in [
+            Conditions { on_battery: true, ..Conditions::default() },
+            Conditions { gamemode: true, ..Conditions::default() },
+            Conditions { session_inactive: true, ..Conditions::default() },
+        ] {
+            let d = s.decide(&c);
+            assert!(d.paused && !d.audio_on, "{c:?}");
+        }
+        // Неактивный сеанс строже батареи: «остановить» побеждает «паузу».
+        let both = Conditions { on_battery: true, session_inactive: true, ..Conditions::default() };
+        assert!(s.decide(&both).rewind);
+    }
+
+    #[test]
+    fn галочки_разворачиваются_в_таблицу_и_обратно() {
+        for bits in 0..8u8 {
+            let c = SimpleChoices {
+                hide_when_covered: bits & 1 != 0,
+                pause_on_battery: bits & 2 != 0,
+                pause_in_game: bits & 4 != 0,
+            };
+            let a = actions_for_choices(c);
+            assert_eq!(choices_of(&a), c, "{c:?}");
+            // Замок и чужой сеанс галочками не выключаются никогда.
+            assert_eq!(a.session_locked, Action::Stop);
+            assert_eq!(a.session_inactive, Action::Stop);
+        }
+        assert_eq!(SimpleChoices::default(), choices_of(&AutoActions::default()));
+        assert_eq!(actions_for_choices(SimpleChoices::default()), AutoActions::default());
+        // Старая галочка «когда не видно» новых строк не трогает.
+        let off = actions_for_hide_when_covered(false);
+        assert_eq!(off.on_battery, Action::Pause);
+        assert_eq!(off.gamemode, Action::Pause);
+    }
+
+    #[test]
+    fn новые_условия_доезжают_до_протокола_чужого_движка() {
+        let s = AudioSettings {
+            actions: AutoActions {
+                gamemode: Action::Stop,
+                on_battery: Action::Mute,
+                ..AutoActions::default()
+            },
+            ..AudioSettings::default()
+        };
+        let mut g = Map::new();
+        s.write_engine_global(&mut g);
+        let Some(Value::Object(policy)) = g.get(ENGINE_KEY_ACTIONS) else {
+            panic!("нет таблицы")
+        };
+        // Та же карта, которую разбирает раскладка протокола демона.
+        let pb = crate::we_settings::map_to_auto_replay(policy);
+        assert_eq!(pb.gamemode, Action::Stop.as_i64() as i32);
+        assert_eq!(pb.on_battery, Action::Mute.as_i64() as i32);
+        assert_eq!(pb.session_inactive, Action::Stop.as_i64() as i32);
+        assert_eq!(AudioSettings::from_engine_global(&g), s);
+        // Прежняя запись без новых ключей — умолчания, а не «ничего».
+        let old = map(r#"{"wallpaper_audio_actions": {"fullscreen": 0}}"#);
+        let a = AudioSettings::from_map(&old).actions;
+        assert_eq!((a.on_battery, a.gamemode), (Action::Pause, Action::Pause));
+    }
+
+    #[test]
+    fn ответы_upower_и_gamemode_разбираются() {
+        // Сняты с `busctl call … Properties.Get` дословно.
+        assert_eq!(parse_dbus_bool("v b false\n"), Some(false));
+        assert_eq!(parse_dbus_bool("v b true\n"), Some(true));
+        assert_eq!(parse_dbus_int("v i 0\n"), Some(0));
+        assert_eq!(parse_dbus_int("v i 2\n"), Some(2));
+        // Служба не запущена: busctl пишет ошибку в stderr, stdout пуст.
+        assert_eq!(parse_dbus_bool(""), None);
+        assert_eq!(parse_dbus_int(""), None);
+        assert_eq!(parse_dbus_bool("b true"), None, "без подписи варианта — не наш ответ");
+        assert_eq!(parse_dbus_int("v i много"), None);
+        // Шиной службу не поднимаем: игровой режим не стартует от опроса.
+        for argv in [upower_on_battery_argv(), gamemode_client_count_argv()] {
+            assert_eq!(argv[0], "busctl");
+            assert!(argv.iter().any(|a| a == "--auto-start=no"), "{argv:?}");
+            assert!(argv.iter().any(|a| a == "call"));
+        }
+        assert!(upower_on_battery_argv().contains(&"--system".to_string()));
+        assert!(gamemode_client_count_argv().contains(&"--user".to_string()));
+        assert_eq!(upower_on_battery_argv().last().map(String::as_str), Some("OnBattery"));
+        assert_eq!(gamemode_client_count_argv().last().map(String::as_str), Some("ClientCount"));
+    }
+
+    #[test]
+    fn батарея_из_sys_и_gamescope() {
+        let st = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(sysfs_on_battery(&st(&["Discharging\n"])));
+        assert!(!sysfs_on_battery(&st(&["Charging\n"])));
+        assert!(!sysfs_on_battery(&st(&["Full\n", "Not charging\n"])));
+        assert!(!sysfs_on_battery(&[]), "ПК без батареи — никогда");
+        assert!(is_gamescope_comm("gamescope\n"));
+        assert!(is_gamescope_comm("gamescope-wl\n"));
+        assert!(!is_gamescope_comm("gamescope-session"));
+        assert!(!is_gamescope_comm("steam"));
+    }
+
+    #[test]
+    fn сеанс_logind_разбирается() {
+        assert_eq!(parse_logind_session("Active=yes\nLockedHint=no\n"), (false, false));
+        assert_eq!(parse_logind_session("Active=no\nLockedHint=no\n"), (true, false));
+        assert_eq!(parse_logind_session("Active=yes\nLockedHint=yes\n"), (false, true));
+        // logind молчит или сеанса нет — обои не встают навсегда.
+        assert_eq!(parse_logind_session(""), (false, false));
+        assert_eq!(parse_logind_session("мусор"), (false, false));
+        assert_eq!(logind_session_argv("2")[2], "2");
+        assert_eq!(logind_session_argv("")[2], "auto", "вне сеанса — свой графический сеанс");
+        assert_eq!(logind_session_argv("--help")[2], "auto", "ключ под видом номера");
     }
 
     #[test]

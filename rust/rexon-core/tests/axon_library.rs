@@ -307,23 +307,23 @@ fn prefixes_are_found_without_walking_the_disk() {
 }
 
 #[test]
-fn tab_shows_only_with_axon_or_a_chosen_folder() {
-    use rexon_core::axon_window::show_tab;
+fn source_shows_only_with_axon_or_a_chosen_folder() {
+    use rexon_core::axon_window::show_source;
     let empty = bench("tab-empty");
-    // Префикс Wine есть, Axon в нём нет — вкладки нет.
+    // Префикс Wine есть, Axon в нём нет — источника нет.
     fs::create_dir_all(empty.join(".wine/drive_c/users/u")).unwrap();
-    assert!(!show_tab(&ax::AxonEnv::with_home(&empty)));
+    assert!(!show_source(&ax::AxonEnv::with_home(&empty)));
     // Каталог Axon без библиотеки (не входил ни разу) — тоже нет.
     put(&axon_root(&empty.join(".wine"), "u").join("guest-0/UserSetting"), "{}");
-    assert!(!show_tab(&ax::AxonEnv::with_home(&empty)));
-    // Папка, указанная вручную, держит вкладку, даже если её уже нет.
+    assert!(!show_source(&ax::AxonEnv::with_home(&empty)));
+    // Папка, указанная вручную, держит источник, даже если её уже нет.
     let mut env = ax::AxonEnv::with_home(&empty);
     env.source_dirs = vec![empty.join("пропавшая")];
-    assert!(show_tab(&env));
+    assert!(show_source(&env));
     // Axon с библиотекой найден сам.
     let home = bench("tab-axon");
     home_with_axon(&home);
-    assert!(show_tab(&ax::AxonEnv::with_home(&home)));
+    assert!(show_source(&ax::AxonEnv::with_home(&home)));
 }
 
 #[test]

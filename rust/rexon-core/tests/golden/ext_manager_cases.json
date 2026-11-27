@@ -3894,16 +3894,6 @@
     },
     {
      "op": "CopyTree",
-     "src": "/tmp/sb/home/.config/rexon/extensions/cnk1/data/fonts",
-     "dest": "/tmp/sb/home/.config/conky/fonts"
-    },
-    {
-     "op": "WriteFile",
-     "path": "/tmp/sb/home/.config/conky/fonts/.rexon-owner",
-     "content": "cnk1\n"
-    },
-    {
-     "op": "CopyTree",
      "src": "/tmp/sb/home/.config/rexon/extensions/cnk1/data",
      "dest": "/tmp/sb/home/.config/conky/cnk1"
     },
@@ -4106,16 +4096,6 @@
     {
      "op": "MakeDirs",
      "path": "/tmp/sb/home/.config/conky"
-    },
-    {
-     "op": "CopyTree",
-     "src": "/tmp/sb/home/.config/rexon/extensions/cnk3/data/sub",
-     "dest": "/tmp/sb/home/.config/conky/sub"
-    },
-    {
-     "op": "WriteFile",
-     "path": "/tmp/sb/home/.config/conky/sub/.rexon-owner",
-     "content": "cnk3\n"
     },
     {
      "op": "CopyTree",

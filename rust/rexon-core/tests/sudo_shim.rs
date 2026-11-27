@@ -116,14 +116,13 @@ impl Stand {
         let _ = std::fs::remove_file(&out);
         let _ = std::fs::remove_file(&err);
         std::fs::write(&list, cmds.join("\n") + "\n").unwrap();
-        let mut child = Command::new(self.root.join("paru"))
-            .args(["-S", "--needed", "--noconfirm", "--sudo", SHIM, "--sudoflags", &reg.flag, "t"])
+        let mut cmd = Command::new(self.root.join("paru"));
+        cmd.args(["-S", "--needed", "--noconfirm", "--sudo", SHIM, "--sudoflags", &reg.flag, "t"])
             .env("XDG_RUNTIME_DIR", &self.root)
             .env("FAKE_CMDS", &list)
             .env("FAKE_OUT", &out)
-            .env("FAKE_ERR", &err)
-            .spawn()
-            .unwrap();
+            .env("FAKE_ERR", &err);
+        let mut child = spawn_retry_busy(&mut cmd);
         wait_child(&mut child);
         let codes = std::fs::read_to_string(&out)
             .unwrap_or_default()
@@ -157,6 +156,23 @@ impl Stand {
 impl Drop for Stand {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+/// Запуск только что записанного сценария-заглушки. Пока параллельный тест
+/// в этом же процессе делает fork, у ребёнка на миг остаётся открытый на
+/// запись дескриптор нашего файла, и exec отвечает ETXTBSY («Text file
+/// busy») — гонка ядра, а не дефект шима. Короткий повтор её снимает.
+fn spawn_retry_busy(cmd: &mut Command) -> std::process::Child {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match cmd.spawn() {
+            Ok(child) => return child,
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => panic!("не запустился {:?}: {e}", cmd.get_program()),
+        }
     }
 }
 

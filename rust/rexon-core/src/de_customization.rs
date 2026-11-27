@@ -1583,6 +1583,22 @@ pub fn gsettings_list_remove_script(schema: &str, key: &str, marker: &str) -> St
     )
 }
 
+/// Сценарий: убрать из списка gsettings элемент `entry` — только точное
+/// совпадение (`'a@b'` не задевает `'xa@b'`), и писать ключ, только если
+/// элемент там был: нетронутый ключ остаётся значением по умолчанию.
+pub fn gsettings_list_drop_exact_script(schema: &str, key: &str, entry: &str) -> String {
+    format!(
+        "{read}\
+         if printf '%s\\n' \"$items\" | grep -qxF {quoted}; then\n\
+         \x20 items=$(printf '%s\\n' \"$items\" | grep -vxF {quoted} | grep -v '^$')\n\
+         \x20 new=$(printf '%s' \"$items\" | paste -sd, -)\n\
+         \x20 gsettings set {schema} {key} \"[$new]\"\n\
+         fi\n",
+        read = read_list_snippet(schema, key),
+        quoted = sq(&format!("'{entry}'")),
+    )
+}
+
 /// Сценарий включения апплета Cinnamon — в НАЧАЛО правой зоны первой
 /// панели, как ставит окно настроек Cinnamon (решение Wehrwolfmann
 /// 20.10.2026): апплеты той же зоны сдвигаются на одно место, новый встаёт
@@ -1658,25 +1674,37 @@ pub fn gnome_extension_enable_script(uuid: &str, dest_dir: &str) -> String {
          if command -v gnome-extensions >/dev/null 2>&1; then\n\
          \x20 gnome-extensions enable {uuid_q} && exit 0\n\
          fi\n\
+         {undisable}\
          {fallback}",
         meta = sq(&format!("{dest_dir}/metadata.json")),
         schemas = sq(&format!("{dest_dir}/schemas")),
         uuid_q = sq(uuid),
+        // Сначала из `disabled-extensions`: он сильнее `enabled-extensions`,
+        // и выключенное прежде системное иначе так и осталось бы выключенным.
+        undisable = gsettings_list_drop_exact_script("org.gnome.shell", "disabled-extensions", uuid),
         fallback =
             gsettings_list_add_script("org.gnome.shell", "enabled-extensions", uuid, uuid),
     )
 }
 
-/// Сценарий отключения расширения GNOME (обратное к предыдущему).
+/// Сценарий отключения расширения GNOME (обратное к предыдущему): сначала
+/// штатная утилита; без неё — сами списки настроек, как их правит GNOME:
+/// uuid уходит из `enabled-extensions` и встаёт в `disabled-extensions`.
+/// Второе нужно включённым по умолчанию системным расширениям — их нет в
+/// своём `enabled-extensions` (их включает режим сеанса или значение по
+/// умолчанию), и выключает их только `disabled-extensions`. Обратимо:
+/// сценарий включения убирает uuid оттуда.
 pub fn gnome_extension_disable_script(uuid: &str) -> String {
     format!(
         "if command -v gnome-extensions >/dev/null 2>&1; then\n\
-         \x20 gnome-extensions disable {uuid_q} 2>/dev/null || true\n\
+         \x20 gnome-extensions disable {uuid_q} 2>/dev/null && exit 0\n\
          fi\n\
-         {fallback}",
+         {unenable}\
+         {disable}",
         uuid_q = sq(uuid),
-        fallback =
-            gsettings_list_remove_script("org.gnome.shell", "enabled-extensions", uuid),
+        unenable = gsettings_list_drop_exact_script("org.gnome.shell", "enabled-extensions", uuid),
+        disable =
+            gsettings_list_add_script("org.gnome.shell", "disabled-extensions", uuid, &format!("'{uuid}'")),
     )
 }
 
@@ -1987,6 +2015,61 @@ mod tests {
         assert!(s.contains("glib-compile-schemas"));
         assert!(s.contains("gnome-extensions enable 'e@x'"));
         assert!(s.contains("gsettings set org.gnome.shell enabled-extensions"));
+    }
+
+    /// Без рабочей `gnome-extensions` (здесь она отказывает) выключение
+    /// правит оба списка, как сам GNOME, а включение — обратно; соседние
+    /// uuid (и похожие по подстроке) целы. Настоящий bash, поддельные
+    /// `gsettings`/`gnome-extensions`/`gnome-shell` — живые настройки не
+    /// трогаются.
+    #[test]
+    fn gnome_disable_without_tool_uses_disabled_list_and_is_reversible() {
+        use std::os::unix::fs::PermissionsExt;
+        let have = |c: &str| std::process::Command::new("sh").arg("-c").arg(format!("command -v {c}")).output().is_ok_and(|o| o.status.success());
+        if !(have("bash") && have("paste") && have("sed")) {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("rexon-gnome-disable-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let tool = |name: &str, body: &str| {
+            let f = dir.join(name);
+            std::fs::write(&f, body).unwrap();
+            std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o755)).unwrap();
+        };
+        tool(
+            "gsettings",
+            "#!/bin/sh\nd=\"$(dirname \"$0\")\"\n\
+             if [ \"$1\" = get ]; then if [ -f \"$d/$3\" ]; then cat \"$d/$3\"; else echo '@as []'; fi; exit 0; fi\n\
+             if [ \"$1\" = set ]; then printf '%s\\n' \"$4\" > \"$d/$3\"; echo \"set $3\" >> \"$d/log\"; exit 0; fi\nexit 1\n",
+        );
+        tool("gnome-extensions", "#!/bin/sh\nexit 1\n");
+        tool("gnome-shell", "#!/bin/sh\necho 'GNOME Shell 47.0'\n");
+        std::fs::write(dir.join("enabled-extensions"), "['a@x', 'sys@gnome.org']\n").unwrap();
+        std::fs::write(dir.join("disabled-extensions"), "['xsys@gnome.org']\n").unwrap();
+        let path = format!("{}:{}", dir.display(), std::env::var("PATH").unwrap_or_default());
+        let run = |script: String| {
+            let out = std::process::Command::new("bash").arg("-c").arg(script).env("PATH", &path).output().unwrap();
+            assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        };
+        let read = |key: &str| std::fs::read_to_string(dir.join(key)).unwrap().trim().to_string();
+
+        run(gnome_extension_disable_script("sys@gnome.org"));
+        assert_eq!(read("enabled-extensions"), "['a@x']");
+        assert_eq!(read("disabled-extensions"), "['xsys@gnome.org','sys@gnome.org']");
+        // Повтор ничего не дублирует.
+        run(gnome_extension_disable_script("sys@gnome.org"));
+        assert_eq!(read("disabled-extensions"), "['xsys@gnome.org','sys@gnome.org']");
+
+        run(gnome_extension_enable_script("sys@gnome.org", "/nonexistent/sys@gnome.org"));
+        assert_eq!(read("disabled-extensions"), "['xsys@gnome.org']");
+        assert_eq!(read("enabled-extensions"), "['a@x','sys@gnome.org']");
+        // Включение того, чего в disabled-extensions нет, этот ключ не пишет.
+        let log_before = std::fs::read_to_string(dir.join("log")).unwrap_or_default();
+        run(gnome_extension_enable_script("b@x", "/nonexistent/b@x"));
+        let log = std::fs::read_to_string(dir.join("log")).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!log[log_before.len()..].contains("set disabled-extensions"), "{log}");
     }
 
     #[test]

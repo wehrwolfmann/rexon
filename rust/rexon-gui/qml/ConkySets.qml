@@ -2,7 +2,7 @@
 // обои — одной кнопкой «Применить»; «Сохранить запущенные как набор».
 //
 // Только разметка: список, подписи и действия — объект действий страницы
-// (`conkySets`, `saveConkySet`, `applyConkySet`, `removeConkySet` в
+// (`conkySets`, `saveConkySet`, `applyConkySet`, `exportConkySet`, `removeConkySet` в
 // rust/rexon-gui/src/appearance_actions.rs; решения — rexon_core::conky_sets).
 
 pragma ComponentBehavior: Bound
@@ -145,6 +145,19 @@ ColumnLayout {
                                 box.applying = true;
                                 box.actions.applyConkySet(chip.modelData.name);
                             }
+                        }
+                    }
+                    RexonButton {
+                        objectName: "conkySetExport"
+                        pal: box.pal
+                        enabled: !box.busy && !chip.modelData.empty
+                        text: box.t.export || ""
+                        ToolTip.text: box.t.export_tooltip || ""
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 600
+                        onClicked: {
+                            if (box.actions && box.actions.exportConkySet)
+                                box.actions.exportConkySet(chip.modelData.name);
                         }
                     }
                     RexonButton {

@@ -1308,6 +1308,11 @@ pub enum PanelPart {
     /// Ключ со значением по умолчанию при возврате сбрасывается, а не
     /// записывается.
     DdeDconfig { appid: &'static str, resource: &'static str },
+    /// Опись расширений GNOME Shell ([`SavedGnomeExt`]): uuid, включено ли,
+    /// своё или системное. Настройки возвращаются ветками dconf рядом, а
+    /// недостающие расширения доставляются отдельно
+    /// ([`gnome_ext_copy_deliver`]) — с сетью и окном оболочки это долго.
+    GnomeExtensions,
 }
 
 /// Как панель подхватывает вернувшиеся настройки.
@@ -1360,12 +1365,8 @@ pub const DDE_DOCK_RESOURCES: &[&str] =
 /// Служба systemd дока Deepin (dde-session): `dde-shell -C DDE`.
 pub const DDE_DOCK_UNIT: &str = "dde-shell@DDE.service";
 
-/// Расширения GNOME Shell, которые и есть панель или док, и их ветка dconf.
-pub const GNOME_PANEL_EXTENSIONS: &[(&str, &str)] = &[
-    ("dash-to-dock@micxgx.gmail.com", "/org/gnome/shell/extensions/dash-to-dock/"),
-    ("ubuntu-dock@ubuntu.com", "/org/gnome/shell/extensions/dash-to-dock/"),
-    ("dash-to-panel@jderose9.github.com", "/org/gnome/shell/extensions/dash-to-panel/"),
-];
+/// Ветка dconf, где расширения GNOME Shell держат свои настройки.
+pub const GNOME_EXTENSIONS_DCONF_DIR: &str = "/org/gnome/shell/extensions/";
 
 /// Что снимать у стола `de` (ключ Rexon). `None` — снимать нечего: кнопок
 /// копии панели у такого стола нет. KDE, MATE и XFCE снимаются своими путями
@@ -1384,23 +1385,25 @@ pub fn panel_copy_spec(de: &str, probe: &PanelProbe) -> Option<PanelCopySpec> {
             parts: vec![PanelPart::Home(".config/lxqt/panel.conf".to_string())],
             reload: vec![PanelReload::LxqtModule("lxqt-panel.desktop")],
         }),
-        // GNOME: своей панели нет — копия имеет смысл, только когда панель
-        // или док дают включённые расширения. Их ветки dconf и сам список
-        // включённых (`org.gnome.shell enabled-extensions`); расширения
-        // следят за своими настройками сами.
+        // GNOME: своей панели нет — панель, док и значки в ней дают
+        // расширения. Поэтому копия — все расширения человека: их опись
+        // (uuid, включено ли, своё или системное), настройки всех расширений
+        // (ветка `/org/gnome/shell/extensions/`) и оба списка оболочки
+        // (`enabled-extensions`, `disabled-extensions`). Расширения следят
+        // за своими настройками сами; недостающие при возврате ставятся с
+        // extensions.gnome.org ([`gnome_ext_copy_deliver`]).
         "gnome" => {
-            let mut parts: Vec<PanelPart> = Vec::new();
-            for (uuid, dir) in GNOME_PANEL_EXTENSIONS {
-                let part = PanelPart::DconfDir(dir);
-                if probe.gnome_extensions.iter().any(|e| e == uuid) && !parts.contains(&part) {
-                    parts.push(part);
-                }
-            }
-            if parts.is_empty() {
+            if !(probe.have)("gnome-shell") && probe.gnome_extensions.is_empty() {
                 return None;
             }
-            parts.push(PanelPart::DconfKeys { dir: "/org/gnome/shell/", prefixes: &["enabled-extensions"] });
-            Some(PanelCopySpec { parts, reload: vec![PanelReload::Live] })
+            Some(PanelCopySpec {
+                parts: vec![
+                    PanelPart::DconfDir(GNOME_EXTENSIONS_DCONF_DIR),
+                    PanelPart::DconfKeys { dir: "/org/gnome/shell/", prefixes: &["enabled-extensions", "disabled-extensions"] },
+                    PanelPart::GnomeExtensions,
+                ],
+                reload: vec![PanelReload::Live],
+            })
         }
         // Pantheon: верхняя панель Wingpanel (`io.elementary.desktop.wingpanel`)
         // и стоящий док — Plank (`net.launchpad.plank`, значки дока — файлы
@@ -1520,6 +1523,15 @@ pub trait PanelIo {
     /// Послать SIGUSR2 процессам своего сеанса с именем `exe`; сколько.
     fn reload_signal(&self, exe: &str) -> usize;
     fn pause(&self);
+    /// Снимок расширений от GNOME Shell; `None` — оболочки нет (тогда
+    /// опись — по диску и ключам, [`gnome_ext_inventory`]).
+    fn gnome_shell_list(&self) -> Option<Vec<crate::gnome_shell_ext::ExtInfo>> {
+        None
+    }
+    /// Каталог данных пользователя (`$XDG_DATA_HOME` либо `~/.local/share`).
+    fn data_home(&self, home: &str) -> String {
+        format!("{}/.local/share", home.trim_end_matches('/'))
+    }
 }
 
 fn sv(parts: &[&str]) -> Vec<String> {
@@ -1622,6 +1634,14 @@ pub fn panel_copy_save(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, copy_
                 }
                 manifest.push(serde_json::json!({ "kind": "dde_dconfig", "appid": appid, "resource": resource, "file": file }));
             }
+            PanelPart::GnomeExtensions => {
+                let list = gnome_ext_inventory(io, &io.data_home(home));
+                let body = serde_json::json!({ "extensions": list });
+                if !io.write(&format!("{tmp}/{GNOME_EXT_COPY_FILE}"), &body.to_string()) {
+                    return Err(format!("{tmp}/{GNOME_EXT_COPY_FILE}"));
+                }
+                manifest.push(serde_json::json!({ "kind": "gnome_extensions", "file": GNOME_EXT_COPY_FILE }));
+            }
         }
     }
     if !io.write(&format!("{tmp}/manifest.json"), &serde_json::Value::Array(manifest).to_string()) {
@@ -1646,7 +1666,13 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
                 let (dir, file) = (s(e, "dir"), s(e, "file"));
                 // Только ветки, которые этот стол и снимает: манифест — файл
                 // на диске, чужую ветку из него не сбрасываем.
-                let known = spec.parts.iter().any(|p| matches!(p, PanelPart::DconfDir(d) | PanelPart::DconfKeys { dir: d, .. } if *d == dir));
+                // Ветка внутри снимаемой целиком тоже своя: прежние копии
+                // GNOME снимали ветки отдельных расширений.
+                let known = spec.parts.iter().any(|p| match p {
+                    PanelPart::DconfDir(d) => *d == dir || (dir.starts_with(d) && d.ends_with('/') && !dir.contains("..")),
+                    PanelPart::DconfKeys { dir: d, .. } => *d == dir,
+                    _ => false,
+                });
                 if !known || !safe_rel(&file) {
                     continue;
                 }
@@ -1718,6 +1744,8 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
                     }
                 }
             }
+            // Опись расширений GNOME: настройки уже вернулись ветками dconf,
+            // а доставка недостающих — отдельно (`gnome_ext_copy_deliver`).
             _ => {}
         }
     }
@@ -1752,6 +1780,274 @@ pub fn panel_copy_restore(io: &dyn PanelIo, spec: &PanelCopySpec, home: &str, co
         }
     }
     Ok(copy_dir.to_string())
+}
+
+// ── Расширения GNOME в копии ─────────────────────────────────────────────
+//
+// Копия GNOME помнит, какие расширения стояли: uuid, включено ли, своё или
+// системное. «Вернуть» сперва возвращает настройки (ветки dconf и оба
+// списка оболочки), потом доставляет недостающие свои расширения с
+// extensions.gnome.org: при живой оболочке — её установкой (окно
+// подтверждения, запуск сразу), без неё — запасным путём (zip выпуска,
+// заработает при входе в GNOME). Включённость — как было. Чего на сайте
+// нет, что не поддерживает эту версию GNOME и системное, которого нет на
+// машине, — сказано словами, без попыток.
+
+/// Файл описи расширений в копии.
+pub const GNOME_EXT_COPY_FILE: &str = "gnome-extensions.json";
+
+/// Каталоги системных расширений GNOME Shell.
+pub const GNOME_EXT_SYSTEM_ROOTS: &[&str] =
+    &["/usr/share/gnome-shell/extensions", "/usr/local/share/gnome-shell/extensions"];
+
+/// Расширение GNOME в копии.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedGnomeExt {
+    pub uuid: String,
+    /// Имя для сообщений; пусто — показывается uuid.
+    #[serde(default)]
+    pub name: String,
+    pub enabled: bool,
+    /// Системное (из пакета дистрибутива): с сайта не ставится.
+    #[serde(default)]
+    pub system: bool,
+}
+
+impl SavedGnomeExt {
+    fn label(&self) -> &str {
+        if self.name.is_empty() { &self.uuid } else { &self.name }
+    }
+}
+
+/// Опись по снимку оболочки (она и есть правда).
+pub fn gnome_ext_inventory_from_shell(list: &[crate::gnome_shell_ext::ExtInfo]) -> Vec<SavedGnomeExt> {
+    let mut out: Vec<SavedGnomeExt> = list
+        .iter()
+        .map(|e| SavedGnomeExt {
+            uuid: e.uuid.clone(),
+            name: e.name.clone(),
+            enabled: e.enabled || e.state == crate::gnome_shell_ext::ExtState::Active,
+            system: e.is_system,
+        })
+        .collect();
+    out.sort_by(|a, b| a.uuid.cmp(&b.uuid));
+    out
+}
+
+/// Опись без оболочки: каталоги расширений (своё перекрывает системное с
+/// тем же uuid — как у GNOME) и списки настроек (`disabled-extensions`
+/// сильнее `enabled-extensions`).
+pub fn gnome_ext_inventory_from_disk(
+    user: &[String],
+    system: &[String],
+    enabled: &[String],
+    disabled: &[String],
+) -> Vec<SavedGnomeExt> {
+    let mut map: std::collections::BTreeMap<String, bool> = std::collections::BTreeMap::new();
+    for u in system {
+        map.insert(u.clone(), true);
+    }
+    for u in user {
+        map.insert(u.clone(), false);
+    }
+    map.into_iter()
+        .filter(|(u, _)| crate::rxn_manifest::is_extension_uuid(u))
+        .map(|(uuid, system)| SavedGnomeExt {
+            enabled: enabled.contains(&uuid) && !disabled.contains(&uuid),
+            name: String::new(),
+            system,
+            uuid,
+        })
+        .collect()
+}
+
+/// Опись расширений этой машины: от оболочки, иначе по диску и ключам.
+pub fn gnome_ext_inventory(io: &dyn PanelIo, data_home: &str) -> Vec<SavedGnomeExt> {
+    if let Some(list) = io.gnome_shell_list() {
+        return gnome_ext_inventory_from_shell(&list);
+    }
+    let user = io.list_dir(&format!("{}/gnome-shell/extensions", data_home.trim_end_matches('/')));
+    let system: Vec<String> = GNOME_EXT_SYSTEM_ROOTS.iter().flat_map(|r| io.list_dir(r)).collect();
+    let key = |k: &str| {
+        let (ok, out) = io.run(&sv(&["gsettings", "get", "org.gnome.shell", k]));
+        if ok { crate::de_apply::parse_gsettings_list(&out) } else { Vec::new() }
+    };
+    gnome_ext_inventory_from_disk(&user, &system, &key("enabled-extensions"), &key("disabled-extensions"))
+}
+
+/// Опись расширений из копии `copy_dir`; нет её — пусто.
+pub fn gnome_ext_copy_saved(io: &dyn PanelIo, copy_dir: &str) -> Vec<SavedGnomeExt> {
+    #[derive(Deserialize)]
+    struct Body {
+        #[serde(default)]
+        extensions: Vec<SavedGnomeExt>,
+    }
+    let Some(text) = io.read(&format!("{copy_dir}/manifest.json")) else {
+        return Vec::new();
+    };
+    let entries: Vec<serde_json::Value> = serde_json::from_str(&text).unwrap_or_default();
+    let Some(file) = entries.iter().find_map(|e| {
+        (e.get("kind").and_then(serde_json::Value::as_str) == Some("gnome_extensions"))
+            .then(|| e.get("file").and_then(serde_json::Value::as_str).unwrap_or("").to_string())
+    }) else {
+        return Vec::new();
+    };
+    if !safe_rel(&file) {
+        return Vec::new();
+    }
+    io.read(&format!("{copy_dir}/{file}"))
+        .and_then(|t| serde_json::from_str::<Body>(&t).ok())
+        .map(|b| b.extensions.into_iter().filter(|e| crate::rxn_manifest::is_extension_uuid(&e.uuid)).collect())
+        .unwrap_or_default()
+}
+
+/// Итог доставки расширений из копии.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GnomeExtDelivery {
+    /// Поставлено (через оболочку или запасным путём).
+    pub installed: Vec<String>,
+    /// Не поставлено — по строке на расширение, словами.
+    pub problems: Vec<String>,
+    /// Прочие строки (поставлено, отмена в окне оболочки).
+    pub notes: Vec<String>,
+}
+
+impl GnomeExtDelivery {
+    /// Пусто — сказать нечего (всё было на месте).
+    pub fn is_empty(&self) -> bool {
+        self.installed.is_empty() && self.problems.is_empty() && self.notes.is_empty()
+    }
+
+    /// Текст для строки состояния.
+    pub fn message(&self) -> String {
+        let mut lines = self.notes.clone();
+        lines.extend(self.problems.iter().cloned());
+        lines.join("\n")
+    }
+}
+
+/// Сообщение: системного расширения из копии на машине нет.
+pub fn msg_gnome_ext_system_missing(name: &str) -> String {
+    trf(
+        "“%1” is a system extension and isn't on this computer — it comes with a distribution package.",
+        &[&name],
+    )
+}
+
+/// Сообщение: расширения нет на extensions.gnome.org.
+pub fn msg_gnome_ext_not_on_site(name: &str) -> String {
+    trf("“%1” isn't on extensions.gnome.org, so Rexon can't install it again.", &[&name])
+}
+
+/// Сообщение: у расширения нет выпуска под эту версию GNOME.
+pub fn msg_gnome_ext_unsupported(name: &str, shell: &str) -> String {
+    trf("“%1” has no release for GNOME %2, so it wasn't installed.", &[&name, &shell])
+}
+
+/// Сообщение: установка не удалась.
+pub fn msg_gnome_ext_failed(name: &str, why: &str) -> String {
+    trf("“%1” wasn't installed: %2", &[&name, &why])
+}
+
+/// Выпуски расширения с extensions.gnome.org.
+pub type GnomeExtReleases<'a> =
+    dyn FnMut(&str) -> Result<Vec<crate::gnome_ego::Release>, crate::gnome_ego::FetchError> + 'a;
+/// Скачать zip выпуска под версию оболочки (запасной путь без оболочки).
+pub type GnomeExtFetchZip<'a> =
+    dyn FnMut(&str, Option<&crate::gnome_ego::ShellVersion>) -> Result<std::path::PathBuf, String> + 'a;
+
+/// Доставить расширения из копии `saved`, которых нет среди `present`.
+/// Сеть — только через `releases` и `fetch_zip`, поэтому проверяется
+/// подделками.
+pub fn gnome_ext_copy_deliver(
+    shell: &mut dyn crate::gnome_shell_ext::ShellExtIo,
+    saved: &[SavedGnomeExt],
+    present: &[SavedGnomeExt],
+    data_home: &str,
+    releases: &mut GnomeExtReleases,
+    fetch_zip: &mut GnomeExtFetchZip,
+) -> GnomeExtDelivery {
+    use crate::gnome_shell_ext::InstallOutcome;
+    let mut report = GnomeExtDelivery::default();
+    let missing: Vec<&SavedGnomeExt> =
+        saved.iter().filter(|s| !present.iter().any(|p| p.uuid == s.uuid)).collect();
+    if missing.is_empty() {
+        return report;
+    }
+    let version = crate::gnome_shell_ext::detect_shell_version(shell)
+        .and_then(|v| crate::gnome_ego::parse_shell_version(&v));
+    for ext in missing {
+        let name = ext.label();
+        if ext.system {
+            report.problems.push(msg_gnome_ext_system_missing(name));
+            continue;
+        }
+        let list = match releases(&ext.uuid) {
+            Ok(l) => l,
+            Err(e) if e.is_not_found() => {
+                report.problems.push(msg_gnome_ext_not_on_site(name));
+                continue;
+            }
+            Err(e) => {
+                report.problems.push(msg_gnome_ext_failed(name, &e.message()));
+                continue;
+            }
+        };
+        if crate::gnome_ext_section::offline_release(&list, None).is_none() {
+            report.problems.push(msg_gnome_ext_not_on_site(name));
+            continue;
+        }
+        if let Some(v) = &version {
+            if crate::gnome_ego::release_for(&list, v).is_none() {
+                report.problems.push(msg_gnome_ext_unsupported(name, &crate::gnome_ego::shell_label(v)));
+                continue;
+            }
+        }
+        let uuid = ext.uuid.clone();
+        let outcome =
+            crate::gnome_ext_section::install(shell, &uuid, data_home, &mut || fetch_zip(&uuid, version.as_ref()));
+        match outcome {
+            Ok(InstallOutcome::Cancelled) => {
+                report.notes.push(crate::gnome_ext_section::install_message(name, InstallOutcome::Cancelled).1);
+            }
+            Ok(o) => {
+                // Поставленное включено (так ставят и оболочка, и запасной
+                // путь); выключенное в копии — выключить обратно.
+                if !ext.enabled {
+                    let _ = crate::gnome_ext_section::set_enabled(shell, &uuid, false, data_home);
+                }
+                report.notes.push(crate::gnome_ext_section::install_message(name, o).1);
+                report.installed.push(uuid);
+            }
+            Err(e) => report.problems.push(msg_gnome_ext_failed(name, &e.message())),
+        }
+    }
+    report
+}
+
+/// Доставка расширений из копии GNOME на живой машине (сеть, оболочка;
+/// звать из рабочего потока — окно оболочки ждёт человека). `None` —
+/// копии с описью нет или всё на месте.
+pub fn gnome_ext_copy_deliver_live() -> Option<String> {
+    let (home, dir) = live_copy_dir("gnome");
+    let saved = gnome_ext_copy_saved(&LivePanelIo, &dir);
+    if saved.is_empty() {
+        return None;
+    }
+    let data_home = LivePanelIo.data_home(&home);
+    let present = gnome_ext_inventory(&LivePanelIo, &data_home);
+    let token = crate::net::CancelToken::new();
+    let work = std::env::temp_dir().join(format!("rexon-gnome-ext-{}", std::process::id()));
+    let report = gnome_ext_copy_deliver(
+        &mut crate::gnome_shell_ext::LiveShell::new(),
+        &saved,
+        &present,
+        &data_home,
+        &mut |uuid| crate::gnome_ego::live_releases(uuid, &token),
+        &mut |uuid, shell| crate::gnome_ext_section::live_fetch_zip(uuid, shell, &work, &token),
+    );
+    let _ = fs::remove_dir_all(&work);
+    (!report.is_empty()).then(|| report.message())
 }
 
 /// Живые руки копии панели.
@@ -1850,6 +2146,12 @@ impl PanelIo for LivePanelIo {
             }
         }
         sent
+    }
+    fn gnome_shell_list(&self) -> Option<Vec<crate::gnome_shell_ext::ExtInfo>> {
+        crate::gnome_ext_section::live_snapshot()
+    }
+    fn data_home(&self, home: &str) -> String {
+        crate::utils::data_home(std::env::var("XDG_DATA_HOME").ok().as_deref().filter(|v| !v.is_empty()), home)
     }
     fn pause(&self) {
         std::thread::sleep(std::time::Duration::from_secs(1));
@@ -2329,6 +2631,8 @@ mod panel_copy_tests {
         pub dde: RefCell<BTreeMap<String, String>>,
         /// Ключи DConfig со значением по умолчанию.
         pub dde_default: RefCell<std::collections::BTreeSet<String>>,
+        /// `gsettings get org.gnome.shell <ключ>` → ответ.
+        pub gsettings: RefCell<BTreeMap<String, String>>,
     }
 
     impl PanelIo for Mem {
@@ -2336,6 +2640,9 @@ mod panel_copy_tests {
             self.runs.borrow_mut().push(argv.to_vec());
             match argv.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
                 ["dconf", "dump", dir] => (true, self.dconf.borrow().get(*dir).cloned().unwrap_or_default()),
+                ["gsettings", "get", "org.gnome.shell", key] => {
+                    (true, self.gsettings.borrow().get(*key).cloned().unwrap_or_else(|| "@as []".into()))
+                }
                 ["dconf", "reset", "-f", dir] => {
                     self.dconf.borrow_mut().remove(*dir);
                     (true, String::new())
@@ -2534,15 +2841,110 @@ mod panel_copy_tests {
     /// GNOME: панели нет — снимаются только включённые панельные
     /// расширения (Dash to Dock, Dash to Panel) и список включённых.
     #[test]
-    fn gnome_copies_only_panel_extensions() {
-        assert!(spec_for("gnome", &[], &[], &["appindicatorsupport@rgcjonas.gmail.com"]).is_none());
-        let spec = spec_for("gnome", &[], &[], &["dash-to-dock@micxgx.gmail.com"]).expect("Dash to Dock");
-        assert!(spec.parts.contains(&PanelPart::DconfDir("/org/gnome/shell/extensions/dash-to-dock/")));
-        assert!(spec.parts.contains(&PanelPart::DconfKeys { dir: "/org/gnome/shell/", prefixes: &["enabled-extensions"] }));
-        let both = spec_for("gnome", &[], &[], &["ubuntu-dock@ubuntu.com", "dash-to-dock@micxgx.gmail.com", "dash-to-panel@jderose9.github.com"]).unwrap();
-        let dirs = both.parts.iter().filter(|p| matches!(p, PanelPart::DconfDir(_))).count();
-        assert_eq!(dirs, 2, "одна ветка Dash to Dock на два расширения: {:?}", both.parts);
+    fn gnome_copies_all_extensions() {
+        assert!(spec_for("gnome", &[], &[], &[]).is_none(), "ни оболочки, ни расширений — снимать нечего");
+        let spec = spec_for("gnome", &["gnome-shell"], &[], &[]).expect("GNOME");
+        assert_eq!(
+            spec.parts,
+            vec![
+                PanelPart::DconfDir("/org/gnome/shell/extensions/"),
+                PanelPart::DconfKeys { dir: "/org/gnome/shell/", prefixes: &["enabled-extensions", "disabled-extensions"] },
+                PanelPart::GnomeExtensions,
+            ]
+        );
+        assert!(spec_for("gnome", &[], &[], &["appindicatorsupport@rgcjonas.gmail.com"]).is_some());
     }
+
+    /// Опись без оболочки: своё перекрывает системное, `disabled-extensions`
+    /// сильнее `enabled-extensions`, мусорные имена каталогов не в счёт.
+    #[test]
+    fn gnome_inventory_from_disk_and_shell() {
+        let v = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let inv = gnome_ext_inventory_from_disk(
+            &v(&["own@x.org", "both@x.org", "junk"]),
+            &v(&["sys@gnome.org", "both@x.org"]),
+            &v(&["own@x.org", "sys@gnome.org", "both@x.org"]),
+            &v(&["sys@gnome.org"]),
+        );
+        let row = |u: &str| inv.iter().find(|e| e.uuid == u).cloned().unwrap();
+        assert_eq!(inv.len(), 3, "{inv:?}");
+        assert!(row("own@x.org").enabled && !row("own@x.org").system);
+        assert!(!row("sys@gnome.org").enabled && row("sys@gnome.org").system);
+        assert!(!row("both@x.org").system, "своё перекрывает системное");
+
+        use crate::gnome_shell_ext::{ExtInfo, ExtState, Field, RawInfo};
+        let mut raw = RawInfo::new();
+        raw.insert("uuid".into(), Field::Str("a@x.org".into()));
+        raw.insert("name".into(), Field::Str("A".into()));
+        raw.insert("state".into(), Field::Num(1.0));
+        raw.insert("type".into(), Field::Num(1.0));
+        let info = ExtInfo::from_raw(&raw).unwrap();
+        assert_eq!(info.state, ExtState::Active);
+        assert_eq!(
+            gnome_ext_inventory_from_shell(&[info]),
+            vec![SavedGnomeExt { uuid: "a@x.org".into(), name: "A".into(), enabled: true, system: true }]
+        );
+    }
+
+    /// Копия GNOME: опись, все настройки расширений и оба списка; возврат
+    /// сбрасывает ветку расширений и кладёт снятое, прочие ключи оболочки
+    /// не трогаются; опись читается обратно.
+    #[test]
+    fn gnome_extensions_round_trip() {
+        let io = Mem::default();
+        io.files.borrow_mut().insert(format!("{HOME}/.local/share/gnome-shell/extensions/own@x.org/metadata.json"), "{}".into());
+        io.files.borrow_mut().insert("/usr/share/gnome-shell/extensions/sys@gnome.org/metadata.json".into(), "{}".into());
+        io.gsettings.borrow_mut().insert("enabled-extensions".into(), "['own@x.org']".into());
+        io.gsettings.borrow_mut().insert("disabled-extensions".into(), "['sys@gnome.org']".into());
+        io.dconf.borrow_mut().insert("/org/gnome/shell/extensions/".into(), "[own]\nsize=3\n".into());
+        io.dconf.borrow_mut().insert(
+            "/org/gnome/shell/".into(),
+            "[/]\nenabled-extensions=['own@x.org']\ndisabled-extensions=['sys@gnome.org']\nfavorite-apps=['a.desktop']\n".into(),
+        );
+        let spec = spec_for("gnome", &["gnome-shell"], &[], &[]).unwrap();
+        panel_copy_save(&io, &spec, HOME, COPY).unwrap();
+        let saved = gnome_ext_copy_saved(&io, COPY);
+        assert_eq!(
+            saved,
+            vec![
+                SavedGnomeExt { uuid: "own@x.org".into(), name: String::new(), enabled: true, system: false },
+                SavedGnomeExt { uuid: "sys@gnome.org".into(), name: String::new(), enabled: false, system: true },
+            ]
+        );
+        let keys = io.files.borrow().get(&format!("{COPY}/dconf-1.ini")).cloned().unwrap();
+        assert!(keys.contains("enabled-extensions") && keys.contains("disabled-extensions"));
+        assert!(!keys.contains("favorite-apps"), "{keys}");
+
+        io.dconf.borrow_mut().insert("/org/gnome/shell/extensions/".into(), "[own]\nsize=9\n[other]\nx=1\n".into());
+        panel_copy_restore(&io, &spec, HOME, COPY).unwrap();
+        assert_eq!(io.dconf.borrow().get("/org/gnome/shell/extensions/").unwrap(), "[own]\nsize=3\n");
+        assert!(io.runs.borrow().iter().any(|r| r == &sv(&["dconf", "reset", "-f", "/org/gnome/shell/extensions/"])));
+
+        // Чужая опись в манифесте не читается мимо копии.
+        io.files.borrow_mut().insert(format!("{COPY}/manifest.json"), r#"[{"kind":"gnome_extensions","file":"../x.json"}]"#.into());
+        assert!(gnome_ext_copy_saved(&io, COPY).is_empty());
+    }
+
+    /// Копия прежних выпусков (ветка одного расширения) возвращается и
+    /// новой раскладкой: ветка внутри снимаемой целиком — своя.
+    #[test]
+    fn old_gnome_copy_with_single_extension_branch() {
+        let io = Mem::default();
+        io.files.borrow_mut().insert(
+            format!("{COPY}/manifest.json"),
+            r#"[{"kind":"dconf_dir","dir":"/org/gnome/shell/extensions/dash-to-dock/","file":"dconf-0.ini"},
+                {"kind":"dconf_dir","dir":"/org/gnome/shell/extensions/../../desktop/","file":"dconf-0.ini"}]"#
+                .into(),
+        );
+        io.files.borrow_mut().insert(format!("{COPY}/dconf-0.ini"), "[/]\ndock-fixed=true\n".into());
+        let spec = spec_for("gnome", &["gnome-shell"], &[], &[]).unwrap();
+        panel_copy_restore(&io, &spec, HOME, COPY).unwrap();
+        let dconf = io.dconf.borrow();
+        assert_eq!(dconf.get("/org/gnome/shell/extensions/dash-to-dock/").unwrap(), "[/]\ndock-fixed=true\n");
+        assert_eq!(dconf.len(), 1, "ветка с `..` не тронута: {dconf:?}");
+        assert!(gnome_ext_copy_saved(&io, COPY).is_empty(), "в старой копии описи нет");
+    }
+
 
     /// Pantheon: ветка Wingpanel и стоящего дока (Plank или новый док
     /// elementary).
@@ -2690,5 +3092,184 @@ mod panel_copy_tests {
     fn unknown_desktop_has_nothing_to_copy() {
         assert!(spec_for("labwc", &[], &[], &[]).is_none());
         assert!(spec_for("kde", &[], &[], &[]).is_none(), "KDE снимается своим путём");
+    }
+}
+
+#[cfg(test)]
+mod gnome_ext_delivery_tests {
+    use super::*;
+    use crate::gnome_ego::{FetchError, Release, ReleaseShell, ShellVersion};
+    use crate::gnome_shell_ext::{BusFailure, CmdOutput, RawInfo, ShellExtIo, INSTALL_SUCCESSFUL};
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    /// Подделка оболочки: журнал вызовов, без шины и сети.
+    struct Shell {
+        running: bool,
+        install_reply: String,
+        calls: Vec<String>,
+    }
+
+    impl ShellExtIo for Shell {
+        fn shell_running(&mut self) -> bool {
+            self.running
+        }
+        fn list(&mut self) -> Result<BTreeMap<String, RawInfo>, BusFailure> {
+            Ok(BTreeMap::new())
+        }
+        fn info(&mut self, uuid: &str) -> Result<RawInfo, BusFailure> {
+            let mut m = RawInfo::new();
+            m.insert("uuid".into(), crate::gnome_shell_ext::Field::Str(uuid.into()));
+            m.insert("state".into(), crate::gnome_shell_ext::Field::Num(1.0));
+            Ok(m)
+        }
+        fn errors(&mut self, _uuid: &str) -> Result<Vec<String>, BusFailure> {
+            Ok(Vec::new())
+        }
+        fn install_remote(&mut self, uuid: &str, _t: Duration) -> Result<String, BusFailure> {
+            self.calls.push(format!("install {uuid}"));
+            Ok(self.install_reply.clone())
+        }
+        fn uninstall(&mut self, _uuid: &str) -> Result<bool, BusFailure> {
+            Ok(false)
+        }
+        fn enable(&mut self, uuid: &str) -> Result<bool, BusFailure> {
+            self.calls.push(format!("enable {uuid}"));
+            Ok(true)
+        }
+        fn disable(&mut self, uuid: &str) -> Result<bool, BusFailure> {
+            self.calls.push(format!("disable {uuid}"));
+            Ok(true)
+        }
+        fn open_prefs(&mut self, _u: &str, _p: &str, _m: bool) -> Result<(), BusFailure> {
+            Ok(())
+        }
+        fn launch_prefs(&mut self, _uuid: &str) -> Result<(), BusFailure> {
+            Ok(())
+        }
+        fn check_for_updates(&mut self) -> Result<(), BusFailure> {
+            Ok(())
+        }
+        fn shell_version(&mut self) -> Result<String, BusFailure> {
+            Ok("47.2".into())
+        }
+        fn user_extensions_enabled(&mut self) -> Result<bool, BusFailure> {
+            Ok(true)
+        }
+        fn set_user_extensions_enabled(&mut self, _on: bool) -> Result<(), BusFailure> {
+            Ok(())
+        }
+        fn shell_setting_bool(&mut self, _key: &str) -> Option<bool> {
+            None
+        }
+        fn which(&mut self, cmd: &str) -> bool {
+            cmd == "gnome-shell"
+        }
+        fn run(&mut self, argv: &[String]) -> Result<CmdOutput, String> {
+            self.calls.push(format!("run {}", argv.join(" ")));
+            if argv.first().map(String::as_str) == Some("gnome-shell") {
+                return Ok(CmdOutput { success: true, text: "GNOME Shell 47.2".into() });
+            }
+            Ok(CmdOutput { success: true, text: String::new() })
+        }
+    }
+
+    fn ext(uuid: &str, enabled: bool, system: bool) -> SavedGnomeExt {
+        SavedGnomeExt { uuid: uuid.into(), name: String::new(), enabled, system }
+    }
+
+    fn rel(version: i64, major: i64) -> Release {
+        Release {
+            version,
+            status: crate::gnome_ego::STATUS_ACTIVE,
+            shell_versions: vec![ReleaseShell { major, minor: -1, point: -1 }],
+            ..Default::default()
+        }
+    }
+
+    /// Выпуски «сайта»: `gone@` — 404, `old@` — только под GNOME 42,
+    /// `dead@` — ни одного активного, остальные — под 47.
+    fn site(uuid: &str) -> Result<Vec<Release>, FetchError> {
+        match uuid.split('@').next().unwrap_or("") {
+            "gone" => Err(FetchError::Net(crate::net::NetError::Status { code: 404, reason: "Not Found".into() })),
+            "down" => Err(FetchError::Net(crate::net::NetError::Transport { detail: "no route".into() })),
+            "old" => Ok(vec![rel(3, 42)]),
+            "dead" => Ok(vec![Release { status: 1, ..rel(1, 47) }]),
+            _ => Ok(vec![rel(5, 46), rel(7, 47)]),
+        }
+    }
+
+    #[test]
+    fn missing_extensions_come_back_through_the_shell() {
+        let mut shell = Shell { running: true, install_reply: INSTALL_SUCCESSFUL.into(), calls: Vec::new() };
+        let saved = vec![
+            ext("here@x.org", true, false),
+            ext("own@x.org", true, false),
+            ext("off@x.org", false, false),
+            ext("gone@x.org", true, false),
+            ext("old@x.org", true, false),
+            ext("dead@x.org", true, false),
+            ext("down@x.org", true, false),
+            ext("sys@gnome.org", true, true),
+        ];
+        let present = vec![ext("here@x.org", false, false)];
+        let mut zips = 0;
+        let r = gnome_ext_copy_deliver(&mut shell, &saved, &present, "/h", &mut site, &mut |_, _| {
+            zips += 1;
+            Err("не нужно".into())
+        });
+        assert_eq!(zips, 0, "при оболочке zip не качаем");
+        assert_eq!(r.installed, vec!["own@x.org".to_string(), "off@x.org".to_string()]);
+        assert_eq!(
+            shell.calls,
+            vec!["install own@x.org".to_string(), "install off@x.org".into(), "disable off@x.org".into()],
+            "уже стоящее не ставится, выключенное в копии — выключено"
+        );
+        assert!(r.problems.contains(&msg_gnome_ext_not_on_site("gone@x.org")));
+        assert!(r.problems.contains(&msg_gnome_ext_not_on_site("dead@x.org")));
+        assert!(r.problems.contains(&msg_gnome_ext_unsupported("old@x.org", "47")));
+        assert!(r.problems.contains(&msg_gnome_ext_system_missing("sys@gnome.org")));
+        assert!(r.problems.iter().any(|p| p.contains("down@x.org") && p.contains("extensions.gnome.org")), "{:?}", r.problems);
+        assert_eq!(r.problems.len(), 5);
+        assert!(r.message().contains("own@x.org"));
+    }
+
+    #[test]
+    fn cancelled_in_shell_window_is_a_note() {
+        let mut shell = Shell { running: true, install_reply: "cancelled".into(), calls: Vec::new() };
+        let r = gnome_ext_copy_deliver(&mut shell, &[ext("own@x.org", true, false)], &[], "/h", &mut site, &mut |_, _| {
+            Err(String::new())
+        });
+        assert!(r.installed.is_empty() && r.problems.is_empty());
+        assert_eq!(r.notes.len(), 1);
+    }
+
+    /// Без оболочки — запасной путь: zip под версию из `gnome-shell
+    /// --version`; сбой скачивания назван.
+    #[test]
+    fn without_shell_zip_is_fetched_for_this_gnome() {
+        let mut shell = Shell { running: false, install_reply: String::new(), calls: Vec::new() };
+        let mut asked: Vec<(String, Option<ShellVersion>)> = Vec::new();
+        let r = gnome_ext_copy_deliver(&mut shell, &[ext("own@x.org", true, false)], &[], "/h", &mut site, &mut |u, v| {
+            asked.push((u.to_string(), v.cloned()));
+            Err::<PathBuf, _>("нет сети".into())
+        });
+        assert_eq!(asked.len(), 1);
+        assert_eq!(asked[0].1.as_ref().map(|v| v.major), Some(47));
+        assert!(!shell.calls.iter().any(|c| c.starts_with("install")));
+        assert_eq!(r.problems.len(), 1);
+        assert!(r.problems[0].contains("нет сети"), "{:?}", r.problems);
+    }
+
+    #[test]
+    fn nothing_missing_says_nothing() {
+        let mut shell = Shell { running: true, install_reply: String::new(), calls: Vec::new() };
+        let all = vec![ext("a@x.org", true, false)];
+        let r = gnome_ext_copy_deliver(&mut shell, &all, &all, "/h", &mut |_| panic!("сеть не нужна"), &mut |_, _| {
+            panic!("сеть не нужна")
+        });
+        assert!(r.is_empty());
+        assert!(shell.calls.is_empty());
     }
 }

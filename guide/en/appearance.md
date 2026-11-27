@@ -1,4 +1,4 @@
-English | [Русский](../ru/appearance.md) | [Deutsch](../de/appearance.md) | [简体中文](../zh-CN/appearance.md) | [Français](../fr/appearance.md)
+English | [Русский](../ru/appearance.md) | [Deutsch](../de/appearance.md) | [简体中文](../zh-CN/appearance.md) | [Français](../fr/appearance.md) | [Español](../es/appearance.md)
 
 # Appearance
 
@@ -251,7 +251,12 @@ hinting) and **Force font DPI:**.
   button at the top of the section is **🌫️ Wallpaper Blur**: it blurs a
   picture wallpaper so icons and windows on top read easier (the
   **Strength** slider, **Blur Wallpaper**, **Remove Blur**); the original is
-  kept.
+  kept. If Razer Axon is on the computer (under Wine), the **Store:** row
+  also has **Razer Axon** — the wallpapers you downloaded in it: search by
+  titles or tags, sorting and filters, as in Axon itself; right-click a tile
+  for **Apply** (on all screens), **Open file location** and **Details**.
+  **⚙️ Settings** then also has a **Razer Axon** block: **Prepare wallpapers
+  in advance** and **Restore original descriptions**.
 - **Wallpaper Plugins** (KDE only) — live Plasma wallpapers.
 - **Sounds** — sound themes. You can listen to a theme's sounds before
   installing it (**🔊 Preview Before Installing**): the theme is downloaded

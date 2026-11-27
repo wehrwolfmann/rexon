@@ -1315,6 +1315,80 @@ pub fn decode_text(b: &[u8]) -> String {
 }
 
 // ============================================================================
+// Приметы курсора — для области действия исправлений переводчика
+// ============================================================================
+//
+// Исправление переводчика касается не всех курсоров, а определённого рода:
+// анимированных, с горячей точкой не в центре, с картинками на палитре.
+// По приметам оригиналов решается, переводить ли тему заново
+// ([`crate::importers::cursor_retranslate_due`]).
+
+/// Чем примечателен курсор (или весь набор — [`CursorTraits::merge`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CursorTraits {
+    /// Анимированный `.ani` (больше одного шага).
+    pub animated: bool,
+    /// Горячая точка хотя бы одной картинки не в её центре (дальше 1 пикселя).
+    pub hotspot_off_center: bool,
+    /// Хотя бы одна картинка — DIB на палитре (1/4/8 бит на пиксель).
+    pub paletted: bool,
+}
+
+impl CursorTraits {
+    /// Приметы набора: примета есть у набора, если есть хотя бы у одного курсора.
+    pub fn merge(self, other: CursorTraits) -> CursorTraits {
+        CursorTraits {
+            animated: self.animated || other.animated,
+            hotspot_off_center: self.hotspot_off_center || other.hotspot_off_center,
+            paletted: self.paletted || other.paletted,
+        }
+    }
+}
+
+/// Есть ли в каталоге `.cur`/`.ico` запись-DIB на палитре.
+fn icondir_paletted(data: &[u8]) -> bool {
+    let count = u16_at(data, 4).unwrap_or(0) as usize;
+    (0..count.min(MAX_ENTRIES)).any(|i| {
+        let Some(start) = u32_at(data, 6 + i * 16 + 12) else {
+            return false;
+        };
+        let Some(blob) = data.get(start as usize..) else {
+            return false;
+        };
+        !blob.starts_with(b"\x89PNG")
+            && u32_at(blob, 0).is_some_and(|hs| hs >= 40)
+            && u16_at(blob, 14).is_some_and(|bpp| (1..=8).contains(&bpp))
+    })
+}
+
+/// Приметы файла курсора; `None` — файл не читается как курсор.
+pub fn cursor_file_traits(data: &[u8]) -> Option<CursorTraits> {
+    let anim = parse_cursor_file(data).ok()?;
+    let hotspot_off_center = anim.frames.iter().flatten().any(|i| {
+        i.hot_x.abs_diff(i.width / 2) > 1 || i.hot_y.abs_diff(i.height / 2) > 1
+    });
+    let paletted = if data.get(0..4) == Some(b"RIFF") {
+        let end = 8usize
+            .saturating_add(u32_at(data, 4).unwrap_or(0) as usize)
+            .min(data.len());
+        let mut found = false;
+        if end > 12 {
+            walk_chunks(&data[12..end], |id, body| {
+                if id == b"LIST" && body.get(0..4) == Some(b"fram") {
+                    walk_chunks(&body[4..], |cid, cbody| {
+                        found |= cid == b"icon" && icondir_paletted(cbody);
+                    });
+                }
+            });
+        }
+        found
+    } else {
+        icondir_paletted(data)
+    };
+    Some(CursorTraits { animated: anim.is_animated(), hotspot_off_center, paletted })
+}
+
+// ============================================================================
 // Сверки на подставных байтах
 // ============================================================================
 
@@ -1339,6 +1413,23 @@ pub(crate) mod testbytes {
             }
         }
         dib.extend(std::iter::repeat_n(0u8, (w as usize).div_ceil(32) * 4 * w as usize));
+        icondir(2, &[(w, hx, hy, dib)])
+    }
+
+    /// `.cur` с одной 1-битной картинкой `w`×`w` на палитре (чёрный/белый),
+    /// горячая точка (hx, hy).
+    pub fn cur1(w: u32, hx: u16, hy: u16) -> Vec<u8> {
+        let mut dib = Vec::new();
+        for v in [40u32, w, w * 2] {
+            dib.extend_from_slice(&v.to_le_bytes());
+        }
+        dib.extend_from_slice(&1u16.to_le_bytes());
+        dib.extend_from_slice(&1u16.to_le_bytes());
+        dib.extend_from_slice(&[0u8; 24]);
+        dib.extend_from_slice(&[0, 0, 0, 0, 255, 255, 255, 0]);
+        let row = (w as usize).div_ceil(32) * 4;
+        dib.extend(std::iter::repeat_n(0xFFu8, row * w as usize));
+        dib.extend(std::iter::repeat_n(0u8, row * w as usize));
         icondir(2, &[(w, hx, hy, dib)])
     }
 
@@ -1712,5 +1803,24 @@ dng1 = "Dng1.cur"
         let png = preview_png(&[&a, &a, &a], 620, 348, 64).unwrap();
         let img = image::load_from_memory(&png).unwrap();
         assert_eq!((img.width(), img.height()), (620, 348));
+    }
+
+    #[test]
+    fn traits_tell_animated_off_center_and_paletted_cursors() {
+        // Стрелка: точка в углу (не в центре), 32 бита, без анимации.
+        let arrow = cursor_file_traits(&cur32(32, 0, 0, 1)).unwrap();
+        assert_eq!(arrow, CursorTraits { animated: false, hotspot_off_center: true, paletted: false });
+        // Перекрестие: точка в центре.
+        let cross = cursor_file_traits(&cur32(32, 16, 16, 1)).unwrap();
+        assert_eq!(cross, CursorTraits::default());
+        // Палитра 1 бит.
+        let mono = cursor_file_traits(&cur1(32, 16, 16)).unwrap();
+        assert_eq!(mono, CursorTraits { paletted: true, ..CursorTraits::default() });
+        // Анимация из кадров на палитре: обе приметы видны и внутри .ani.
+        let busy = cursor_file_traits(&ani(&[cur1(32, 16, 16), cur1(32, 16, 16)], 10, None, None, 2)).unwrap();
+        assert_eq!(busy, CursorTraits { animated: true, paletted: true, ..CursorTraits::default() });
+        // Набор — объединение примет; мусор — не курсор.
+        assert_eq!(cross.merge(busy).merge(arrow), CursorTraits { animated: true, hotspot_off_center: true, paletted: true });
+        assert_eq!(cursor_file_traits(b"garbage"), None);
     }
 }

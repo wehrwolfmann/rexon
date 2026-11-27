@@ -645,6 +645,9 @@ fn xfconf_value_type(prop: &str) -> &'static str {
     match prop {
         "/Net/EnableEventSounds" => "bool",
         "/Xft/Antialias" | "/Xft/Hinting" | "/Xft/DPI" => "int",
+        // xfdesktop: кегль подписей значков и его включатель.
+        XFDESKTOP_FONT_SIZE_PROP => "double",
+        XFDESKTOP_USE_SIZE_PROP => "bool",
         _ => "string",
     }
 }
@@ -893,8 +896,40 @@ pub fn msg_no_event_in_theme(theme: &str) -> String {
 
 /// Что настраиваем — в порядке страницы «Шрифты» Plasma 6: шрифт
 /// интерфейса, моноширинный, маленький, панели инструментов, меню,
-/// заголовков окон.
-pub const FONT_TARGETS: &[&str] = &["system", "mono", "small", "toolbar", "menu", "title"];
+/// заголовков окон; за ними — то, чего у Plasma нет, а есть у GNOME,
+/// Cinnamon и MATE: шрифт документов ([`DOCUMENT_FONT_GNOME`]) и шрифт
+/// подписей значков рабочего стола ([`DESKTOP_FONT_DES`]).
+pub const FONT_TARGETS: &[&str] = &["system", "mono", "small", "toolbar", "menu", "title", "document", "desktop"];
+
+/// Шрифт документов GNOME: `org.gnome.desktop.interface document-font-name`
+/// (схема gsettings-desktop-schemas, «Name of the default font used for
+/// reading documents»). Его же пишет страница шрифтов Cinnamon
+/// (`cs_fonts.py`: своего ключа у `org.cinnamon.desktop.interface` нет).
+/// Читают его отдельные GTK-программы (просмотрщики документов, почта,
+/// браузер GNOME), сам GTK — нет; программы на Qt и KDE не знают его вовсе.
+/// Поэтому ключ пишется в любом окружении: GTK-программы увидят его и в KDE.
+pub const DOCUMENT_FONT_GNOME: (&str, &str) = ("org.gnome.desktop.interface", "document-font-name");
+
+/// Окружения, у программы рабочего стола которых есть свой шрифт подписей
+/// значков: Cinnamon — Nemo (`org.nemo.desktop font`, его пишет
+/// `cs_fonts.py` строкой «Desktop font»), MATE — Caja
+/// (`org.mate.caja.desktop font`), XFCE — xfdesktop, у которого задаётся
+/// только кегль ([`XFDESKTOP_FONT_SIZE_PROP`]), LXQt — pcmanfm-qt
+/// (`[Desktop] Font` в его `settings.conf`, с защитой настроек стола —
+/// [`pcmanfm_desktop_font_apply`]). У KDE Plasma («Папка
+/// рабочего стола» берёт шрифт интерфейса), GNOME, Budgie
+/// (`budgie-desktop-view`: размер значков, шрифта нет), Pantheon, COSMIC и
+/// тайловых своего ключа нет — там пункт честно выключен
+/// ([`desktop_font_note`]).
+pub const DESKTOP_FONT_DES: &[&str] = &["cinnamon", "cinnamon-mint", "mate", "xfce", "lxqt"];
+
+/// Канал xfconf xfdesktop.
+pub const XFDESKTOP_CHANNEL: &str = "xfce4-desktop";
+/// Кегль подписей значков xfdesktop (тип `double`, в пунктах).
+pub const XFDESKTOP_FONT_SIZE_PROP: &str = "/desktop-icons/font-size";
+/// Включатель своего кегля: при `false` xfdesktop берёт кегль шрифта
+/// интерфейса, и [`XFDESKTOP_FONT_SIZE_PROP`] не действует.
+pub const XFDESKTOP_USE_SIZE_PROP: &str = "/desktop-icons/use-custom-font-size";
 
 /// Шрифты, у которых родной ключ есть только в KDE (`kdeglobals [General]
 /// smallestReadableFont`, `toolBarFont`, `menuFont`). Ни GNOME, ни XFCE,
@@ -942,6 +977,12 @@ pub fn font_backend(de: &str, target: &str) -> SoundBackend {
         let read = if target == "mono" { crate::dde::FONT_MONOSPACE } else { crate::dde::FONT_STANDARD };
         return SoundBackend::Dde { write: Vec::new(), read };
     }
+    // Шрифт документов — ключ gsettings в любом окружении, и в KDE и XFCE:
+    // своего такого ключа у них нет, а GTK-программы читают ключ GNOME.
+    if target == "document" {
+        let (schema, key) = font_gsettings_key(de, target);
+        return SoundBackend::GSettings { schema: schema.to_string(), key: key.to_string() };
+    }
     match de {
         "kde" => {
             let (group, key) = match target {
@@ -962,6 +1003,7 @@ pub fn font_backend(de: &str, target: &str) -> SoundBackend {
             let (channel, prop) = match target {
                 "mono" => ("xsettings", "/Gtk/MonospaceFontName"),
                 "title" => ("xfwm4", "/general/title_font"),
+                "desktop" => (XFDESKTOP_CHANNEL, XFDESKTOP_FONT_SIZE_PROP),
                 _ => ("xsettings", "/Gtk/FontName"),
             };
             SoundBackend::Xfconf {
@@ -982,6 +1024,12 @@ pub fn font_backend(de: &str, target: &str) -> SoundBackend {
 /// Ключ gsettings шрифта для окружений, которые держат его в dconf.
 fn font_gsettings_key(de: &str, target: &str) -> (&'static str, &'static str) {
     match (de, target) {
+        // MATE держит шрифт документов в своей схеме (так его пишет
+        // `mate-appearance-properties`), остальные — в схеме GNOME.
+        ("mate", "document") => ("org.mate.interface", "document-font-name"),
+        (_, "document") => DOCUMENT_FONT_GNOME,
+        ("cinnamon" | "cinnamon-mint", "desktop") => ("org.nemo.desktop", "font"),
+        ("mate", "desktop") => ("org.mate.caja.desktop", "font"),
         ("cinnamon" | "cinnamon-mint", "mono") => ("org.gnome.desktop.interface", "monospace-font-name"),
         ("cinnamon" | "cinnamon-mint", "title") => ("org.cinnamon.desktop.wm.preferences", "titlebar-font"),
         ("cinnamon" | "cinnamon-mint", _) => ("org.cinnamon.desktop.interface", "font-name"),
@@ -1034,6 +1082,11 @@ pub enum FontFile {
     /// системного и проверка `sway --validate` — общий механизм композиторов
     /// ([`crate::animations::wm_include`]), тот же, что у акцента.
     SwayConf,
+    /// Шрифт подписей значков рабочего стола LXQt: `[Desktop] Font` в
+    /// `pcmanfm-qt/lxqt/settings.conf`. Пишет его не [`FontFile::file_writes`],
+    /// а [`pcmanfm_desktop_font_apply`]: закрыть живой стол, резервная копия,
+    /// засев своего файла из системного, правка одной строки, запуск стола.
+    PcmanfmDesktop,
 }
 
 /// Одна запись файла по плану шрифта.
@@ -1070,6 +1123,7 @@ impl FontFile {
             FontFile::QtCtQss { tool, .. } => format!("{tool}/qss/{QTCT_QSS_NAME}"),
             FontFile::RcXml { wm } => wm.rc_xml_path().unwrap_or_default().to_string(),
             FontFile::SwayConf => format!("sway/{SWAY_FONT_STEM}.conf"),
+            FontFile::PcmanfmDesktop => format!("{PCMANFM_PROFILE_REL}/settings.conf"),
         }
     }
 
@@ -1077,6 +1131,9 @@ impl FontFile {
     pub fn may_create(&self) -> bool {
         match self {
             FontFile::CosmicTk { .. } | FontFile::GtkCss { .. } | FontFile::QtCtQss { .. } | FontFile::SwayConf => true,
+            // Свой файл pcmanfm-qt заслоняет системный целиком: заводится
+            // только копией системного ([`pcmanfm_desktop_font_apply`]).
+            FontFile::PcmanfmDesktop => false,
             FontFile::QtIni { create, .. } => *create,
             // Свой rc.xml Openbox читает ВМЕСТО системного: заведённый с
             // одним шрифтом, он оставил бы окна без привязок клавиш и мыши.
@@ -1104,6 +1161,9 @@ impl FontFile {
             // [`parse_font_spec_face`].
             FontFile::RcXml { .. } => rc_xml_title_font_face(text)
                 .map(|(family, size, face)| font_face_spec(&family, size, face))
+                .unwrap_or_default(),
+            FontFile::PcmanfmDesktop => pcmanfm_desktop_font_raw(text)
+                .map(|v| v.trim_matches('"').to_string())
                 .unwrap_or_default(),
             FontFile::SwayConf => sway_font_value(text)
                 .map(|desc| {
@@ -1155,6 +1215,9 @@ impl FontFile {
             }
             FontFile::RcXml { wm } => rc_xml_with_title_font_face(existing, *wm, family, size, face),
             FontFile::SwayConf => Some(sway_title_font_content(family, size, face)),
+            FontFile::PcmanfmDesktop => {
+                Some(pcmanfm_with_desktop_font(existing, &pcmanfm_font_value(family, size, face)))
+            }
         }
     }
 
@@ -1193,6 +1256,9 @@ impl FontFile {
             // Одного файла мало: нужен ещё блок в конфиге sway с проверкой
             // самим sway — это делает [`sway_title_font_apply`].
             FontFile::SwayConf => return None,
+            // Сначала закрыть живой стол и сделать резервную копию — это
+            // делает [`pcmanfm_desktop_font_apply`].
+            FontFile::PcmanfmDesktop => return None,
             FontFile::QtCtQss { tool, .. } => {
                 let conf_rel = format!("{tool}/{tool}.conf");
                 let conf = io.read(&conf_rel)?;
@@ -1687,6 +1753,620 @@ pub fn title_font_note(de: &str, wm: Option<TitleWm>) -> Option<String> {
         "deepin" => tr("Deepin has no title bar font setting."),
         _ => tr("Rexon doesn't know where this desktop keeps its title bar font."),
     })
+}
+
+/// На что действует шрифт документов — одна фраза к пояснению под кнопками
+/// шрифтов, во всех окружениях: ключ читают только отдельные GTK-программы
+/// ([`DOCUMENT_FONT_GNOME`]).
+pub fn document_font_note() -> String {
+    tr("The document font is used by GNOME and GTK apps that show documents: document viewers, mail, the \
+        GNOME web browser. KDE and Qt apps don't use it.")
+}
+
+/// Почему шрифт подписей значков рабочего стола выключен или задаётся не
+/// целиком — фраза к пояснению; `None` — задаётся полностью (Cinnamon, MATE).
+pub fn desktop_font_note(de: &str) -> Option<String> {
+    Some(match de {
+        "cinnamon" | "cinnamon-mint" | "mate" | "lxqt" => return None,
+        "xfce" => tr("In XFCE only the size of desktop icon labels can be set: the typeface comes from the \
+                      interface font."),
+        "kde" => tr("KDE Plasma has no separate font for desktop icon labels: they use the interface font."),
+        _ => tr("The font of desktop icon labels can't be set in this desktop: it has no such setting."),
+    })
+}
+
+/// argv чтения включателя своего кегля xfdesktop
+/// ([`XFDESKTOP_USE_SIZE_PROP`]).
+pub fn xfdesktop_use_size_read_argv() -> Vec<String> {
+    sound_read_argv(
+        &SoundBackend::Xfconf { channel: XFDESKTOP_CHANNEL.to_string(), prop: XFDESKTOP_USE_SIZE_PROP.to_string() },
+        "",
+    )
+    .expect("xfconf читается без kde_tool")
+}
+
+/// Действующий шрифт подписей значков xfdesktop описанием Pango: семейство
+/// и начертание — от шрифта интерфейса (`interface`, описание Pango
+/// xsettings), кегль — свой (`size`, ответ xfconf вида «12.000000»), если
+/// включён `use_custom` («true»). Иначе xfdesktop берёт шрифт интерфейса
+/// целиком — его и показываем.
+pub fn xfdesktop_font_spec(use_custom: &str, size: &str, interface: &str) -> String {
+    let interface = interface.trim().trim_matches(['\'', '"']).trim();
+    let size = size.trim().parse::<f64>().ok().filter(|s| s.is_finite() && *s > 0.0);
+    match (use_custom.trim() == "true", size) {
+        (true, Some(size)) => {
+            let (family, _, face) = parse_font_spec_face(interface);
+            if family.is_empty() {
+                return String::new();
+            }
+            pango_font_desc(&family, size.round() as i32, face)
+        }
+        _ => interface.to_string(),
+    }
+}
+
+// ── Подписи значков рабочего стола LXQt (pcmanfm-qt) ─────────────────────
+//
+// Рабочий стол LXQt рисует pcmanfm-qt (`pcmanfm-qt --desktop --profile=lxqt`,
+// автозапуск `lxqt-desktop.desktop` — модуль `lxqt-session`). Шрифт подписей
+// значков — `[Desktop] Font` в `<профиль>/settings.conf`: запись
+// `QFont::toString` в кавычках (`Font="Sans Serif,12,-1,5,400,0,…"`). По
+// исходникам pcmanfm-qt 2.5 (`settings.cpp`, `application.cpp`):
+//
+// * `Settings::profileDir(profile, useFallback)`: есть КАТАЛОГ
+//   `$XDG_CONFIG_HOME/pcmanfm-qt/lxqt` — читается только он, даже без
+//   `settings.conf` внутри (тогда — встроенные умолчания: без обоев, шрифт
+//   интерфейса). Нет каталога — первый существующий `<каталог>/pcmanfm-qt/lxqt`
+//   из `QStandardPaths::standardLocations(ConfigLocation)`, то есть
+//   `$XDG_CONFIG_DIRS`. Пакет кладёт системный файл в
+//   `/usr/share/pcmanfm-qt/lxqt/settings.conf` (`/usr/share` в
+//   `$XDG_CONFIG_DIRS` дописывает `startlxqt`), в нём — обои, ярлыки, цвета.
+//   Файлы не сливаются: свой каталог заслоняет системный целиком.
+// * `Settings::save` пишет ВСЕ значения в свой каталог и зовётся при выходе
+//   (`aboutToQuit`; на SIGTERM — свой обработчик, тоже через выход).
+//   Перечитывать файл на ходу pcmanfm-qt не умеет: правка при живом столе
+//   не видна, а при его выходе затирается тем, что у него в памяти.
+//
+// Отсюда защита: живой стол сначала закрывается (D-Bus `quit` у
+// `org.pcmanfm.PCManFM` — он сам сохраняет свои настройки целиком), затем
+// правится одна строка `Font` (остальные байты — как были), затем стол
+// запускается снова (`startModule` у `lxqt-session`). Своего файла нет — он
+// заводится копией того, что pcmanfm-qt читал до нас (системного), а не с
+// нуля: заведённый с одним шрифтом, он оставил бы стол без обоев. Перед
+// первой правкой — резервная копия и запись «как было»
+// ([`PcmanfmFontRecord`]); возврат кладёт прежнюю строку `Font` или снимает
+// заведённый нами файл вместе с каталогами.
+
+/// Профиль pcmanfm-qt рабочего стола LXQt (от каталога настроек).
+pub const PCMANFM_PROFILE_REL: &str = "pcmanfm-qt/lxqt";
+/// Имя D-Bus живого pcmanfm-qt (`application.cpp`, `serviceName`).
+pub const PCMANFM_BUS_NAME: &str = "org.pcmanfm.PCManFM";
+/// Модуль рабочего стола в `lxqt-session` (файл автозапуска pcmanfm-qt).
+pub const LXQT_DESKTOP_MODULE: &str = "lxqt-desktop.desktop";
+/// Имя D-Bus `lxqt-session` (`sessionapplication.cpp`).
+pub const LXQT_SESSION_BUS_NAME: &str = "org.lxqt.session";
+
+/// Где лежат настройки стола pcmanfm-qt и резервная копия Rexon.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PcmanfmPaths {
+    /// `$XDG_CONFIG_HOME`.
+    pub config_home: String,
+    /// Системные каталоги по старшинству ([`pcmanfm_config_dirs`]).
+    pub config_dirs: Vec<String>,
+    /// Каталог резервной копии ([`pcmanfm_backup_dir`]).
+    pub backup_dir: String,
+}
+
+/// Системные каталоги настроек pcmanfm-qt: `$XDG_CONFIG_DIRS`, затем
+/// `/etc/xdg` и `/usr/share` — туда их кладут пакеты, и это же дописывает
+/// `startlxqt`, даже если Rexon запущен с урезанным окружением.
+pub fn pcmanfm_config_dirs(xdg_config_dirs: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for d in xdg_config_dirs.split(':').chain(["/etc/xdg", "/usr/share"]) {
+        let d = d.trim_end_matches('/');
+        if !d.is_empty() && !out.iter().any(|o| o == d) {
+            out.push(d.to_string());
+        }
+    }
+    out
+}
+
+/// Каталог резервной копии настроек стола LXQt.
+pub fn pcmanfm_backup_dir(data_home: &str) -> String {
+    format!("{}/rexon/backups/lxqt-desktop-font", data_home.trim_end_matches('/'))
+}
+
+impl PcmanfmPaths {
+    /// По окружению процесса.
+    pub fn from_env() -> Self {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let xdg_data = std::env::var("XDG_DATA_HOME").ok();
+        PcmanfmPaths {
+            config_home: crate::utils::config_home_env(),
+            config_dirs: pcmanfm_config_dirs(&std::env::var("XDG_CONFIG_DIRS").unwrap_or_default()),
+            backup_dir: pcmanfm_backup_dir(&crate::utils::data_home(xdg_data.as_deref(), &home)),
+        }
+    }
+
+    /// Свой каталог профиля.
+    pub fn own_dir(&self) -> String {
+        format!("{}/{PCMANFM_PROFILE_REL}", self.config_home.trim_end_matches('/'))
+    }
+
+    /// Свой `settings.conf`.
+    pub fn own_file(&self) -> String {
+        format!("{}/settings.conf", self.own_dir())
+    }
+
+    fn record_path(&self) -> String {
+        format!("{}/record.json", self.backup_dir.trim_end_matches('/'))
+    }
+}
+
+/// Откуда pcmanfm-qt берёт настройки стола.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PcmanfmSource {
+    /// Свой каталог есть (файла в нём может и не быть).
+    Own,
+    /// Своего каталога нет — системный `settings.conf` по этому пути.
+    System(String),
+    /// Нет ни своего, ни системного каталога: встроенные умолчания.
+    Builtin,
+}
+
+/// Что pcmanfm-qt прочтёт при запуске: источник и текст (`None` — файла нет,
+/// действуют встроенные умолчания).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PcmanfmSeed {
+    pub source: PcmanfmSource,
+    pub text: Option<String>,
+}
+
+/// Порт `Settings::profileDir(profile, true)`: свой каталог заслоняет
+/// системные целиком.
+pub fn pcmanfm_seed(paths: &PcmanfmPaths) -> PcmanfmSeed {
+    if Path::new(&paths.own_dir()).is_dir() {
+        return PcmanfmSeed { source: PcmanfmSource::Own, text: fs::read_to_string(paths.own_file()).ok() };
+    }
+    pcmanfm_system_seed(paths)
+}
+
+/// Что pcmanfm-qt прочёл бы без своего каталога: первый существующий
+/// системный каталог профиля.
+fn pcmanfm_system_seed(paths: &PcmanfmPaths) -> PcmanfmSeed {
+    for dir in &paths.config_dirs {
+        let profile = format!("{}/{PCMANFM_PROFILE_REL}", dir.trim_end_matches('/'));
+        if Path::new(&profile).is_dir() {
+            let file = format!("{profile}/settings.conf");
+            return PcmanfmSeed { text: fs::read_to_string(&file).ok(), source: PcmanfmSource::System(file) };
+        }
+    }
+    PcmanfmSeed { source: PcmanfmSource::Builtin, text: None }
+}
+
+/// Строки с их окончаниями: правка одной строки оставляет прочие байты как
+/// были (и `\r\n`, и отсутствие `\n` в конце).
+fn ini_raw_lines(text: &str) -> Vec<&str> {
+    text.split_inclusive('\n').collect()
+}
+
+fn ini_raw_body(line: &str) -> &str {
+    line.trim_end_matches(['\n', '\r'])
+}
+
+fn ini_raw_section(line: &str) -> Option<&str> {
+    let t = ini_raw_body(line).trim();
+    (t.starts_with('[') && t.ends_with(']')).then(|| &t[1..t.len() - 1])
+}
+
+fn ini_raw_key(line: &str) -> Option<&str> {
+    ini_raw_body(line).split_once('=').map(|(k, _)| k.trim())
+}
+
+/// Сырое значение `[Desktop] Font` (как в файле, с кавычками); `None` — ключа нет.
+pub fn pcmanfm_desktop_font_raw(text: &str) -> Option<String> {
+    let mut in_desktop = false;
+    for line in ini_raw_lines(text) {
+        if let Some(name) = ini_raw_section(line) {
+            in_desktop = name == "Desktop";
+            continue;
+        }
+        if in_desktop && ini_raw_key(line) == Some("Font") {
+            return ini_raw_body(line).split_once('=').map(|(_, v)| v.trim().to_string());
+        }
+    }
+    None
+}
+
+/// Текст `settings.conf` с `[Desktop] Font=<raw>`: меняется одна строка,
+/// остальные байты — как были. Ключа нет — строка встаёт сразу за
+/// заголовком `[Desktop]`; нет секции — она дописывается в конец.
+pub fn pcmanfm_with_desktop_font(existing: Option<&str>, raw: &str) -> String {
+    let text = existing.unwrap_or_default();
+    let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let new_line = format!("Font={raw}");
+    let mut out = String::with_capacity(text.len() + new_line.len() + 16);
+    let mut in_desktop = false;
+    let mut after_header: Option<usize> = None;
+    let mut replaced = false;
+    for line in ini_raw_lines(text) {
+        if let Some(name) = ini_raw_section(line) {
+            in_desktop = name == "Desktop";
+            out.push_str(line);
+            if in_desktop && after_header.is_none() {
+                if !line.ends_with('\n') {
+                    out.push_str(eol);
+                }
+                after_header = Some(out.len());
+            }
+            continue;
+        }
+        if in_desktop && !replaced && ini_raw_key(line) == Some("Font") {
+            out.push_str(&new_line);
+            out.push_str(&line[ini_raw_body(line).len()..]);
+            replaced = true;
+            continue;
+        }
+        out.push_str(line);
+    }
+    if replaced {
+        return out;
+    }
+    match after_header {
+        Some(at) => out.insert_str(at, &format!("{new_line}{eol}")),
+        None => {
+            if !out.is_empty() {
+                if !out.ends_with('\n') {
+                    out.push_str(eol);
+                }
+                out.push_str(eol);
+            }
+            out.push_str(&format!("[Desktop]{eol}{new_line}{eol}"));
+        }
+    }
+    out
+}
+
+/// Текст без строки `[Desktop] Font` (pcmanfm-qt тогда берёт шрифт
+/// интерфейса); остальные байты — как были.
+pub fn pcmanfm_without_desktop_font(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_desktop = false;
+    for line in ini_raw_lines(text) {
+        if let Some(name) = ini_raw_section(line) {
+            in_desktop = name == "Desktop";
+        } else if in_desktop && ini_raw_key(line) == Some("Font") {
+            continue;
+        }
+        out.push_str(line);
+    }
+    out
+}
+
+/// Значение `Font` в записи pcmanfm-qt: `QFont::toString` в кавычках — без
+/// них QSettings прочтёт запятые как список, и шрифт пропадёт.
+pub fn pcmanfm_font_value(family: &str, size: i32, face: FontFace) -> String {
+    format!("\"{}\"", qt_font_spec_face(family, size, face))
+}
+
+/// Что было до первой правки Rexon — для возврата
+/// ([`pcmanfm_desktop_font_restore`]): `record.json` в [`pcmanfm_backup_dir`]
+/// рядом с копией своего `settings.conf` (если он был).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PcmanfmFontRecord {
+    /// Был ли свой `settings.conf`.
+    pub had_file: bool,
+    /// Строка `Font`, которую pcmanfm-qt читал до нас (из своего или
+    /// системного файла); `None` — ключа не было.
+    pub font: Option<String>,
+    /// Каталоги, которые Rexon завёл сам (при возврате снимаются, если пусты).
+    pub created_dirs: Vec<String>,
+    /// Последний текст, записанный Rexon: совпадает при возврате — файл
+    /// нетронут с нашей правки, и его можно снять целиком.
+    pub written: String,
+}
+
+/// Запись «как было», если Rexon уже правил шрифт стола.
+pub fn pcmanfm_font_record(paths: &PcmanfmPaths) -> Option<PcmanfmFontRecord> {
+    serde_json::from_str(&fs::read_to_string(paths.record_path()).ok()?).ok()
+}
+
+fn pcmanfm_save_record(paths: &PcmanfmPaths, record: &PcmanfmFontRecord) -> Result<(), String> {
+    fs::create_dir_all(&paths.backup_dir).map_err(|e| e.to_string())?;
+    let text = serde_json::to_string_pretty(record).map_err(|e| e.to_string())?;
+    crate::utils::atomic_write_str_err(&paths.record_path(), &text)
+}
+
+/// Живой рабочий стол pcmanfm-qt (подделка — в проверках).
+pub trait PcmanfmBus {
+    /// Работает ли pcmanfm-qt (занято ли его имя D-Bus).
+    fn running(&self) -> bool;
+    /// Попросить его выйти (он сам сохранит свои настройки) → отправлено ли.
+    fn quit(&self) -> bool;
+    /// Запустить рабочий стол снова → получилось ли.
+    fn start(&self) -> bool;
+    /// Пауза между проверками, закрылся ли он.
+    fn pause(&self);
+}
+
+/// Итог применения.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PcmanfmApplied {
+    /// Стол работал и запущен снова — шрифт уже виден.
+    pub restarted: bool,
+}
+
+/// Сколько раз по [`PcmanfmBus::pause`] ждать выхода pcmanfm-qt.
+const PCMANFM_QUIT_POLLS: usize = 50;
+
+/// Закрыть живой стол перед правкой → работал ли он. Не закрылся — ошибка:
+/// править файл нельзя, при выходе он его затрёт.
+fn pcmanfm_stop(bus: &dyn PcmanfmBus) -> Result<bool, String> {
+    if !bus.running() {
+        return Ok(false);
+    }
+    if bus.quit() {
+        for _ in 0..PCMANFM_QUIT_POLLS {
+            if !bus.running() {
+                return Ok(true);
+            }
+            bus.pause();
+        }
+    }
+    Err(tr("PCManFM-Qt, which draws the LXQt desktop, didn't close, so its settings file wasn't changed: on \
+            exit it would have overwritten the change."))
+}
+
+fn pcmanfm_no_settings_text() -> String {
+    tr("The font of desktop icon labels in LXQt can't be set: there is no PCManFM-Qt desktop settings file \
+        (pcmanfm-qt/lxqt/settings.conf), neither yours nor a system one.")
+}
+
+/// Почему шрифт подписей значков LXQt задать нельзя — до окна выбора;
+/// `None` — можно. Нельзя, если pcmanfm-qt не работает и настроек стола нет
+/// ни своих, ни системных: заводить их с нуля — значит гадать умолчания.
+pub fn pcmanfm_refusal(paths: &PcmanfmPaths, bus: &dyn PcmanfmBus) -> Option<String> {
+    (pcmanfm_seed(paths).source == PcmanfmSource::Builtin && !bus.running()).then(pcmanfm_no_settings_text)
+}
+
+/// Записать шрифт подписей значков стола LXQt с защитой настроек стола:
+/// закрыть живой pcmanfm-qt, при первой правке сделать резервную копию,
+/// поменять одну строку `Font` (своего файла нет — завести его копией
+/// системного), запустить стол снова.
+pub fn pcmanfm_desktop_font_apply(
+    paths: &PcmanfmPaths,
+    bus: &dyn PcmanfmBus,
+    family: &str,
+    size: i32,
+    face: FontFace,
+) -> Result<PcmanfmApplied, String> {
+    let was_running = pcmanfm_stop(bus)?;
+    let result = pcmanfm_write_font(paths, &pcmanfm_font_value(family, size, face));
+    // Стол запускается снова и при неудаче записи: закрыли его мы.
+    let restarted = was_running && bus.start();
+    result.map(|()| PcmanfmApplied { restarted })
+}
+
+fn pcmanfm_backup_failed(detail: &str) -> String {
+    trf("Couldn't save a backup copy of the LXQt desktop settings, so nothing was changed: %1", &[&detail])
+}
+
+fn pcmanfm_write_font(paths: &PcmanfmPaths, raw: &str) -> Result<(), String> {
+    let seed = pcmanfm_seed(paths);
+    if seed.source == PcmanfmSource::Builtin {
+        return Err(pcmanfm_no_settings_text());
+    }
+    let own_file = paths.own_file();
+    let mut record = match pcmanfm_font_record(paths) {
+        Some(record) => record,
+        None => {
+            // Первая правка: копия своего файла и запись «как было».
+            let own_text = fs::read_to_string(&own_file).ok();
+            if let Some(text) = &own_text {
+                fs::create_dir_all(&paths.backup_dir).map_err(|e| pcmanfm_backup_failed(&e.to_string()))?;
+                crate::utils::atomic_write_str_err(&format!("{}/settings.conf", paths.backup_dir), text)
+                    .map_err(|e| pcmanfm_backup_failed(&e))?;
+            }
+            let app_dir = format!("{}/pcmanfm-qt", paths.config_home.trim_end_matches('/'));
+            PcmanfmFontRecord {
+                had_file: own_text.is_some(),
+                font: seed.text.as_deref().and_then(pcmanfm_desktop_font_raw),
+                created_dirs: [app_dir, paths.own_dir()].into_iter().filter(|d| !Path::new(d).is_dir()).collect(),
+                written: String::new(),
+            }
+        }
+    };
+    let text = pcmanfm_with_desktop_font(seed.text.as_deref(), raw);
+    record.written = text.clone();
+    // Запись — до правки: без неё вернуть было бы нечем.
+    pcmanfm_save_record(paths, &record).map_err(|e| pcmanfm_backup_failed(&e))?;
+    fs::create_dir_all(paths.own_dir()).map_err(|e| e.to_string())?;
+    crate::utils::atomic_write_str_err(&own_file, &text)
+}
+
+/// Вернуть шрифт подписей значков стола LXQt, как было до Rexon. Файл,
+/// заведённый нами и с тех пор нетронутый, снимается вместе с заведёнными
+/// каталогами; иначе в нынешний файл кладётся прежняя строка `Font` (или
+/// она снимается, если её не было) — всё остальное, в том числе то, что
+/// человек поменял после нас, остаётся. `Ok(false)` — возвращать нечего.
+pub fn pcmanfm_desktop_font_restore(paths: &PcmanfmPaths, bus: &dyn PcmanfmBus) -> Result<bool, String> {
+    let Some(record) = pcmanfm_font_record(paths) else {
+        return Ok(false);
+    };
+    let was_running = pcmanfm_stop(bus)?;
+    let result = pcmanfm_undo(paths, &record);
+    if was_running {
+        bus.start();
+    }
+    result?;
+    let _ = fs::remove_dir_all(&paths.backup_dir);
+    Ok(true)
+}
+
+fn pcmanfm_undo(paths: &PcmanfmPaths, record: &PcmanfmFontRecord) -> Result<(), String> {
+    let own_file = paths.own_file();
+    let Ok(current) = fs::read_to_string(&own_file) else {
+        return Ok(());
+    };
+    if !record.had_file && current == record.written {
+        fs::remove_file(&own_file).map_err(|e| e.to_string())?;
+        // Глубже — раньше. Непустой каталог (pcmanfm-qt положил туда своё)
+        // `remove_dir` не снимет — тогда он заслоняет системный, и в нём
+        // нужен текст, который pcmanfm-qt читал до нас.
+        for dir in record.created_dirs.iter().rev() {
+            let _ = fs::remove_dir(dir);
+        }
+        // Каталог был до нас (пустой) — так и остаётся: pcmanfm-qt читал
+        // встроенные умолчания и прочтёт их снова.
+        let own_dir = paths.own_dir();
+        if record.created_dirs.contains(&own_dir) && Path::new(&own_dir).is_dir() {
+            if let Some(text) = pcmanfm_system_seed(paths).text {
+                crate::utils::atomic_write_str_err(&own_file, &text)?;
+            }
+        }
+        return Ok(());
+    }
+    let text = match &record.font {
+        Some(raw) => pcmanfm_with_desktop_font(Some(&current), raw),
+        None => pcmanfm_without_desktop_font(&current),
+    };
+    if text != current {
+        crate::utils::atomic_write_str_err(&own_file, &text)?;
+    }
+    Ok(())
+}
+
+/// Шрифт подписей значков, которым стол LXQt рисует сейчас, — запись QFont;
+/// пусто — `Font` не задан (pcmanfm-qt берёт шрифт интерфейса).
+pub fn pcmanfm_desktop_font_spec(paths: &PcmanfmPaths) -> String {
+    pcmanfm_seed(paths)
+        .text
+        .as_deref()
+        .and_then(pcmanfm_desktop_font_raw)
+        .map(|v| v.trim_matches('"').to_string())
+        .unwrap_or_default()
+}
+
+/// Фраза к итогу применения: стол перезапущен — шрифт уже виден; не работал
+/// — применится при его запуске.
+pub fn pcmanfm_applied_note(applied: PcmanfmApplied) -> String {
+    if applied.restarted {
+        tr("To apply it, Rexon restarted the LXQt desktop (PCManFM-Qt); its open windows were closed.")
+    } else {
+        tr("It applies the next time the LXQt desktop starts.")
+    }
+}
+
+/// Кнопка возврата: (подпись, подсказка).
+pub fn pcmanfm_restore_texts() -> (String, String) {
+    (
+        tr("↺ Desktop font as before"),
+        tr("Return the font of LXQt desktop icon labels to what it was before Rexon changed it. The wallpaper and \
+            other desktop settings stay as they are."),
+    )
+}
+
+/// Итог возврата.
+pub fn pcmanfm_restore_status(result: &Result<bool, String>) -> String {
+    match result {
+        Ok(true) => tr("The font of desktop icon labels is back to what it was."),
+        Ok(false) => tr("Rexon didn't change the font of desktop icon labels: there's nothing to return."),
+        Err(why) => trf("The font of desktop icon labels wasn't returned: %1", &[why]),
+    }
+}
+
+fn pcmanfm_argv(parts: &[&str]) -> Vec<String> {
+    parts.iter().map(|s| s.to_string()).collect()
+}
+
+/// argv вопроса шине, занято ли имя `name` (`NameHasOwner`).
+pub fn dbus_name_has_owner_argv(name: &str) -> Vec<String> {
+    pcmanfm_argv(&[
+        "dbus-send",
+        "--session",
+        "--print-reply",
+        "--reply-timeout=3000",
+        "--dest=org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus.NameHasOwner",
+        &format!("string:{name}"),
+    ])
+}
+
+/// argv выхода pcmanfm-qt (`org.pcmanfm.Application.quit`).
+pub fn pcmanfm_quit_argv() -> Vec<String> {
+    pcmanfm_argv(&[
+        "dbus-send",
+        "--session",
+        "--print-reply",
+        "--reply-timeout=5000",
+        &format!("--dest={PCMANFM_BUS_NAME}"),
+        "/Application",
+        "org.pcmanfm.Application.quit",
+    ])
+}
+
+/// argv запуска модуля стола в `lxqt-session`. `startModule` ответа не шлёт
+/// (`Q_NOREPLY`), поэтому без `--print-reply`: иначе `dbus-send` ждал бы
+/// его до таймаута.
+pub fn lxqt_start_desktop_argv() -> Vec<String> {
+    pcmanfm_argv(&[
+        "dbus-send",
+        "--session",
+        "--type=method_call",
+        &format!("--dest={LXQT_SESSION_BUS_NAME}"),
+        "/LXQtSession",
+        "org.lxqt.session.startModule",
+        &format!("string:{LXQT_DESKTOP_MODULE}"),
+    ])
+}
+
+/// argv запуска стола без `lxqt-session` — строка из `lxqt-desktop.desktop`,
+/// отсоединённо.
+pub fn pcmanfm_desktop_spawn_argv() -> Vec<String> {
+    pcmanfm_argv(&["setsid", "-f", "pcmanfm-qt", "--desktop", "--profile=lxqt"])
+}
+
+/// Живой pcmanfm-qt через `dbus-send`.
+pub struct LivePcmanfmBus;
+
+fn pcmanfm_run(argv: &[String]) -> Option<std::process::Output> {
+    let (exe, args) = argv.split_first()?;
+    std::process::Command::new(exe).args(args).stdin(std::process::Stdio::null()).output().ok()
+}
+
+fn dbus_name_has_owner(name: &str) -> bool {
+    pcmanfm_run(&dbus_name_has_owner_argv(name))
+        .is_some_and(|o| o.status.success() && String::from_utf8_lossy(&o.stdout).contains("boolean true"))
+}
+
+impl PcmanfmBus for LivePcmanfmBus {
+    fn running(&self) -> bool {
+        dbus_name_has_owner(PCMANFM_BUS_NAME)
+    }
+    fn quit(&self) -> bool {
+        pcmanfm_run(&pcmanfm_quit_argv()).is_some_and(|o| o.status.success())
+    }
+    fn start(&self) -> bool {
+        let argv = if dbus_name_has_owner(LXQT_SESSION_BUS_NAME) {
+            lxqt_start_desktop_argv()
+        } else {
+            pcmanfm_desktop_spawn_argv()
+        };
+        // Вывод — в никуда, а не в трубы: `setsid -f` оставил бы их открытыми
+        // у живого стола, и ожидание конца вывода не кончилось бы.
+        let Some((exe, args)) = argv.split_first() else { return false };
+        std::process::Command::new(exe)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+    fn pause(&self) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 }
 
 // ── Шрифт заголовков sway ─────────────────────────────────────────────────
@@ -2413,7 +3093,17 @@ pub fn font_target_available(de: &str, target: &str) -> bool {
 /// То же с оконным менеджером сеанса ([`title_wm_for`]): в LXQt и labwc
 /// заголовок применим, если менеджер опознан.
 pub fn font_target_available_wm(de: &str, target: &str, wm: Option<TitleWm>) -> bool {
-    target != "title" || TITLE_FONT_DES.contains(&de) || wm.is_some()
+    match target {
+        "title" => TITLE_FONT_DES.contains(&de) || wm.is_some(),
+        "desktop" => DESKTOP_FONT_DES.contains(&de),
+        _ => true,
+    }
+}
+
+/// Задаётся ли у шрифта цели только кегль: подписи значков xfdesktop
+/// (семейство у них — от шрифта интерфейса, свойства семейства нет).
+pub fn font_target_size_only(de: &str, target: &str) -> bool {
+    de == "xfce" && target == "desktop"
 }
 
 /// Цели шрифтов, которые в окружении `de` можно применить.
@@ -2512,6 +3202,7 @@ pub fn font_plan_wm(de: &str, target: &str, wm: Option<TitleWm>) -> FontPlan {
         ("cosmic", "mono") => Some(FontFile::CosmicTk {
             key: "monospace_font".to_string(),
         }),
+        ("lxqt", "desktop") => Some(FontFile::PcmanfmDesktop),
         ("lxqt", "system" | "mono") => Some(FontFile::QtIni {
             path: "lxqt/lxqt.conf".to_string(),
             group: "Qt".to_string(),
@@ -2533,6 +3224,17 @@ pub fn font_plan_wm(de: &str, target: &str, wm: Option<TitleWm>) -> FontPlan {
     };
 
     let mut also = Vec::new();
+    // Шрифт документов MATE: рядом — ключ GNOME, его читают программы GNOME
+    // (просмотрщик документов, браузер) и в MATE.
+    if target == "document" {
+        let shared = SoundBackend::GSettings {
+            schema: DOCUMENT_FONT_GNOME.0.to_string(),
+            key: DOCUMENT_FONT_GNOME.1.to_string(),
+        };
+        if primary != FontStore::Cmd(shared.clone()) {
+            also.push(FontStore::Cmd(shared));
+        }
+    }
     if matches!(target, "system" | "mono") {
         let (schema, key) = font_gsettings_key("gnome", target);
         let shared = SoundBackend::GSettings {
@@ -2572,6 +3274,20 @@ pub fn font_plan_wm(de: &str, target: &str, wm: Option<TitleWm>) -> FontPlan {
     }
 
     let mut extra = Vec::new();
+    // xfdesktop: свой кегль действует, только если включён его включатель.
+    if font_target_size_only(de, target) {
+        extra.push(
+            sound_write_argv(
+                &SoundBackend::Xfconf {
+                    channel: XFDESKTOP_CHANNEL.to_string(),
+                    prop: XFDESKTOP_USE_SIZE_PROP.to_string(),
+                },
+                "true",
+                "",
+            )
+            .expect("xfconf пишется без kde_tool"),
+        );
+    }
     if let FontStore::Cmd(SoundBackend::GSettings { schema, key }) = &primary {
         if key == "titlebar-font" {
             extra.push(vec![
@@ -2618,6 +3334,8 @@ pub fn font_store_write_argv_face(
         return None;
     };
     let value = match backend {
+        // Кегль подписей значков xfdesktop — число, без семейства.
+        SoundBackend::Xfconf { prop, .. } if prop == XFDESKTOP_FONT_SIZE_PROP => size.to_string(),
         SoundBackend::KConfig { .. } => kde_font_spec_face(family, size, face),
         SoundBackend::GSettings { .. } | SoundBackend::Xfconf { .. } => pango_font_desc(family, size, face),
         SoundBackend::Dde { .. } => gnome_font_spec(family, size),
@@ -6654,6 +7372,16 @@ pub fn font_target_texts(target: &str) -> (String, String, String) {
             tr("Font in window title bars"),
             tr("Window Title Font"),
         ),
+        "document" => (
+            tr("📄 Documents…"),
+            tr("Font for reading documents in GNOME and GTK apps"),
+            tr("Document Font"),
+        ),
+        "desktop" => (
+            tr("🖥 Desktop…"),
+            tr("Font of icon labels on the desktop"),
+            tr("Desktop Font"),
+        ),
         _ => (
             tr("🔤 System…"),
             tr("Font for buttons, menus and text in apps"),
@@ -7074,6 +7802,12 @@ pub const TEXTS: &[(&str, &str)] = &[
     ),
     ("wp.audio_mute_other", n_("Mute when another app is playing sound")),
     ("wp.audio_mute_covered", n_("Pause the wallpaper when windows hide it")),
+    ("wp.pause_battery", n_("Pause the wallpaper when running on battery")),
+    (
+        "wp.pause_game",
+        // TRANSLATORS: “game mode” is Feral GameMode or a game started in gamescope.
+        n_("Pause the wallpaper while a game is running (game mode)"),
+    ),
     (
         "wp.audio_hint",
         n_("Wallpaper sound changes on the fly — no need to reapply the wallpaper. Video \

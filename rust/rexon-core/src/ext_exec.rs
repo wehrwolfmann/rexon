@@ -499,7 +499,7 @@ pub struct Plan {
 /// `tempfile.mkdtemp(prefix=…, dir=…)` без внешних крейтов: имя из времени и
 /// счётчика, создание — `create_dir` (падает, если имя занято, — значит
 /// каталог наш и только наш).
-fn mkdtemp(dir: &Path, prefix: &str) -> ExecResult<PathBuf> {
+pub(crate) fn mkdtemp(dir: &Path, prefix: &str) -> ExecResult<PathBuf> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let stamp = std::time::SystemTime::now()
@@ -1318,6 +1318,20 @@ fn install_unpacked(rxn_path: &Path, tmp: &Path) -> ExecResult<(String, Vec<Stri
                 std::fs::symlink_metadata(p).is_ok()
             }));
             notes = exec_plan_noted_undo(plan, &mut undo)?;
+            // Набор виджетов из файла: положение виджетов — накладкой,
+            // заметки «где набор» и «каких шрифтов нет».
+            if let Some(set) = crate::conky_sets::set_of_manifest(&ext.manifest) {
+                let ctx = crate::de_apply::Ctx::live();
+                let state = std::env::var("XDG_STATE_HOME").ok().filter(|v| !v.is_empty());
+                notes.extend(crate::conky_sets::after_set_install(
+                    &crate::animations::SystemIo,
+                    &ctx,
+                    state.as_deref(),
+                    &check.ext_id,
+                    &set,
+                    &crate::conky_sets::live_have_font,
+                ));
+            }
         }
         save_state_with(&check.ext_id, Some(true))?;
         let name = ext.manifest.get("name").and_then(Value::as_str).unwrap_or(&check.ext_id).to_string();
@@ -1347,6 +1361,420 @@ fn record_in_journal(ext: &Extension, placed: Option<Vec<crate::install_journal:
     }
 }
 
+// ============================================================================
+// Курсоры из Windows: перевод заново из оригиналов — только по исправлению
+// ============================================================================
+//
+// Решение Wehrwolfmann 14.11.2026: при открытии раздела «Курсоры» установленные
+// темы «из Windows», переведённые версией переводчика ниже текущей, в фоне
+// переводятся заново из оригиналов, сохранённых в пакете, — но только если
+// хотя бы одно исправление между их версией и текущей касается их
+// ([`imp::CURSOR_CONVERTER_CHANGES`]). Вышло побайтно то же — файлы не
+// заменяются, в manifest пишется только версия. Без оригиналов — пропуск без
+// шума. Ошибки — в журнал; человеку — только «Курсоры X обновлены».
+
+use crate::importers as imp;
+
+/// Итог прохода по установленным темам курсоров «из Windows».
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct CursorRefresh {
+    /// Заменены файлы: (имя темы, каталог темы в `data/` — имя для применения).
+    pub replaced: Vec<(String, String)>,
+    /// Перевод вышел тем же — записана только версия (id пакетов).
+    pub version_only: Vec<String>,
+    /// Что не вышло (уже в журнале).
+    pub errors: Vec<String>,
+}
+
+/// Одинаковы ли два дерева: те же имена, файлы байт в байт, ссылки с теми же
+/// целями.
+fn same_tree(a: &Path, b: &Path) -> bool {
+    let names = |d: &Path| -> Option<Vec<std::ffi::OsString>> {
+        let mut v: Vec<_> = std::fs::read_dir(d).ok()?.flatten().map(|e| e.file_name()).collect();
+        v.sort();
+        Some(v)
+    };
+    let (Some(na), Some(nb)) = (names(a), names(b)) else {
+        return false;
+    };
+    if na != nb {
+        return false;
+    }
+    na.iter().all(|n| {
+        let (pa, pb) = (a.join(n), b.join(n));
+        let (Ok(ma), Ok(mb)) = (std::fs::symlink_metadata(&pa), std::fs::symlink_metadata(&pb)) else {
+            return false;
+        };
+        if ma.file_type().is_symlink() || mb.file_type().is_symlink() {
+            ma.file_type().is_symlink()
+                && mb.file_type().is_symlink()
+                && std::fs::read_link(&pa).ok() == std::fs::read_link(&pb).ok()
+        } else if ma.is_dir() || mb.is_dir() {
+            ma.is_dir() && mb.is_dir() && same_tree(&pa, &pb)
+        } else {
+            ma.len() == mb.len() && std::fs::read(&pa).ok() == std::fs::read(&pb).ok()
+        }
+    })
+}
+
+/// Байты курсоров-оригиналов пакета (обычные файлы `.cur`/`.ani`).
+fn original_cursor_bytes(originals: &Path) -> Vec<Vec<u8>> {
+    let Ok(rd) = std::fs::read_dir(originals) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<PathBuf> = rd
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .map(|e| e.path())
+        .filter(|p| {
+            let l = p.to_string_lossy().to_lowercase();
+            l.ends_with(".cur") || l.ends_with(".ani")
+        })
+        .collect();
+    paths.sort();
+    paths.into_iter().filter_map(|p| std::fs::read(p).ok()).collect()
+}
+
+fn write_manifest(path: &Path, m: &Value) -> std::io::Result<()> {
+    std::fs::write(path, imp::dumps_indent2(m))
+}
+
+/// Пройти установленные пакеты в `extensions_dir` и перевести заново темы
+/// курсоров «из Windows», которых касается исправление переводчика.
+///
+/// `current`/`changes` — версия и таблица переводчика (в живом пути —
+/// [`imp::CURSOR_CONVERTER_VERSION`] и [`imp::CURSOR_CONVERTER_CHANGES`]);
+/// `reinstall(id, новое дерево)` — поставить новое дерево пакета на место
+/// прежнего (в живом пути — [`replace_installed`]). Манифест нового дерева
+/// уже несёт версию `current`.
+pub fn refresh_windows_cursors_in(
+    extensions_dir: &Path,
+    current: u32,
+    changes: &[(u32, imp::CursorFixScope)],
+    reinstall: &mut dyn FnMut(&str, &Path) -> Result<(), String>,
+) -> CursorRefresh {
+    let mut out = CursorRefresh::default();
+    let Ok(rd) = std::fs::read_dir(extensions_dir) else {
+        return out;
+    };
+    let mut dirs: Vec<PathBuf> = rd
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .map(|e| e.path())
+        .collect();
+    dirs.sort();
+    for dir in dirs {
+        let manifest_path = dir.join("manifest.json");
+        let Some(mut manifest) = std::fs::read_to_string(&manifest_path)
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        else {
+            continue;
+        };
+        let Some(from) = imp::cursor_manifest_converter(&manifest) else {
+            continue;
+        };
+        if from >= current {
+            continue;
+        }
+        // Старые темы без оригиналов перевести нечем — молча мимо.
+        let originals = dir.join("originals");
+        if !originals.is_dir() {
+            continue;
+        }
+        let traits = imp::cursor_set_traits(&original_cursor_bytes(&originals));
+        if !imp::cursor_retranslate_due(from, current, changes, &traits) {
+            continue;
+        }
+        let id = manifest.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+        let name = manifest.get("name").and_then(Value::as_str).unwrap_or(&id).to_string();
+        let fail = |out: &mut CursorRefresh, what: String| {
+            crate::log_warn!("cursors", "перевод заново «{name}»: {what}");
+            out.errors.push(format!("{name}: {what}"));
+        };
+        let tmp = match mkdtemp(&std::env::temp_dir(), "rexon_wincur_again_") {
+            Ok(t) => t,
+            Err(e) => {
+                fail(&mut out, e);
+                continue;
+            }
+        };
+        let step = (|| -> Result<Option<String>, String> {
+            let rxn = crate::imp_live::retranslate_windows_cursors(&dir, &tmp.join("out"))?;
+            let fresh = tmp.join("new");
+            ext_utils::safe_zip_extract(&rxn, &fresh)
+                .map_err(|_| tr("The file is damaged or is not an .rxn archive"))?;
+            let fresh_manifest = fresh.join("manifest.json");
+            let mut m: Value = std::fs::read_to_string(&fresh_manifest)
+                .ok()
+                .and_then(|t| serde_json::from_str(&t).ok())
+                .ok_or_else(|| tr("manifest.json not found in the .rxn archive"))?;
+            imp::set_cursor_manifest_converter(&mut m, current);
+            write_manifest(&fresh_manifest, &m).map_err(|e| e.to_string())?;
+            if same_tree(&dir.join("data"), &fresh.join("data")) {
+                // Побайтно то же: файлы на месте, только версия.
+                imp::set_cursor_manifest_converter(&mut manifest, current);
+                write_manifest(&manifest_path, &manifest).map_err(|e| e.to_string())?;
+                return Ok(None);
+            }
+            let theme_dir = m
+                .get("windows_cursors")
+                .and_then(|w| w.get("theme_dir"))
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            reinstall(&id, &fresh)?;
+            Ok(Some(theme_dir))
+        })();
+        let _ = std::fs::remove_dir_all(&tmp);
+        match step {
+            Ok(None) => out.version_only.push(id),
+            Ok(Some(theme_dir)) => out.replaced.push((name.clone(), theme_dir)),
+            Err(e) => fail(&mut out, e),
+        }
+    }
+    out
+}
+
+/// Поставить новое дерево `fresh` пакета `ext_id` на место установленного —
+/// тем же планом, что обычная установка (копия темы в каталог курсоров
+/// заменяется по метке владельца). Сбой — всё как было.
+pub fn replace_installed(ext_id: &str, fresh: &Path) -> ExecResult<()> {
+    let extensions_dir = qt_extensions::extensions_dir();
+    let dest = extensions_dir.join(ext_id);
+    if !dest.is_dir() {
+        return err(trf("Extension '%1' not found", &[&ext_id]));
+    }
+    // Прежний пакет — в сторону на той же ФС (переименование), вернуть при сбое.
+    let backup = rexon_config_dir().join(format!("extensions-old-{ext_id}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&backup);
+    std::fs::rename(&dest, &backup).map_err(|e| trf("couldn't copy the extension: %1", &[&e]))?;
+    let restore = |dest: &Path, backup: &Path| {
+        let _ = std::fs::remove_dir_all(dest);
+        let _ = std::fs::rename(backup, dest);
+    };
+    let mut undo = crate::install_plan::Undo::new();
+    if let Err(e) = crate::install_plan::copy_tree(fresh, &dest, &mut undo) {
+        undo.finish(false);
+        restore(&dest, &backup);
+        return err(trf("couldn't copy the extension: %1", &[&e]));
+    }
+    let state = qt_extensions::load_state();
+    let outcome = (|| -> ExecResult<(Extension, Option<Vec<crate::install_journal::Placed>>, Vec<String>)> {
+        let ext = Extension::load_from_dir(&dest, &state)
+            .map_err(|e| trf("the extension manifest was not accepted: %1", &[&e]))?;
+        let plan = make_plan(&ext, true)?;
+        let placed = Some(crate::install_journal::placed_from_steps(&plan.steps, &|p| {
+            std::fs::symlink_metadata(p).is_ok()
+        }));
+        let notes = exec_plan_noted_undo(plan, &mut undo)?;
+        Ok((ext, placed, notes))
+    })();
+    undo.finish(outcome.is_ok());
+    match outcome {
+        Ok((ext, placed, notes)) => {
+            let _ = std::fs::remove_dir_all(&backup);
+            for n in notes {
+                crate::log_warn!("cursors", "перевод заново «{ext_id}»: {n}");
+            }
+            record_in_journal(&ext, placed);
+            Ok(())
+        }
+        Err(e) => {
+            restore(&dest, &backup);
+            Err(e)
+        }
+    }
+}
+
+/// Живой проход «Курсоров» ([`refresh_windows_cursors_in`] по каталогу
+/// расширений). Отдаёт строки для человека — только про реально
+/// заменённое; пусто — сказать нечего. Активная тема применяется заново
+/// тем же планом, что «Применить», и подпись честно говорит, где новый вид
+/// виден сразу, а где — после повторного входа.
+pub fn refresh_windows_cursors_live() -> Vec<String> {
+    let report = refresh_windows_cursors_in(
+        &qt_extensions::extensions_dir(),
+        imp::CURSOR_CONVERTER_VERSION,
+        imp::CURSOR_CONVERTER_CHANGES,
+        &mut |id, fresh| replace_installed(id, fresh),
+    );
+    if report.replaced.is_empty() {
+        return Vec::new();
+    }
+    let mut installer =
+        crate::appearance_installer::LiveInstaller::new("", Box::new(|_: &str| {}));
+    let active = installer.active_cursor_theme();
+    report
+        .replaced
+        .iter()
+        .map(|(name, theme_dir)| {
+            if !theme_dir.is_empty() && active.as_deref() == Some(theme_dir.as_str()) {
+                if !installer.refresh_cursor(theme_dir) {
+                    crate::log_warn!("cursors", "«{name}»: тема курсора не применилась заново");
+                }
+                trf(
+                    // TRANSLATORS: %1 is a cursor theme name; it is the active one.
+                    "Cursors “%1” updated. Apps opened from now on show the new look; everywhere — after you log in again.",
+                    &[name],
+                )
+            } else {
+                // TRANSLATORS: %1 is a cursor theme name.
+                trf("Cursors “%1” updated", &[name])
+            }
+        })
+        .collect()
+}
+
+// ── Второй виджет обычного пакета Conky (дефект 14.11.2026) ─────────────
+//
+// Прежняя установка обычного виджета Conky (`theme-conky`, не набор) клала
+// всю `data/` в `<корень Conky>/<id>`, а каждую подпапку `data/<подпапка>`
+// ещё и в `<корень Conky>/<подпапка>` (с меткой владельца). Вторая копия —
+// второй виджет с тем же файлом настроек: в списке он виден дважды и
+// запускается дважды. Новая установка вторую копию не кладёт
+// (`ext_manager::safe_install_into`); уже лежащие убирает проход ниже — и
+// только те, что Rexon положил сам и что с тех пор никто не менял.
+
+/// Копия `dup` — то, что положил Rexon из `src`: только обычные файлы и
+/// папки (без ссылок), каждый файл есть в `src` с теми же байтами либо в
+/// том виде, в каком его оставила починка путей перед запуском
+/// ([`crate::de_apply::conky_repair_text`] для папки `widget`). Метка
+/// владельца в корне не в счёт. Лишний файл (виджет что-то записал сам,
+/// человек поправил) — не наша копия, она остаётся.
+fn conky_copy_is_pristine(src: &Path, dup: &Path, home: &str, widget: &str, top: bool) -> bool {
+    let Ok(entries) = std::fs::read_dir(dup) else { return false };
+    let exists = |p: &str| Path::new(p).exists();
+    let is_dir = |p: &str| Path::new(p).is_dir();
+    for e in entries.flatten() {
+        let name = e.file_name();
+        if top && name == ext_manager::OWNER_MARK {
+            continue;
+        }
+        let (Ok(ft), Ok(sm)) = (e.file_type(), std::fs::symlink_metadata(src.join(&name))) else {
+            return false;
+        };
+        if ft.is_symlink() || sm.file_type().is_symlink() {
+            return false;
+        }
+        if ft.is_dir() {
+            if !sm.is_dir() || !conky_copy_is_pristine(&src.join(&name), &e.path(), home, widget, false) {
+                return false;
+            }
+            continue;
+        }
+        if !ft.is_file() || !sm.is_file() {
+            return false;
+        }
+        let (Ok(mine), Ok(orig)) = (std::fs::read(e.path()), std::fs::read(src.join(&name))) else {
+            return false;
+        };
+        if mine == orig {
+            continue;
+        }
+        let repaired = std::str::from_utf8(&orig)
+            .ok()
+            .and_then(|t| crate::de_apply::conky_repair_text(t, home, widget, &exists, &is_dir));
+        if repaired.as_deref().map(str::as_bytes) != Some(mine.as_slice()) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Убрать вторые копии обычных виджетов Conky у пакетов из
+/// `extensions_dir` (см. заметку выше). Копия `<корень>/<подпапка>`
+/// снимается, только если: пакет — обычный виджет (не набор: у набора
+/// подпапки и есть виджеты), его каталог `<корень>/<id>/<подпапка>` на
+/// месте (виджет никуда не пропадает), метка владельца — id этого пакета,
+/// содержимое — нетронутая копия ([`conky_copy_is_pristine`]). Работающая
+/// вторая копия при неработающей основной не снимается (виджет не исчезнет
+/// со стола посреди сеанса — снимется в следующий раз). Перед снятием
+/// процессы копии гасятся, её автозапуск переходит на тот же виджет в
+/// основном каталоге (вложенный `<id>/<подпапка>` у пакета из нескольких
+/// виджетов, иначе `<id>`), если у того своего нет. Возвращает снятые пути.
+pub fn heal_conky_duplicates(io: &dyn crate::animations::LookIo, ctx: &crate::de_apply::Ctx, extensions_dir: &Path) -> Vec<String> {
+    let mut removed = Vec::new();
+    let Ok(rd) = std::fs::read_dir(extensions_dir) else { return removed };
+    let mut dirs: Vec<PathBuf> = rd.flatten().filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.path()).collect();
+    dirs.sort();
+    let root = crate::de_apply::conky_root(ctx);
+    let valid = |n: &str| !n.is_empty() && n != "." && n != ".." && !n.contains('/');
+    let mut running: Option<Vec<String>> = None;
+    for dir in dirs {
+        let Some(manifest) = std::fs::read_to_string(dir.join("manifest.json"))
+            .ok()
+            .and_then(|t| serde_json::from_str::<Map<String, Value>>(&t).ok())
+        else {
+            continue;
+        };
+        if manifest.get("type").and_then(Value::as_str) != Some(crate::de_apply::CONKY_KIND)
+            || manifest.get(crate::conky_sets::SET_MANIFEST_KEY).is_some_and(Value::is_object)
+        {
+            continue;
+        }
+        let id = manifest.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+        let main = Path::new(&root).join(&id);
+        if !valid(&id) || !main.is_dir() {
+            continue;
+        }
+        let Ok(subs) = std::fs::read_dir(dir.join("data")) else { continue };
+        let mut names: Vec<String> = subs
+            .flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        for name in names {
+            if name == id || !valid(&name) {
+                continue;
+            }
+            let dup = format!("{root}/{name}");
+            let dup_p = Path::new(&dup);
+            let real_dir = std::fs::symlink_metadata(dup_p).is_ok_and(|m| m.is_dir());
+            let mark = std::fs::read_to_string(dup_p.join(ext_manager::OWNER_MARK)).unwrap_or_default();
+            if !real_dir || mark.trim() != id || !main.join(&name).is_dir() {
+                continue;
+            }
+            if !conky_copy_is_pristine(&dir.join("data").join(&name), dup_p, &ctx.home, &dup, true) {
+                crate::log_info!("conky", "вторая копия «{dup}» пакета «{id}» изменена — оставлена");
+                continue;
+            }
+            // Куда переходит этот виджет: вложенный `<id>/<подпапка>` у
+            // пакета из нескольких виджетов, иначе сам `<id>`.
+            let nested = format!("{id}/{name}");
+            let target = if crate::de_apply::conky_nested_widgets(io, ctx, &id).contains(&nested) { nested } else { id.clone() };
+            let running = running.get_or_insert_with(|| crate::de_apply::conky_running_ids(io, ctx));
+            if running.contains(&name) && !running.contains(&target) {
+                continue;
+            }
+            let autostart = |w: &str| Path::new(&crate::de_apply::conky_autostart_path(ctx, w)).is_file();
+            if autostart(&name) && !autostart(&target) {
+                let _ = crate::de_apply::set_conky_autostart(io, ctx, &target, true);
+            }
+            crate::de_apply::conky_forget_widget(io, ctx, &dup);
+            match std::fs::remove_dir_all(dup_p) {
+                Ok(()) => {
+                    crate::log_info!("conky", "снята вторая копия виджета «{id}»: {dup}");
+                    removed.push(dup);
+                }
+                Err(e) => crate::log_warn!("conky", "вторая копия «{dup}» не снялась: {e}"),
+            }
+        }
+    }
+    removed
+}
+
+/// Живой проход [`heal_conky_duplicates`] (старт Rexon). Проверки модулей
+/// живой профиль не трогают.
+pub fn heal_conky_duplicates_live() {
+    if cfg!(test) {
+        return;
+    }
+    let ctx = crate::de_apply::Ctx::live();
+    heal_conky_duplicates(&crate::animations::SystemIo, &ctx, &qt_extensions::extensions_dir());
+}
+
 /// Удалить расширение (порт `uninstall`).
 pub fn uninstall(ext_id: &str) -> ExecResult<()> {
     let state = qt_extensions::load_state();
@@ -1368,6 +1796,17 @@ pub fn uninstall(ext_id: &str) -> ExecResult<()> {
             let ctx = crate::de_apply::Ctx::live();
             let dir = format!("{}/{ext_id}", crate::de_apply::conky_root(&ctx));
             crate::de_apply::conky_forget_widget(&crate::animations::SystemIo, &ctx, &dir);
+            // Набор виджетов из файла: виджеты — свои папки (только с меткой
+            // этого пакета; чужую одноимённую не трогаем).
+            if let Some(set) = crate::conky_sets::set_of_manifest(&ext.manifest) {
+                for w in &set.widgets {
+                    let wdir = format!("{}/{}", crate::de_apply::conky_root(&ctx), w.folder);
+                    let mark = std::fs::read_to_string(format!("{wdir}/{}", ext_manager::OWNER_MARK)).unwrap_or_default();
+                    if mark.trim() == ext_id {
+                        crate::de_apply::conky_forget_widget(&crate::animations::SystemIo, &ctx, &wdir);
+                    }
+                }
+            }
         }
         let plan = make_plan(&ext, false)?;
         // Файлы, которые положила установка, снимает общий журнал (шаг 3г
@@ -2012,5 +2451,356 @@ mod tests {
             }
         }
         assert!(bad.is_empty(), "pkexec запускается мимо сеанса прав: {bad:#?}");
+    }
+
+
+    // ── Курсоры из Windows: перевод заново только по исправлению ─────────
+
+    /// Поставить тему «из Windows» в подставной каталог расширений так, как её
+    /// кладёт установка: распакованный `.rxn` под каталогом с id пакета.
+    fn put_windows_theme(root: &Path, ext_dir: &Path, name: &str, files: &[(&str, Vec<u8>)]) -> PathBuf {
+        let set = root.join(format!("set-{name}"));
+        std::fs::create_dir_all(&set).unwrap();
+        for (f, b) in files {
+            std::fs::write(set.join(f), b).unwrap();
+        }
+        let out = root.join(format!("rxn-{name}"));
+        std::fs::create_dir_all(&out).unwrap();
+        let mut io = crate::imp_live::LiveImpIo::new(None);
+        let rxn = imp::cursor_import_to_rxn(&mut io, &s(&set), name, Some(&s(&out))).unwrap();
+        let tmp = root.join(format!("unpacked-{name}"));
+        ext_utils::safe_zip_extract(Path::new(&rxn), &tmp).unwrap();
+        let m: Value = serde_json::from_str(&std::fs::read_to_string(tmp.join("manifest.json")).unwrap()).unwrap();
+        let dest = ext_dir.join(m["id"].as_str().unwrap());
+        std::fs::rename(&tmp, &dest).unwrap();
+        dest
+    }
+
+    fn converter_of(dir: &Path) -> u64 {
+        let m: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("manifest.json")).unwrap()).unwrap();
+        m["windows_cursors"]["converter"].as_u64().unwrap()
+    }
+
+    #[test]
+    fn windows_cursors_are_converted_again_only_where_the_fix_applies() {
+        use crate::wincursor::testbytes::{ani, cur32};
+        let root = scratch("wincur-again");
+        let ext_dir = root.join("extensions");
+        std::fs::create_dir_all(&ext_dir).unwrap();
+        let busy = ani(&[cur32(32, 1, 1, 10), cur32(32, 2, 2, 20)], 10, None, None, 2);
+        let anim = put_windows_theme(&root, &ext_dir, "Anim", &[("busy.ani", busy.clone()), ("pointer.cur", cur32(32, 0, 0, 1))]);
+        let still = put_windows_theme(&root, &ext_dir, "Still", &[("pointer.cur", cur32(32, 0, 0, 1))]);
+        let changed = put_windows_theme(&root, &ext_dir, "Changed", &[("busy.ani", busy.clone())]);
+        let bare = put_windows_theme(&root, &ext_dir, "Bare", &[("busy.ani", busy)]);
+        // Тема старого образца — без оригиналов: пропуск без шума.
+        std::fs::remove_dir_all(bare.join("originals")).unwrap();
+        // «Прежний переводчик» дал другие байты у одной темы.
+        let wait = changed.join("data/changed/cursors/wait");
+        assert!(wait.is_file(), "нет {wait:?}");
+        std::fs::write(&wait, b"old output").unwrap();
+        let anim_data = std::fs::read(anim.join("data/anim/cursors/wait")).unwrap();
+
+        // Подделка: версия 3 исправляет только анимированные (реальная — 2).
+        let changes = [(2, imp::CursorFixScope::All), (3, imp::CursorFixScope::Animated)];
+        let mut calls: Vec<String> = Vec::new();
+        let mut reinstall = |id: &str, fresh: &Path| -> Result<(), String> {
+            calls.push(id.to_string());
+            let dest = ext_dir.join(id);
+            std::fs::remove_dir_all(&dest).unwrap();
+            let mut undo = crate::install_plan::Undo::new();
+            crate::install_plan::copy_tree(fresh, &dest, &mut undo).map_err(|e| e.to_string())?;
+            undo.finish(true);
+            Ok(())
+        };
+        let report = refresh_windows_cursors_in(&ext_dir, 3, &changes, &mut reinstall);
+        assert_eq!(report.errors, Vec::<String>::new());
+        assert_eq!(report.replaced, vec![("Changed".to_string(), "changed".to_string())]);
+        assert_eq!(report.version_only, vec!["wincur-anim".to_string()]);
+        assert_eq!(calls, vec!["wincur-changed".to_string()]);
+        // Побайтно то же — файлы не тронуты, только версия.
+        assert_eq!(std::fs::read(anim.join("data/anim/cursors/wait")).unwrap(), anim_data);
+        assert_eq!(converter_of(&anim), 3);
+        // Заменённая тема — новые байты и новая версия.
+        assert_ne!(std::fs::read(&wait).unwrap(), b"old output");
+        assert_eq!(converter_of(&changed), 3);
+        // Неподвижную исправление не касается, без оригиналов — мимо.
+        assert_eq!(converter_of(&still), 2);
+        assert_eq!(converter_of(&bare), 2);
+
+        // Второй заход: всё уже на текущей версии — ни замены, ни шума.
+        let again = refresh_windows_cursors_in(&ext_dir, 3, &changes, &mut |_, _| panic!("второй раз не переводится"));
+        assert_eq!(again, CursorRefresh::default());
+        // С настоящей таблицей (версия 2) не трогается ничего.
+        let real = refresh_windows_cursors_in(
+            &ext_dir,
+            imp::CURSOR_CONVERTER_VERSION,
+            imp::CURSOR_CONVERTER_CHANGES,
+            &mut |_, _| panic!("при версии 2 переводить нечего"),
+        );
+        assert_eq!(real, CursorRefresh::default());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn same_tree_compares_names_bytes_and_link_targets() {
+        let root = scratch("same-tree");
+        for side in ["a", "b"] {
+            let d = root.join(side).join("cursors");
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("default"), b"xcur").unwrap();
+            std::os::unix::fs::symlink("default", d.join("left_ptr")).unwrap();
+        }
+        assert!(same_tree(&root.join("a"), &root.join("b")));
+        std::fs::write(root.join("b/cursors/default"), b"xcuR").unwrap();
+        assert!(!same_tree(&root.join("a"), &root.join("b")));
+        std::fs::write(root.join("b/cursors/default"), b"xcur").unwrap();
+        std::fs::remove_file(root.join("b/cursors/left_ptr")).unwrap();
+        std::os::unix::fs::symlink("other", root.join("b/cursors/left_ptr")).unwrap();
+        assert!(!same_tree(&root.join("a"), &root.join("b")));
+        assert!(!same_tree(&root.join("a"), &root.join("missing")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ── Вторая копия обычного виджета Conky ────────────────────────────
+
+    /// Машина для прохода уборки: файлы — настоящие (во временной папке),
+    /// процессов conky нет, команды не запускаются, а записываются.
+    struct NoProcIo {
+        ran: std::cell::RefCell<Vec<Vec<String>>>,
+    }
+
+    impl crate::animations::LookIo for NoProcIo {
+        fn run(&self, argv: &[String]) -> (bool, String) {
+            self.ran.borrow_mut().push(argv.to_vec());
+            (true, String::new())
+        }
+        fn have(&self, _: &str) -> bool {
+            false
+        }
+        fn read(&self, path: &str) -> Option<String> {
+            std::fs::read_to_string(path).ok()
+        }
+        fn write(&self, path: &str, text: &str) -> bool {
+            let p = Path::new(path);
+            p.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(p, text).is_ok()
+        }
+        fn list_dir(&self, path: &str) -> Vec<String> {
+            if path == "/proc" {
+                return Vec::new();
+            }
+            std::fs::read_dir(path)
+                .map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+                .unwrap_or_default()
+        }
+    }
+
+    fn put(p: &Path, text: &str) {
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+
+    fn conky_ctx(home: &Path) -> crate::de_apply::Ctx {
+        crate::de_apply::Ctx { home: s(home), xdg_config_home: None, wayland: false, de: String::new() }
+    }
+
+    /// Пакет `my-theme` с подпапками `data/<имя>` (у каждой — `conky.conf`
+    /// и `lua/rings.lua`).
+    fn conky_package(exts: &Path, subs: &[&str]) -> PathBuf {
+        let pkg = exts.join("my-theme");
+        put(&pkg.join("manifest.json"), r#"{"id": "my-theme", "name": "My Theme", "type": "theme-conky", "version": "1.0"}"#);
+        for sub in subs {
+            put(&pkg.join(format!("data/{sub}/conky.conf")), &format!("conky.text = [[{sub}]]\n"));
+            put(&pkg.join(format!("data/{sub}/lua/rings.lua")), "function conky_main() end\n");
+        }
+        pkg
+    }
+
+    /// Копия подпапки пакета в `dest` (как клал прежний Rexon), с меткой
+    /// `mark` (пусто — без метки).
+    fn copy_sub(pkg: &Path, sub: &str, dest: &Path, mark: &str) {
+        let mut undo = crate::install_plan::Undo::off();
+        crate::install_plan::copy_tree(&pkg.join("data").join(sub), dest, &mut undo).unwrap();
+        if !mark.is_empty() {
+            std::fs::write(dest.join(ext_manager::OWNER_MARK), format!("{mark}\n")).unwrap();
+        }
+    }
+
+    /// Уборка снимает только свою нетронутую вторую копию: копию без
+    /// метки (папка человека), с меткой другого пакета, изменённую и с
+    /// лишним файлом — оставляет; основной каталог виджета не трогает;
+    /// автозапуск второй копии переходит на основной.
+    #[test]
+    fn conky_heal_removes_only_own_untouched_duplicate() {
+        let home = scratch("conky-heal");
+        let exts = home.join(".config/rexon/extensions");
+        let subs = ["MyTheme", "Human", "Other", "Edited", "Extra"];
+        let pkg = conky_package(&exts, &subs);
+        let root = home.join(".config/conky");
+        let main = root.join("my-theme");
+        let mut undo = crate::install_plan::Undo::off();
+        crate::install_plan::copy_tree(&pkg.join("data"), &main, &mut undo).unwrap();
+        copy_sub(&pkg, "MyTheme", &root.join("MyTheme"), "my-theme");
+        copy_sub(&pkg, "Human", &root.join("Human"), "");
+        copy_sub(&pkg, "Other", &root.join("Other"), "other-pack");
+        copy_sub(&pkg, "Edited", &root.join("Edited"), "my-theme");
+        put(&root.join("Edited/conky.conf"), "conky.text = [[mine]]\n");
+        copy_sub(&pkg, "Extra", &root.join("Extra"), "my-theme");
+        put(&root.join("Extra/notes.txt"), "человек\n");
+        let ctx = conky_ctx(&home);
+        let old_autostart = crate::de_apply::conky_autostart_path(&ctx, "MyTheme");
+        put(Path::new(&old_autostart), "[Desktop Entry]\nExec=conky -c x\n");
+
+        let io = NoProcIo { ran: Default::default() };
+        let removed = heal_conky_duplicates(&io, &ctx, &exts);
+        assert_eq!(removed, vec![s(&root.join("MyTheme"))]);
+        assert!(!root.join("MyTheme").exists());
+        for keep in ["Human", "Other", "Edited", "Extra"] {
+            assert!(root.join(keep).join("conky.conf").is_file(), "{keep} снят");
+        }
+        assert_eq!(std::fs::read_to_string(root.join("Edited/conky.conf")).unwrap(), "conky.text = [[mine]]\n");
+        for sub in subs {
+            assert!(main.join(sub).join("conky.conf").is_file(), "основной каталог потерял {sub}");
+        }
+        assert!(!Path::new(&old_autostart).exists(), "автозапуск второй копии остался");
+        // Пакет из нескольких виджетов: автозапуск — у вложенного `my-theme/MyTheme`.
+        let new_autostart = std::fs::read_to_string(crate::de_apply::conky_autostart_path(&ctx, "my-theme/MyTheme")).unwrap();
+        assert!(new_autostart.contains("/my-theme/MyTheme/conky.conf"), "{new_autostart}");
+        assert!(io.ran.borrow().iter().all(|a| a.first().map(String::as_str) != Some("conky")));
+
+        // Повтор ничего не делает.
+        assert!(heal_conky_duplicates(&io, &ctx, &exts).is_empty());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// Копия, чьи пути уже поправила починка перед запуском
+    /// (`de_apply::conky_repair_paths`), — всё ещё своя; у набора виджетов
+    /// подпапки — сами виджеты, их уборка не трогает; без основного
+    /// каталога вторая копия остаётся.
+    #[test]
+    fn conky_heal_repaired_copy_sets_and_missing_main() {
+        let home = scratch("conky-heal-2");
+        let exts = home.join(".config/rexon/extensions");
+        let pkg = conky_package(&exts, &["MyTheme"]);
+        put(&pkg.join("data/MyTheme/conky.conf"), "lua_load = '~/.conky/MyTheme/lua/rings.lua'\n");
+        let root = home.join(".config/conky");
+        let dup = root.join("MyTheme");
+        copy_sub(&pkg, "MyTheme", &dup, "my-theme");
+        let ctx = conky_ctx(&home);
+        let io = NoProcIo { ran: Default::default() };
+
+        // Основного каталога нет — копия единственная, остаётся.
+        assert!(heal_conky_duplicates(&io, &ctx, &exts).is_empty());
+        assert!(dup.is_dir());
+
+        let mut undo = crate::install_plan::Undo::off();
+        crate::install_plan::copy_tree(&pkg.join("data"), &root.join("my-theme"), &mut undo).unwrap();
+        let changed = crate::de_apply::conky_repair_paths(&ctx.home, &s(&dup));
+        assert_eq!(changed.len(), 1, "починка ничего не поправила");
+
+        // Набор виджетов: подпапки — его виджеты.
+        let manifest = pkg.join("manifest.json");
+        put(&manifest, r#"{"id": "my-theme", "type": "theme-conky", "conky_set": {"widgets": []}}"#);
+        assert!(heal_conky_duplicates(&io, &ctx, &exts).is_empty());
+        assert!(dup.is_dir());
+
+        put(&manifest, r#"{"id": "my-theme", "type": "theme-conky"}"#);
+        assert_eq!(heal_conky_duplicates(&io, &ctx, &exts), vec![s(&dup)]);
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// Обычный пакет с двумя вложенными виджетами (`data/A`, `data/B`,
+    /// своего файла настроек в `data/` нет): файлы — одним каталогом
+    /// `<корень>/my-theme`, но виджетов два — две плитки `my-theme/A` и
+    /// `my-theme/B`, у каждой свой файл настроек, автозапуск, удаление;
+    /// уборка переносит автозапуск прежней копии `<корень>/A` на `my-theme/A`.
+    #[test]
+    fn conky_package_with_two_widgets_is_two_tiles() {
+        use crate::de_apply as da;
+        let home = scratch("conky-two");
+        let exts = home.join(".config/rexon/extensions");
+        let pkg = conky_package(&exts, &["A", "B"]);
+        put(&pkg.join("data/fonts/x.ttf"), "font");
+        let root = home.join(".config/conky");
+        let main = root.join("my-theme");
+        let mut undo = crate::install_plan::Undo::off();
+        crate::install_plan::copy_tree(&pkg.join("data"), &main, &mut undo).unwrap();
+        let ctx = conky_ctx(&home);
+        let io = NoProcIo { ran: Default::default() };
+
+        assert_eq!(da::conky_nested_widgets(&io, &ctx, "my-theme"), vec!["my-theme/A", "my-theme/B"]);
+        let top = crate::models::ThemeItem {
+            id: "local:conky:my-theme".into(),
+            name: "my-theme".into(),
+            install_path: s(&main),
+            ..Default::default()
+        };
+        let tiles = crate::conky_scan::split_package_items(&io, &ctx, vec![top], &["my-theme/B".to_string()]);
+        let ids: Vec<&str> = tiles.iter().map(|t| t.id.as_str()).collect();
+        assert_eq!(ids, vec!["local:conky:my-theme/A", "local:conky:my-theme/B"]);
+        assert_eq!(tiles[0].name, "A");
+        assert_eq!(tiles[0].install_path, s(&main.join("A")));
+        assert_eq!((tiles[0].local_kind.as_deref(), tiles[1].local_kind.as_deref()), (None, Some("active")));
+
+        let conf_a = s(&main.join("A/conky.conf"));
+        assert_eq!(da::conky_conf(&io, &ctx, "my-theme/A").as_deref(), Some(conf_a.as_str()));
+        assert_eq!(da::conky_widget_of_conf(&io, &ctx, &conf_a).as_deref(), Some("my-theme/A"));
+        assert_eq!(da::conky_widget_of_conf(&io, &ctx, &s(&main.join("B/lua/rings.lua"))).as_deref(), Some("my-theme/B"));
+        assert_ne!(da::conky_autostart_path(&ctx, "my-theme/A"), da::conky_autostart_path(&ctx, "my-theme/B"));
+
+        // Прежняя вторая копия `<корень>/A` с автозапуском — уходит, автозапуск
+        // переходит на `my-theme/A`.
+        copy_sub(&pkg, "A", &root.join("A"), "my-theme");
+        let old = da::conky_autostart_path(&ctx, "A");
+        put(Path::new(&old), "[Desktop Entry]\nExec=conky -c x\n");
+        assert_eq!(heal_conky_duplicates(&io, &ctx, &exts), vec![s(&root.join("A"))]);
+        assert!(!Path::new(&old).exists());
+        assert!(da::conky_autostart(&io, &ctx, "my-theme/A"));
+        assert!(!da::conky_autostart(&io, &ctx, "my-theme/B"));
+        let entry = std::fs::read_to_string(da::conky_autostart_path(&ctx, "my-theme/A")).unwrap();
+        assert!(entry.contains(&conf_a), "{entry}");
+
+        // Свой автозапуск у B, затем «Удалить» плитки A: снимается только A.
+        assert!(da::set_conky_autostart(&io, &ctx, "my-theme/B", true).0);
+        let roots = crate::theme_removal::RemovalRoots::new(&s(&home), "/usr");
+        let a_dir = s(&main.join("A"));
+        assert_eq!(
+            roots.verdict(&a_dir, false, &Map::new(), &std::collections::HashSet::new()),
+            crate::theme_removal::Verdict::Local { path: a_dir.clone() }
+        );
+        assert_eq!(crate::conky_scan::own_widget_name(&ctx, &a_dir).as_deref(), Some("my-theme/A"));
+        std::fs::remove_dir_all(&a_dir).unwrap();
+        assert_eq!(da::conky_forget_widget(&io, &ctx, &a_dir).as_deref(), Some("my-theme/A"));
+        assert!(!da::conky_autostart(&io, &ctx, "my-theme/A"));
+        assert!(da::conky_autostart(&io, &ctx, "my-theme/B"));
+        let left = crate::conky_scan::split_package_items(
+            &io,
+            &ctx,
+            vec![crate::models::ThemeItem { id: "local:conky:my-theme".into(), ..Default::default() }],
+            &[],
+        );
+        assert_eq!(left.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["local:conky:my-theme/B"]);
+
+        // Удаление пакета снимает автозапуск и вложенного виджета.
+        assert_eq!(da::conky_forget_widget(&io, &ctx, &s(&main)).as_deref(), Some("my-theme"));
+        assert!(!da::conky_autostart(&io, &ctx, "my-theme/B"));
+        assert!(!root.join("A").exists() && !root.join("B").exists(), "копии в корне Conky");
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// Пакет с файлом настроек прямо в `data/` (и подпапками рядом) — один
+    /// виджет `<id>`; с одной подпапкой-виджетом — тоже один.
+    #[test]
+    fn conky_package_with_own_conf_is_one_tile() {
+        let home = scratch("conky-one");
+        let exts = home.join(".config/rexon/extensions");
+        let ctx = conky_ctx(&home);
+        let io = NoProcIo { ran: Default::default() };
+        let pkg = conky_package(&exts, &["A", "B"]);
+        put(&pkg.join("data/conky.conf"), "conky.text = [[top]]\n");
+        assert!(crate::de_apply::conky_nested_widgets(&io, &ctx, "my-theme").is_empty());
+        std::fs::remove_dir_all(&pkg).unwrap();
+        conky_package(&exts, &["A"]);
+        assert!(crate::de_apply::conky_nested_widgets(&io, &ctx, "my-theme").is_empty());
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

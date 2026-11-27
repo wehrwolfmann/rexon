@@ -1,4 +1,4 @@
-[English](../en/desktops.md) | Русский | [Deutsch](../de/desktops.md) | [简体中文](../zh-CN/desktops.md) | [Français](../fr/desktops.md)
+[English](../en/desktops.md) | Русский | [Deutsch](../de/desktops.md) | [简体中文](../zh-CN/desktops.md) | [Français](../fr/desktops.md) | [Español](../es/desktops.md)
 
 # Рабочие столы
 

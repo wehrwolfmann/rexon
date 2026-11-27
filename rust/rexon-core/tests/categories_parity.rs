@@ -157,8 +157,10 @@ fn store_sections_and_item_type_ids() {
     assert_eq!(category_by_id(home(), 911).unwrap().key, "tabbox");
     assert_eq!(category_by_id(home(), 912).unwrap().key, "kwinscripts");
     assert_eq!(category_by_id(home(), 913).unwrap().key, "kwineffects");
-    // Прочие разделы окружений по-прежнему местные.
-    assert!(category_by_id(home(), 914).unwrap().local_only());
+    // «Расширения GNOME» — витрина extensions.gnome.org (13.11.2026).
+    let ego = category_by_id(home(), 914).unwrap();
+    assert_eq!(ego.store, rexon_core::models::CatalogSource::GnomeExtensions);
+    assert!(!ego.local_only() && ego.ocs_cats().is_empty());
     // Видны только в KDE — это решает матрица.
     let shown = rexon_core::categories::category_available;
     assert!(shown("kwineffects", "kde") && !shown("kwineffects", "xfce"));
@@ -921,6 +923,7 @@ fn section_settings_open_inside_catalog_section() {
     use rexon_core::categories::{
         category_available, get_category, grouped_sidebar, section_settings_panels, ANIMATIONS_KEY,
         APP_WIDGETS_PANEL, DESKTOP_EFFECTS_PANEL, FONT_SETTINGS_PANEL, LAUNCH_FEEDBACK_PANEL, SECTION_SETTINGS, WALLPAPER_BLUR_PANEL, AMBIENT_SOUNDS_PANEL, EVENT_SOUNDS_PANEL, WINDOW_BUTTONS_KEY,
+        AXON_SETTINGS_PANEL, WALLPAPER_PLAYLIST_PANEL,
     };
     let _lang = i18n_pin::ru();
     let des = ["kde", "gnome", "mate", "xfce", "cinnamon-mint", "lxqt", "labwc", "budgie", "pantheon", "cosmic",
@@ -935,8 +938,11 @@ fn section_settings_open_inside_catalog_section() {
         }
         let p = |cat: &str| section_settings_panels(cat, de);
         assert_eq!(p("fonts"), [FONT_SETTINGS_PANEL], "{de}");
-        // Размытие обоев — в «Обоях HD» (из вкладки «Настройки» ушло).
-        assert_eq!(p("wallpapers"), [WALLPAPER_BLUR_PANEL], "{de}");
+        // Размытие обоев — в «Обоях HD» (из вкладки «Настройки» ушло);
+        // рядом — блок «Razer Axon» (его отбирает вид каталога по тому,
+        // найден ли Axon).
+        // Плейлист обоев — первым: его ищут чаще всего.
+        assert_eq!(p("wallpapers"), [WALLPAPER_PLAYLIST_PANEL, WALLPAPER_BLUR_PANEL, AXON_SETTINGS_PANEL], "{de}");
         // Звуки событий и фоновые звуки — в «Звуках».
         assert_eq!(p("sounds"), [EVENT_SOUNDS_PANEL, AMBIENT_SOUNDS_PANEL], "{de}");
         // Значки и панели инструментов в Deepin задаёт его Центр управления.
@@ -976,7 +982,7 @@ fn section_settings_open_inside_catalog_section() {
         ("fonts", "kde", "fontsettings"),
         ("icons", "kde", "appwidgets"),
         ("cursor", "kde", "launchfeedback"),
-        ("wallpapers", "kde", "wallpaperblur"),
+        ("wallpapers", "kde", "wallpaperplaylist,wallpaperblur"),
         ("sounds", "mate", "eventsounds,ambientsounds"),
         ("aurorae", "kde", "windowbuttons"),
         ("kwineffects", "kde", "desktopeffects"),
@@ -1017,6 +1023,15 @@ fn section_settings_open_inside_catalog_section() {
         2,
         "по строке подсказки на раздел"
     );
+    // Блок «Razer Axon» — только при найденном Axon, вместе с его чипом.
+    let mut v = CatalogView::new(get_category(home(), "wallpapers").unwrap(), "kde");
+    assert_eq!(v.section_settings_panels(), [WALLPAPER_PLAYLIST_PANEL, WALLPAPER_BLUR_PANEL]);
+    v.axon = true;
+    assert_eq!(v.section_settings_panels(), [WALLPAPER_PLAYLIST_PANEL, WALLPAPER_BLUR_PANEL, AXON_SETTINGS_PANEL]);
+    v.section_settings = true;
+    assert_eq!(v.settings_panel_key(), "wallpaperplaylist,wallpaperblur,axonsettings");
+    assert!(!ap::section_settings_tooltip(&[WALLPAPER_PLAYLIST_PANEL]).is_empty());
+    assert!(!ap::section_settings_tooltip(&[AXON_SETTINGS_PANEL]).is_empty());
 }
 
 /// Род сеанса выбранного стола (08.11.2026): невозможное в нём не видно.

@@ -1454,6 +1454,11 @@ impl<'a, IO: SystemIo + ?Sized> SystemExec<'a, IO> {
     /// Qt-программ, сглаживание и DPI так и остались бы нашими.
     pub fn reset_kde_fonts(&self, out: &mut dyn FnMut(&str)) {
         self.reset_font_layers();
+        // Шрифт документов в KDE живёт в ключе GNOME — снимается вместе с
+        // остальными шрифтами страницы.
+        if let Some(gs) = self.io.which_path("gsettings") {
+            self.io.run(&app::document_font_reset_argv(&gs), Some(app::KWRITECONFIG_TIMEOUT_SECS), false);
+        }
         let Some(kw) = self.io.which_path(app::KWRITECONFIG_TOOL) else {
             return;
         };

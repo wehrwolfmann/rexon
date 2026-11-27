@@ -59,10 +59,23 @@ if [ -n "$common" ] && [ "${common##*/}" = ".git" ] && [ -d "${common%/.git}" ];
     QROOT="${common%/.git}"
 fi
 SHARED="$QROOT/target-shared"
+if [ -z "${SLOTS:-}" ]; then
+    SLOTS="$(tr -dc '0-9' < "$QROOT/.build-queue.slots" 2>/dev/null || true)"
+    [ -n "$SLOTS" ] && [ "$SLOTS" -ge 1 ] || SLOTS=1
+fi
+# Второе и следующие места берутся, только пока диск не захлёбывается: при
+# давлении ввода-вывода выше 80 % за минуту (avg60) очередь работает как с
+# одним местом (14.11.2026, решение Wehrwolfmann; Crucial P2 — см. выше).
+io_busy() {
+    awk '/^some/ { for (i = 1; i <= NF; i++) if ($i ~ /^avg60=/) { split($i, a, "="); exit !(a[2] + 0 > 80) } exit 1 }' \
+        /proc/pressure/io 2>/dev/null
+}
 # Одно место, пока стоит Crucial P2: 24–25.10 четыре сборки разом доводили
 # давление ввода-вывода до 82 % (24.10 — жёсткие сбросы). После замены диска
 # можно вернуть 4.
-SLOTS="${BUILD_QUEUE_SLOTS:-1}"
+# Число мест можно задать и файлом .build-queue.slots в основном дереве (одно
+# число): его читают все копии дерева, в том числе уже запущенные агенты.
+SLOTS="${BUILD_QUEUE_SLOTS:-$SLOTS}"
 # Две задачи: 25.10 даже одна сборка с -j4 линковала тесты тремя mold разом
 # (~30 МБ/с) и держала давление ввода-вывода на 82 %.
 JOBS="${BUILD_QUEUE_JOBS:-2}"
@@ -157,6 +170,7 @@ while :; do
             exec 9>&-
         else
             for ((i = 0; i < SLOTS; i++)); do
+                if [ "$i" -gt 0 ] && io_busy; then break; fi
                 exec 9>"$(lock_of "$i")"
                 if flock -n 9; then slot=$i; break; fi
                 exec 9>&-

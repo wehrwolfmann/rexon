@@ -36,7 +36,9 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use rexon_core::wallpaper_audio::{
-    other_audio_playing, parse_screensaver_active, AudioSettings, Conditions, Decision,
+    gamemode_client_count_argv, is_gamescope_comm, logind_session_argv, other_audio_playing,
+    parse_dbus_bool, parse_dbus_int, parse_logind_session, parse_screensaver_active,
+    sysfs_on_battery, upower_on_battery_argv, Action, AudioSettings, Conditions, Decision,
     // Приметы, по которым в звуковой системе виден НАШ поток: он не должен
     // сходить за «чужой звук» и глушить сам себя. Своего списка здесь нет
     // намеренно — таблица одна на продукт и живёт в ядре (правило #12),
@@ -79,6 +81,13 @@ pub mod qobject {
         /// во весь экран от обычного, — окно обоев и есть весь экран.
         #[qinvokable]
         fn start(self: Pin<&mut WallpaperAudio>, screen_w: i32, screen_h: i32);
+
+        /// Сценарий, который доводит текущее решение (пауза, громкость) до
+        /// веб-страницы обоев. Текст сценария — ядра
+        /// (`rexon-core::wallpaper::web_state_js`); у QML своего JS нет.
+        #[qinvokable]
+        #[cxx_name = "webStateScript"]
+        fn web_state_script(self: &WallpaperAudio) -> QString;
     }
 
     impl cxx_qt::Threading for WallpaperAudio {}
@@ -92,6 +101,13 @@ pub mod qobject {
 /// системы стоит два коротких процесса в секунду. Меньше делать незачем,
 /// больше — и приглушение при запуске игры начинает опаздывать.
 const TICK: Duration = Duration::from_millis(500);
+
+/// Раз во сколько тиков спрашивать про батарею, игру и сеанс.
+///
+/// Эти обстоятельства меняются не за полсекунды: от розетки отключаются,
+/// игру запускают и сеанс переключают — разница в полторы секунды на глаз
+/// не видна, а три лишних процесса на каждом тике видны в нагрузке.
+const SLOW_EVERY: u32 = 4;
 
 /// Сколько ждать внешнюю команду опроса.
 const PROBE_TIMEOUT: Duration = Duration::from_millis(1500);
@@ -137,6 +153,14 @@ impl qobject::WallpaperAudio {
         self.as_mut().set_paused(d.paused);
         self.as_mut().set_volume(d.volume01);
         self.as_mut().set_reason(cxx_qt_lib::QString::from(why));
+    }
+
+    /// Решение для веб-страницы — см. мост.
+    pub fn web_state_script(&self) -> cxx_qt_lib::QString {
+        cxx_qt_lib::QString::from(&rexon_core::wallpaper::web_state_js(
+            self.rust().paused,
+            self.rust().volume,
+        ))
     }
 
     /// Поднять наблюдение. Повторный вызов ничего не делает.
@@ -190,6 +214,8 @@ fn watch_loop(
     let mut settings = load_settings();
     let mut stamp = mtime(&path);
     let mut last: Option<Decision> = None;
+    let mut slow = SlowFacts::default();
+    let mut tick: u32 = 0;
     while !stop.load(Ordering::SeqCst) {
         // Настройки перечитываются только когда файл действительно
         // изменился: разбор JSON каждые полсекунды впустую никому не нужен.
@@ -198,7 +224,13 @@ fn watch_loop(
             stamp = now;
             settings = load_settings();
         }
-        let conditions = probe(&settings, backend, screen_w, screen_h);
+        // Медленные обстоятельства — на первом тике (решение обязано быть
+        // верным сразу, а не через две секунды) и дальше раз в SLOW_EVERY.
+        if tick % SLOW_EVERY == 0 {
+            slow = probe_slow(&settings);
+        }
+        tick = tick.wrapping_add(1);
+        let conditions = probe(&settings, backend, screen_w, screen_h, &slow);
         let decision = settings.decide(&conditions);
         if last != Some(decision) {
             last = Some(decision);
@@ -284,29 +316,113 @@ fn window_backend() -> &'static str {
     rexon_core::wallpaper_engine::fullscreen_backend(&de, &session)
 }
 
+/// Обстоятельства, которые опрашиваются реже окон (см. [`SLOW_EVERY`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct SlowFacts {
+    on_battery: bool,
+    gamemode: bool,
+    session_inactive: bool,
+    /// `LockedHint` logind — блокировка, которую видно и там, где
+    /// хранителя экрана `org.freedesktop.ScreenSaver` нет (wlroots-столы).
+    session_locked: bool,
+}
+
+/// Опрос батареи, игры и сеанса. Спрашивается только то, чему человек
+/// назначил действие.
+fn probe_slow(settings: &AudioSettings) -> SlowFacts {
+    let a = settings.actions;
+    let mut f = SlowFacts::default();
+    if a.on_battery != Action::None {
+        f.on_battery = on_battery();
+    }
+    if a.gamemode != Action::None {
+        f.gamemode = game_running();
+    }
+    if a.session_matters() {
+        let id = std::env::var("XDG_SESSION_ID").unwrap_or_default();
+        if let Some(out) = run(&logind_session_argv(&id)) {
+            (f.session_inactive, f.session_locked) = parse_logind_session(&out);
+        }
+    }
+    f
+}
+
+/// От батареи ли работаем: UPower, а если его нет или он молчит —
+/// состояние батарей в `/sys` (то же правило ядра, что и в UPower).
+fn on_battery() -> bool {
+    if let Some(v) = run(&upower_on_battery_argv()).and_then(|o| parse_dbus_bool(&o)) {
+        return v;
+    }
+    let dir = rexon_core::wallpaper_engine::POWER_SUPPLY_DIR;
+    let statuses: Vec<String> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().starts_with("BAT"))
+        .filter_map(|e| std::fs::read_to_string(e.path().join("status")).ok())
+        .collect();
+    sysfs_on_battery(&statuses)
+}
+
+/// Идёт ли игра: игровой режим просили (`ClientCount` > 0) или запущен
+/// gamescope этого же пользователя.
+fn game_running() -> bool {
+    let gamemode = run(&gamemode_client_count_argv())
+        .and_then(|o| parse_dbus_int(&o))
+        .is_some_and(|n| n > 0);
+    gamemode || gamescope_running()
+}
+
+/// Запущен ли gamescope от имени того же пользователя. Только чтение
+/// `/proc`: процесс не запускается.
+fn gamescope_running() -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(me) = std::fs::metadata("/proc/self") else {
+        return false;
+    };
+    let uid = me.uid();
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        let name = e.file_name();
+        let name = name.to_string_lossy();
+        if name.is_empty() || !name.bytes().all(|b| b.is_ascii_digit()) {
+            return false;
+        }
+        let mine = e.metadata().map(|m| m.uid() == uid).unwrap_or(false);
+        mine && std::fs::read_to_string(e.path().join("comm"))
+            .map(|c| is_gamescope_comm(&c))
+            .unwrap_or(false)
+    })
+}
+
 /// Опрос обстановки. Спрашивается только то, что реально влияет на решение:
 /// если человек не просил глушить при чужом звуке, звуковую систему никто
-/// не дёргает.
+/// не дёргает, а без «оконных» действий — оконный менеджер.
 fn probe(
     settings: &AudioSettings,
     backend: &str,
     screen_w: i64,
     screen_h: i64,
+    slow: &SlowFacts,
 ) -> Conditions {
     let mut c = Conditions::default();
-    let window_matters = settings
-        .actions
-        .list()
-        .iter()
-        .any(|a| *a != rexon_core::wallpaper_audio::Action::None);
-    if window_matters {
+    if settings.actions.windows_matter() {
         c = probe_windows(backend, screen_w, screen_h);
-        if settings.actions.session_locked != rexon_core::wallpaper_audio::Action::None {
-            c.session_locked = run(&rexon_core::wallpaper_audio::screensaver_argv())
+    }
+    if settings.actions.session_locked != Action::None {
+        // Хранитель экрана — как и раньше (KDE и все, кто его держит), плюс
+        // `LockedHint` logind: его выставляют и блокировщики wlroots-столов,
+        // у которых хранителя экрана на шине нет.
+        c.session_locked = slow.session_locked
+            || run(&rexon_core::wallpaper_audio::screensaver_argv())
                 .map(|out| parse_screensaver_active(&out))
                 .unwrap_or(false);
-        }
     }
+    c.session_inactive = slow.session_inactive;
+    c.gamemode = slow.gamemode;
+    c.on_battery = slow.on_battery;
     if settings.mute_when_other_audio {
         c.other_audio = run(&rexon_core::wallpaper_audio::sink_inputs_argv())
             .map(|out| other_audio_playing(&out, &OWN_STREAM_NAMES))
@@ -439,7 +555,16 @@ fn explain(settings: &AudioSettings, c: &Conditions, d: &Decision) -> String {
         return "звук обоев выключен в настройках".into();
     }
     if d.paused {
-        return if c.fullscreen {
+        let a = settings.actions;
+        return if c.session_inactive && a.session_inactive.pauses() {
+            "сеанс неактивен — обои на паузе".into()
+        } else if c.session_locked && a.session_locked.pauses() {
+            "сеанс заблокирован — обои на паузе".into()
+        } else if c.gamemode && a.gamemode.pauses() {
+            "идёт игра — обои на паузе".into()
+        } else if c.on_battery && a.on_battery.pauses() {
+            "работа от батареи — обои на паузе".into()
+        } else if c.fullscreen {
             "полноэкранное окно — обои на паузе".into()
         } else {
             "обои на паузе по настройке".into()
@@ -527,6 +652,23 @@ mod tests {
             ..Conditions::default()
         };
         assert!(explain(&on, &full, &on.decide(&full)).contains("полноэкранное"));
+
+        let battery = Conditions {
+            on_battery: true,
+            ..Conditions::default()
+        };
+        assert!(explain(&on, &battery, &on.decide(&battery)).contains("батареи"));
+        let game = Conditions {
+            gamemode: true,
+            on_battery: true,
+            ..Conditions::default()
+        };
+        assert!(explain(&on, &game, &on.decide(&game)).contains("игра"));
+        let away = Conditions {
+            session_inactive: true,
+            ..Conditions::default()
+        };
+        assert!(explain(&on, &away, &on.decide(&away)).contains("неактивен"));
         assert!(explain(&on, &c, &on.decide(&c)).contains("50%"));
     }
 }

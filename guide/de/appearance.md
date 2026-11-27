@@ -1,4 +1,4 @@
-[English](../en/appearance.md) | [Русский](../ru/appearance.md) | Deutsch | [简体中文](../zh-CN/appearance.md) | [Français](../fr/appearance.md)
+[English](../en/appearance.md) | [Русский](../ru/appearance.md) | Deutsch | [简体中文](../zh-CN/appearance.md) | [Français](../fr/appearance.md) | [Español](../es/appearance.md)
 
 # Erscheinungsbild
 
@@ -277,6 +277,13 @@ Computer:
   Knopf **⚙️ Einstellungen** oben im Bereich ist **🌫️ Hintergrund
   weichzeichnen**: Er zeichnet einen Bild-Hintergrund weich, damit Symbole
   und Fenster darauf besser lesbar sind; das Original bleibt erhalten.
+  Ist Razer Axon auf dem Rechner (unter Wine), gibt es unter **Store:**
+  auch **Razer Axon** — die darin heruntergeladenen Hintergründe: Suche
+  nach Titeln oder Tags, Sortierung und Filter wie in Axon selbst;
+  Rechtsklick auf eine Kachel — **Anwenden** (auf allen Bildschirmen),
+  **Datei-Speicherort öffnen** und **Details**. In **⚙️ Einstellungen** gibt
+  es dann den Block **Razer Axon**: **Hintergründe im Voraus vorbereiten**
+  und **Ursprüngliche Beschreibungen wiederherstellen**.
 - **Hintergrund-Plugins** (nur KDE) — lebendige Plasma-Hintergründe.
 - **Klänge** — Klangthemen. Die Klänge eines Themas können Sie vor der
   Installation anhören (**🔊 Vor der Installation anhören**): Das Thema wird

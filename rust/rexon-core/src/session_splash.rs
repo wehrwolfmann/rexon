@@ -114,6 +114,15 @@ pub const BUILTIN_NAMES: &[(&str, &str)] = &[
     ("deck_startup", n_("Steam Deck (Default)")),
     ("oled_startup", "Steam Deck OLED"),
     ("bigpicture_startup", "Big Picture"),
+    // Ролики новых устройств Valve (клиент Steam, `steamui/sp.js`: выбор по
+    // типу устройства — SteamOS вообще, Steam Machine, Steam Frame; ролик
+    // «семейства» Steam играет на заводском образе Deck). Своих подписей
+    // у этих роликов в Steam нет — имена устройств он пишет латиницей.
+    ("steam_os_startup", "SteamOS"),
+    ("startup_machine", "Steam Machine"),
+    ("steamframe_startup_450x450", "Steam Frame"),
+    // TRANSLATORS: name of a built-in Steam startup movie: the one Steam plays on a freshly installed (factory) Steam Deck system image.
+    ("steam_os_family_startup", n_("Steam Deck (Factory Image)")),
 ];
 
 /// Бинари, обязательные для гибрида — порт списка в `hybrid_supported`.
@@ -366,13 +375,17 @@ fn splitext_ext_lower(name: &str) -> String {
 /// параметрами: `builtin_present` — имена файлов в `<root>/steamui/movies`,
 /// `inventory_files` — листинг `<root>/config/communityitemscache/
 /// startupmovies` (несортированный, сортировка здесь — как `sorted()`),
-/// `names` — результат [`parse_startup_movie_names`] (слитый по юзерам).
-/// Каждый элемент: `{id, name, path, builtin}`.
+/// `names` — результат [`parse_startup_movie_names`] (слитый по юзерам),
+/// `custom_files` — листинг `<root>/config/uioverrides/movies` (свои ролики
+/// для Steam, см. [`custom_movie_records`]).
+/// Каждый элемент: `{id, name, path, builtin}`; у своих роликов ещё
+/// `origin`, `origin_label`, `title`, `thumb`.
 pub fn scan_movies(
     root: &str,
     builtin_present: &[String],
     inventory_files: &[String],
     names: &Value,
+    custom_files: &[String],
 ) -> Vec<Value> {
     let mut result: Vec<Value> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
@@ -427,7 +440,72 @@ pub fn scan_movies(
         m.insert("builtin".into(), Value::from(false));
         result.push(Value::Object(m));
     }
+
+    // Свои ролики — третий источник, как в самом Steam.
+    for rec in custom_movie_records(root, custom_files) {
+        let path = rec["path"].as_str().unwrap_or_default().to_string();
+        if !seen.contains(&path) {
+            seen.push(path);
+            result.push(rec);
+        }
+    }
     result
+}
+
+/// Свои ролики Steam: `<root>/config/uioverrides/movies/*.webm`.
+///
+/// Так их видит сам клиент (`steamui.so`: маска `*.webm`, адрес
+/// `/uioverrides/movies/%s`; `sp.js` `GetLocalStartupMovies`, в списке
+/// «Кастомизация → Стартовый ролик» имя = имя файла). Маска — как у Steam,
+/// с учётом регистра; скрытые файлы (недокачанные копии) пропускаются.
+/// Миниатюру `.jpg` Steam делает сам (`GenerateLocalStartupMoviesThumbnails`,
+/// строка `%s.jpg`); из бинаря не видно, клеит он `.jpg` к стему или к имени
+/// целиком, поэтому принимаются оба (`<стем>.jpg` первым). Нет — `thumb`
+/// пустой, кадр витрины тогда делает ffmpeg, как у остальных.
+///
+/// `id` — полный путь (как у вручную выбранного файла, [`describe_custom`]):
+/// имя может совпасть с встроенным `deck_startup`.
+pub fn custom_movie_records(root: &str, files: &[String]) -> Vec<Value> {
+    let dir = steam_custom_movies_dir(root);
+    let mut sorted: Vec<&String> = files.iter().collect();
+    sorted.sort();
+    let mut out = Vec::new();
+    for fname in sorted {
+        if fname.starts_with('.') || fname.contains('/') {
+            continue;
+        }
+        let Some(stem) = fname.strip_suffix(".webm") else {
+            continue;
+        };
+        if stem.is_empty() {
+            continue;
+        }
+        let path = format!("{dir}/{fname}");
+        let thumb = [format!("{stem}.jpg"), format!("{fname}.jpg")]
+            .into_iter()
+            .find(|j| files.iter().any(|f| f == j))
+            .map(|j| format!("{dir}/{j}"))
+            .unwrap_or_default();
+        let mut m = Map::new();
+        m.insert("id".into(), Value::from(path.clone()));
+        m.insert("name".into(), Value::from(fname.as_str()));
+        m.insert("path".into(), Value::from(path));
+        m.insert("builtin".into(), Value::from(false));
+        m.insert("origin".into(), Value::from(ORIGIN_CUSTOM));
+        m.insert("origin_label".into(), Value::from(custom_movie_label()));
+        m.insert("title".into(), Value::from(stem));
+        m.insert("thumb".into(), Value::from(thumb));
+        out.push(Value::Object(m));
+    }
+    out
+}
+
+/// Подпись своего ролика из папки Steam. Отличается от «Свой файл»
+/// ([`origin_label`] для [`ORIGIN_CUSTOM`]) намеренно: файл где-то на диске
+/// видит только Rexon, а ролик из `uioverrides/movies` — и сам Steam.
+pub fn custom_movie_label() -> String {
+    // TRANSLATORS: where a startup movie comes from: the user's own movie in Steam's folder for custom startup movies (Steam shows it too).
+    tr("Your own movie")
 }
 
 // ============================================================================
@@ -718,9 +796,15 @@ pub fn enrich_movies(
     for m in movies {
         let mut rec = m.as_object().cloned().unwrap_or_default();
         let builtin = rec.get("builtin").map(truthy).unwrap_or(false);
-        let origin = if builtin { ORIGIN_BUILTIN } else { ORIGIN_SHOP };
-        rec.insert("origin".into(), Value::from(origin));
-        rec.insert("origin_label".into(), Value::from(origin_label(origin)));
+        // Свой ролик приходит из скана уже с происхождением и подписью.
+        let preset = rec.get("origin").and_then(Value::as_str).unwrap_or_default().to_string();
+        if preset.is_empty() {
+            let origin = if builtin { ORIGIN_BUILTIN } else { ORIGIN_SHOP };
+            rec.insert("origin".into(), Value::from(origin));
+            rec.insert("origin_label".into(), Value::from(origin_label(origin)));
+        } else if !rec.get("origin_label").is_some_and(truthy) {
+            rec.insert("origin_label".into(), Value::from(origin_label(&preset)));
+        }
 
         // Ключ метаданных — id записи скана: у инвентаря это
         // communityitemid, у встроенных ролика такого предмета нет.
@@ -751,6 +835,9 @@ pub fn enrich_movies(
         // Локализованный item_title лучше английского name: интерфейс
         // покупателя русский (правило #13).
         let mut title = first_truthy_str(meta, &["item_title", "name"]);
+        if title.is_empty() {
+            title = first_truthy_str(&Value::Object(rec.clone()), &["title"]);
+        }
         if title.is_empty() {
             title = match rec.get("name") {
                 Some(Value::String(s)) => s.clone(),
@@ -828,6 +915,242 @@ pub fn ffprobe_duration_argv(exe: &str, path: &str) -> Vec<String> {
 /// Длительность из вывода ffprobe: отрицательные и нечисловые → 0.0.
 pub fn parse_duration(stdout: &str) -> f64 {
     stdout.trim().parse::<f64>().map(|v| v.max(0.0)).unwrap_or(0.0)
+}
+
+// ── Приём своего ролика: проверка файла по ffprobe ───────────────────
+
+/// Короче — ролик мелькнёт незаметно.
+pub const MOVIE_MIN_SEC: f64 = 1.0;
+/// Длиннее — это уже не заставка; отказ.
+pub const MOVIE_MAX_SEC: f64 = 60.0;
+/// Длиннее — принять, но предупредить: ждать его при каждом входе.
+pub const MOVIE_WARN_SEC: f64 = 30.0;
+/// Наименьшая картинка: длинная сторона / короткая сторона (вертикальный
+/// ролик с телефона 360×640 тоже годится).
+pub const MOVIE_MIN_LONG_SIDE: i64 = 640;
+/// См. [`MOVIE_MIN_LONG_SIDE`].
+pub const MOVIE_MIN_SHORT_SIDE: i64 = 360;
+
+/// Видеокодеки, которые Steam (встроенный Chromium) играет из webm.
+const WEBM_VIDEO_CODECS: &[&str] = &["vp8", "vp9", "av1"];
+/// Звуковые кодеки webm.
+const WEBM_AUDIO_CODECS: &[&str] = &["opus", "vorbis"];
+
+/// argv ffprobe для проверки своего ролика: все потоки и контейнер в JSON.
+/// Тот же вызов, что [`ffprobe_duration_argv`], только с полным разбором.
+pub fn ffprobe_streams_argv(exe: &str, path: &str) -> Vec<String> {
+    [exe, "-v", "error", "-show_streams", "-show_format", "-of", "json", path]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect()
+}
+
+/// Что делать с выбранным файлом.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MovieVerdict {
+    /// Уже webm, который понимает Steam, — копировать как есть.
+    AsIs,
+    /// Годится, но Steam его не сыграет — перекодировать в webm (VP9 + Opus).
+    Transcode,
+    /// Не годится — показать `reason`.
+    Reject,
+}
+
+/// Итог проверки ролика (для исполнителя и интерфейса).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MovieCheck {
+    pub verdict: MovieVerdict,
+    /// Причина отказа человеческим языком; пусто, если не отказ.
+    pub reason: String,
+    /// Предупреждения, не мешающие приёму (длинный ролик).
+    pub warnings: Vec<String>,
+    /// Длительность, с; 0.0 — ffprobe её не знает.
+    pub duration: f64,
+    pub width: i64,
+    pub height: i64,
+    /// Кодек видео/звука как его называет ffprobe; звук пустой — без звука.
+    pub video_codec: String,
+    pub audio_codec: String,
+}
+
+impl MovieCheck {
+    fn reject(reason: String) -> Self {
+        MovieCheck {
+            verdict: MovieVerdict::Reject,
+            reason,
+            warnings: Vec::new(),
+            duration: 0.0,
+            width: 0,
+            height: 0,
+            video_codec: String::new(),
+            audio_codec: String::new(),
+        }
+    }
+}
+
+/// Число из поля ffprobe: в JSON оно бывает и строкой ("3.117000"), и числом.
+fn probe_num(v: Option<&Value>) -> Option<f64> {
+    match v? {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+    .filter(|x| x.is_finite() && *x > 0.0)
+}
+
+fn probe_str<'a>(v: &'a Value, key: &str) -> &'a str {
+    v.get(key).and_then(Value::as_str).unwrap_or_default()
+}
+
+/// Обложка альбома (mp3/m4a с картинкой) — «видеопоток», но не видео.
+fn probe_is_cover(s: &Value) -> bool {
+    s.get("disposition")
+        .and_then(|d| d.get("attached_pic"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+        != 0
+}
+
+/// Решение по выводу `ffprobe -show_streams -show_format -of json`
+/// ([`ffprobe_streams_argv`]): копировать / перекодировать / отказать.
+///
+/// * Отказ: вывод не разобрать; нет видеопотока (обложка альбома —
+///   `disposition.attached_pic` — видео не считается); длительность меньше
+///   [`MOVIE_MIN_SEC`] или больше [`MOVIE_MAX_SEC`]; картинка меньше
+///   640×360 (по длинной и короткой стороне).
+/// * Как есть: контейнер webm/Matroska, одно видео VP8/VP9/AV1, звук
+///   Opus/Vorbis (одна дорожка) или без звука, ничего лишнего (субтитры,
+///   вложения). Matroska у ffprobe и webm называются одинаково
+///   (`matroska,webm`), поэтому mkv с теми же кодеками тоже идёт как есть.
+/// * Иначе — перекодировать.
+/// * Длительности ffprobe не знает (webm, записанный в браузере, бывает без
+///   неё) — перекодировать: ffmpeg её пропишет, а пределы исполнитель
+///   проверит повторным прогоном по готовому файлу.
+/// * Дольше [`MOVIE_WARN_SEC`] — предупреждение, не отказ.
+pub fn check_movie_probe(json_text: &str) -> MovieCheck {
+    let Ok(probe) = serde_json::from_str::<Value>(json_text) else {
+        return MovieCheck::reject(msg_movie_unreadable());
+    };
+    let streams: Vec<&Value> = probe
+        .get("streams")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().collect())
+        .unwrap_or_default();
+    let format = probe.get("format").cloned().unwrap_or(Value::Null);
+    if streams.is_empty() && format.is_null() {
+        return MovieCheck::reject(msg_movie_unreadable());
+    }
+
+    let videos: Vec<&Value> = streams
+        .iter()
+        .copied()
+        .filter(|s| probe_str(s, "codec_type") == "video" && !probe_is_cover(s))
+        .collect();
+    let audios: Vec<&Value> = streams
+        .iter()
+        .copied()
+        .filter(|s| probe_str(s, "codec_type") == "audio")
+        .collect();
+    let Some(video) = videos.first() else {
+        return MovieCheck::reject(msg_movie_no_picture());
+    };
+
+    let width = video.get("width").and_then(Value::as_i64).unwrap_or(0);
+    let height = video.get("height").and_then(Value::as_i64).unwrap_or(0);
+    let duration = probe_num(format.get("duration"))
+        .or_else(|| probe_num(video.get("duration")))
+        .unwrap_or(0.0);
+    let mut check = MovieCheck {
+        verdict: MovieVerdict::Transcode,
+        reason: String::new(),
+        warnings: Vec::new(),
+        duration,
+        width,
+        height,
+        video_codec: probe_str(video, "codec_name").to_string(),
+        audio_codec: audios
+            .first()
+            .map(|a| probe_str(a, "codec_name").to_string())
+            .unwrap_or_default(),
+    };
+
+    let refusal = if duration > 0.0 && duration < MOVIE_MIN_SEC {
+        Some(msg_movie_too_short())
+    } else if duration > MOVIE_MAX_SEC {
+        Some(msg_movie_too_long())
+    } else if width.max(height) < MOVIE_MIN_LONG_SIDE || width.min(height) < MOVIE_MIN_SHORT_SIDE {
+        Some(msg_movie_too_small(width, height))
+    } else {
+        None
+    };
+    if let Some(reason) = refusal {
+        check.verdict = MovieVerdict::Reject;
+        check.reason = reason;
+        return check;
+    }
+    if duration > MOVIE_WARN_SEC {
+        check.warnings.push(msg_movie_long_warning());
+    }
+
+    let webm = probe_str(&format, "format_name")
+        .split(',')
+        .any(|f| f == "webm" || f == "matroska");
+    let only_av = streams.iter().all(|s| {
+        let kind = probe_str(s, "codec_type");
+        kind == "audio" || (kind == "video" && !probe_is_cover(s))
+    });
+    let video_ok = WEBM_VIDEO_CODECS.contains(&check.video_codec.as_str());
+    let audio_ok = audios
+        .iter()
+        .all(|a| WEBM_AUDIO_CODECS.contains(&probe_str(a, "codec_name")));
+    if webm && only_av && videos.len() == 1 && audios.len() <= 1 && video_ok && audio_ok && duration > 0.0 {
+        check.verdict = MovieVerdict::AsIs;
+    }
+    check
+}
+
+/// Файл не прочитать.
+pub fn msg_movie_unreadable() -> String {
+    // TRANSLATORS: a startup movie the user picked can't be used: ffprobe couldn't read it.
+    tr("Couldn't read this file — it may be damaged or not a video.")
+}
+
+/// В файле нет изображения (например, это музыка).
+pub fn msg_movie_no_picture() -> String {
+    // TRANSLATORS: a startup movie the user picked can't be used: the file has no video picture (e.g. it is music).
+    tr("This file has no picture — choose a video file.")
+}
+
+/// Ролик короче секунды.
+pub fn msg_movie_too_short() -> String {
+    // TRANSLATORS: a startup movie the user picked can't be used: it is shorter than one second.
+    tr("The video is shorter than a second — it would flash by unnoticed. Choose a longer one.")
+}
+
+/// Ролик длиннее минуты.
+pub fn msg_movie_too_long() -> String {
+    // TRANSLATORS: a startup movie the user picked can't be used: it is longer than one minute.
+    tr("The video is longer than a minute — a startup movie should be short. Trim it or choose another one.")
+}
+
+/// Картинка меньше 640×360.
+pub fn msg_movie_too_small(width: i64, height: i64) -> String {
+    // Литерал — на одной строке с `trf(`: иначе xgettext теряет комментарий.
+    let (w, h) = (width, height);
+    // TRANSLATORS: a startup movie the user picked can't be used: its picture is too small; %1 and %2 are its width and height in pixels.
+    trf("The picture is too small (%1×%2) — it would look blurry on screen. Choose a video of at least 640×360.", &[&w, &h])
+}
+
+/// Ролик длиннее 30 с — принять, но предупредить.
+pub fn msg_movie_long_warning() -> String {
+    // TRANSLATORS: warning when adding a startup movie longer than 30 seconds; it is still accepted.
+    tr("The video is longer than 30 seconds — it's a startup movie, not a film: you'll wait for it at every login.")
+}
+
+/// Ролик будет перекодирован (подсказка для интерфейса).
+pub fn msg_movie_will_convert() -> String {
+    // TRANSLATORS: shown when adding a startup movie that Steam can't play as is; the original file stays untouched.
+    tr("The video will be converted to WebM so Steam can play it. The original file stays as it is.")
 }
 
 /// FNV-1a 64 — детерминированный отпечаток для имени файла кэша.
@@ -2352,6 +2675,11 @@ pub fn builtin_movie_filenames() -> Vec<String> {
         .collect()
 }
 
+/// Каталог своих роликов Steam (`config/uioverrides/movies`).
+pub fn steam_custom_movies_dir(root: &str) -> String {
+    format!("{root}/config/uioverrides/movies")
+}
+
 /// Каталог инвентарных заставок (купленное в Points Shop уже лежит файлами).
 pub fn steam_inventory_dir(root: &str) -> String {
     format!("{root}/config/communityitemscache/startupmovies")
@@ -2935,7 +3263,13 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
         } else {
             (Vec::new(), Value::Object(Map::new()))
         };
-        scan_movies(&root, &builtin_present, &inventory, &names)
+        let custom_dir = steam_custom_movies_dir(&root);
+        let custom = if self.io.is_dir(&custom_dir) {
+            self.io.listdir(&custom_dir)
+        } else {
+            Vec::new()
+        };
+        scan_movies(&root, &builtin_present, &inventory, &names, &custom)
     }
 
     /// Дополнить записи скана метаданными предмета — порт `_enrich_movies`.
@@ -2961,6 +3295,22 @@ impl<'a, IO: SplashIo> Splash<'a, IO> {
     pub fn scan_startup_movies(&mut self) -> Vec<Value> {
         let raw = self.scan_movies_raw();
         self.enrich_movies(&raw)
+    }
+
+    // ── Приём своего ролика ────────────────────────────────────────────
+
+    /// Проверить выбранный файл ([`check_movie_probe`]). Нет ffprobe или он
+    /// не ответил — отказ «не прочитать»: без проверки ролик не принимаем.
+    pub fn probe_movie(&mut self, path: &str) -> MovieCheck {
+        let exe = self.io.which("ffprobe");
+        if exe.is_empty() {
+            return MovieCheck::reject(msg_movie_unreadable());
+        }
+        let argv = ffprobe_streams_argv(&exe, path);
+        match self.io.run(&argv, FFPROBE_TIMEOUT_SEC) {
+            Some(r) if r.rc == 0 => check_movie_probe(&r.stdout),
+            _ => MovieCheck::reject(msg_movie_unreadable()),
+        }
     }
 
     // ── Кадр для витрины ───────────────────────────────────────────────

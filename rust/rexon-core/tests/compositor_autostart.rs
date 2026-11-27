@@ -429,7 +429,7 @@ fn refusal_texts_are_translated() {
     // Русский оригинал сверяется через собранный каталог: msgmerge переносит
     // длинный msgstr на несколько строк po, и поиск по тексту файла ломается.
     let ru_not_covered = "%1 не запускает программы из общего списка автозапуска, а вписать Rexon в его настройки не удалось: %2.";
-    for lang in ["ru", "de"] {
+    for lang in rexon_core::i18n::parse_linguas(rexon_core::i18n::LINGUAS) {
         let po = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../po/{lang}.po"));
         let out = std::env::temp_dir().join(format!("rexon-ca-{lang}-{}.mo", std::process::id()));
         let ok = std::process::Command::new("msgfmt")

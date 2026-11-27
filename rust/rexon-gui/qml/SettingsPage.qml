@@ -472,6 +472,37 @@ Item {
                 }
             }
 
+            // Плейлист обоев Rexon — первым в «⚙️ Настройках» «Обоев HD».
+            Loader {
+                Layout.fillWidth: true
+                Layout.preferredHeight: item ? item.implicitHeight : 0
+                active: root.showsPanel("wallpaperplaylist")
+                visible: active
+                sourceComponent: Component {
+                    WallpaperPlaylistSection {
+                        pal: root.pal
+                        sty: root.sty
+                        onMessage: text => root.say(text)
+                    }
+                }
+            }
+
+            // Блок «Razer Axon» в «⚙️ Настройках» «Обоев HD» — только если
+            // Axon найден (ключ раздела ставит «Оформление»).
+            Loader {
+                Layout.fillWidth: true
+                Layout.preferredHeight: item ? item.implicitHeight : 0
+                active: root.showsPanel("axonsettings")
+                visible: active
+                sourceComponent: Component {
+                    AxonSettingsSection {
+                        pal: root.pal
+                        sty: root.sty
+                        onMessage: text => root.say(text)
+                    }
+                }
+            }
+
             // Значки в меню и на кнопках, подписи панелей инструментов.
             Loader {
                 Layout.fillWidth: true
@@ -1039,6 +1070,15 @@ Item {
                 readonly property var wp: root.st.wp || ({})
                 readonly property var audio: wpBody.wp.audio || ({})
 
+                /// Записать все галочки звука и паузы обоев разом. Хост
+                /// следит за файлом настроек сам — обои не перезапускаются.
+                function saveAudio() {
+                    root.did(root.actions.setWallpaperAudio(
+                                 wpAudio.checked, Math.round(wpVolume.value),
+                                 wpMuteOther.checked, wpHideCovered.checked,
+                                 wpPauseBattery.checked, wpPauseGame.checked));
+                }
+
                 RexonText {
                     Layout.fillWidth: true
                     text: wpBody.wp.status || ""
@@ -1090,10 +1130,7 @@ Item {
                     pal: root.pal
                     text: root.txt["wp.video_audio"]
                     checked: wpBody.audio.enabled === true
-                    onToggled: root.did(root.actions.setWallpaperAudio(
-                                            wpAudio.checked, Math.round(wpVolume.value),
-                                            wpMuteOther.checked,
-                                            wpHideCovered.checked))
+                    onToggled: wpBody.saveAudio()
                     onActiveFocusChanged: if (activeFocus) root.ensureVisible(wpAudio)
                 }
 
@@ -1117,10 +1154,7 @@ Item {
                         stepSize: 1
                         value: wpBody.audio.volume !== undefined
                                ? wpBody.audio.volume : 0
-                        onMoved: root.did(root.actions.setWallpaperAudio(
-                                              wpAudio.checked, Math.round(wpVolume.value),
-                                              wpMuteOther.checked,
-                                              wpHideCovered.checked))
+                        onMoved: wpBody.saveAudio()
                         onActiveFocusChanged: if (activeFocus)
                             root.ensureVisible(wpVolume)
                     }
@@ -1133,10 +1167,7 @@ Item {
                     pal: root.pal
                     text: root.txt["wp.audio_mute_other"]
                     checked: wpBody.audio.muteOther === true
-                    onToggled: root.did(root.actions.setWallpaperAudio(
-                                            wpAudio.checked, Math.round(wpVolume.value),
-                                            wpMuteOther.checked,
-                                            wpHideCovered.checked))
+                    onToggled: wpBody.saveAudio()
                     onActiveFocusChanged: if (activeFocus)
                         root.ensureVisible(wpMuteOther)
                 }
@@ -1146,12 +1177,31 @@ Item {
                     pal: root.pal
                     text: root.txt["wp.audio_mute_covered"]
                     checked: wpBody.audio.hideCovered === true
-                    onToggled: root.did(root.actions.setWallpaperAudio(
-                                            wpAudio.checked, Math.round(wpVolume.value),
-                                            wpMuteOther.checked,
-                                            wpHideCovered.checked))
+                    onToggled: wpBody.saveAudio()
                     onActiveFocusChanged: if (activeFocus)
                         root.ensureVisible(wpHideCovered)
+                }
+
+                // Батарея и игра — те же условия общей модели паузы, что и
+                // «когда их не видно»: действуют на видео, веб и Flash.
+                RexonCheckBox {
+                    id: wpPauseBattery
+                    pal: root.pal
+                    text: root.txt["wp.pause_battery"]
+                    checked: wpBody.audio.pauseBattery === true
+                    onToggled: wpBody.saveAudio()
+                    onActiveFocusChanged: if (activeFocus)
+                        root.ensureVisible(wpPauseBattery)
+                }
+
+                RexonCheckBox {
+                    id: wpPauseGame
+                    pal: root.pal
+                    text: root.txt["wp.pause_game"]
+                    checked: wpBody.audio.pauseGame === true
+                    onToggled: wpBody.saveAudio()
+                    onActiveFocusChanged: if (activeFocus)
+                        root.ensureVisible(wpPauseGame)
                 }
 
                 RexonText {
@@ -2074,7 +2124,7 @@ Item {
                             subpixelCombo.currentValue, hintingCombo.currentValue);
             }
 
-            // Шесть кнопок в ряд не помещаются на узком окне: переносятся.
+            // Восемь кнопок в ряд не помещаются на узком окне: переносятся.
             Flow {
                 Layout.fillWidth: true
                 spacing: root.sty.spacing.fontRow
@@ -2122,6 +2172,21 @@ Item {
                         }
                     }
                 }
+            }
+
+            // Стол LXQt: вернуть шрифт подписей значков, как было до Rexon
+            // (кнопка есть, только если Rexon его менял).
+            RexonButton {
+                id: desktopRestoreButton
+                readonly property var info: (root.st.font && root.st.font.desktop_restore) || ({})
+                visible: desktopRestoreButton.info.visible === true
+                pal: root.pal
+                text: desktopRestoreButton.info.label || ""
+                ToolTip.visible: hovered
+                ToolTip.text: desktopRestoreButton.info.tip || ""
+                onClicked: root.did(root.actions.restoreDesktopFont())
+                onActiveFocusChanged: if (activeFocus)
+                    root.ensureVisible(desktopRestoreButton)
             }
 
             RexonText {

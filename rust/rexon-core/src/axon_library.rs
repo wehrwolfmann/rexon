@@ -1467,16 +1467,6 @@ pub fn prepare_failed_text(name: &str) -> String {
     trf("Could not prepare “%1” for playback.", &[&name])
 }
 
-/// Кнопка входа в «Расширениях» — пока для проверки.
-pub fn entry_button_text() -> String {
-    tr("Razer Axon (test)")
-}
-
-/// Заголовок окна библиотеки.
-pub fn window_title() -> String {
-    tr("Razer Axon wallpapers (test)")
-}
-
 /// Подготовка пошла.
 pub fn preparing_text(name: &str) -> String {
     // TRANSLATORS: %1 is the name of a Razer Axon wallpaper.

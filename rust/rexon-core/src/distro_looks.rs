@@ -342,6 +342,18 @@ pub struct DepInstall {
     pub resolved: ResolvedDep,
 }
 
+/// Расширение GNOME Shell, которое Rexon поставит сам (зависимость
+/// `"source": "gnome-extensions"`): через оболочку (её окно подтверждения),
+/// без неё — zip выпуска под версию GNOME
+/// ([`crate::gnome_ext_section::install_dependency`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ExtNeed {
+    pub role: String,
+    pub uuid: String,
+    /// Для каких видов.
+    pub kinds: Vec<String>,
+}
+
 /// Пакеты из AUR, которые человек может поставить сам.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AurNeed {
@@ -421,6 +433,9 @@ pub struct LookPlan {
     /// только роли [`AUTO_AUR_ROLES`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aur_build: Vec<AurNeed>,
+    /// Расширения GNOME Shell, которые ставятся сразу (окно оболочки).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extensions: Vec<ExtNeed>,
 }
 
 /// Итог сборки плана.
@@ -705,6 +720,8 @@ enum RoleState {
     Present,
     Install(ResolvedDep),
     Aur(ResolvedDep),
+    /// Расширение GNOME Shell не стоит — Rexon поставит его сам (uuid).
+    Extension(String),
     Missing(String),
 }
 
@@ -725,7 +742,7 @@ fn role_state(dep: &PackageDep, family: PkgFamily, probes: &Probes) -> RoleState
         return if (probes.extension_installed)(&uuid) {
             RoleState::Present
         } else {
-            RoleState::Missing(trf("it needs the GNOME Shell extension %1, and it is not installed", &[&uuid]))
+            RoleState::Extension(uuid)
         };
     }
     for source in dep.sources_in_order() {
@@ -817,6 +834,7 @@ pub fn plan(look: &Look, t: &Target, req: &Request, probes: &Probes) -> Prepared
     let mut install: Vec<DepInstall> = Vec::new();
     let mut aur: Vec<AurNeed> = Vec::new();
     let mut aur_build: Vec<AurNeed> = Vec::new();
+    let mut extensions: Vec<ExtNeed> = Vec::new();
     let mut roles = BTreeSet::new();
 
     for (i, (item, choice)) in pkg.items.iter().zip(&pc.choices).enumerate() {
@@ -841,6 +859,7 @@ pub fn plan(look: &Look, t: &Target, req: &Request, probes: &Probes) -> Prepared
         let src_role = source_id_of(&path).and_then(|sid| pkg.source(sid)).and_then(|s| s.package.clone());
         let mut block: Option<String> = None;
         let mut my_install = Vec::new();
+        let mut my_ext: Vec<(String, String)> = Vec::new();
         let mut my_roles = Vec::new();
         for dep in pkg.deps_for_choice_with(&item.kind, &consumer, &req.values) {
             let st = states.entry(dep.role.clone()).or_insert_with(|| role_state(dep, t.family, probes)).clone();
@@ -850,6 +869,10 @@ pub fn plan(look: &Look, t: &Target, req: &Request, probes: &Probes) -> Prepared
                 RoleState::Install(r) => {
                     my_roles.push(dep.role.clone());
                     my_install.push(DepInstall { role: dep.role.clone(), resolved: r });
+                }
+                RoleState::Extension(uuid) => {
+                    my_roles.push(dep.role.clone());
+                    my_ext.push((dep.role.clone(), uuid));
                 }
                 RoleState::Aur(r) if AUTO_AUR_ROLES.contains(&dep.role.as_str()) && t.aur_helper.is_some() && !t.wayland => {
                     my_roles.push(dep.role.clone());
@@ -920,6 +943,16 @@ pub fn plan(look: &Look, t: &Target, req: &Request, probes: &Probes) -> Prepared
                 install.push(d);
             }
         }
+        for (role, uuid) in my_ext {
+            match extensions.iter_mut().find(|e| e.role == role) {
+                Some(e) => {
+                    if !e.kinds.contains(&item.kind) {
+                        e.kinds.push(item.kind.clone());
+                    }
+                }
+                None => extensions.push(ExtNeed { role, uuid, kinds: vec![item.kind.clone()] }),
+            }
+        }
         roles.extend(my_roles);
         items.push(PlannedItem { index: i, kind: item.kind.clone(), consumer, path, choice: choice.clone() });
     }
@@ -962,6 +995,7 @@ pub fn plan(look: &Look, t: &Target, req: &Request, probes: &Probes) -> Prepared
         covered,
         limits,
         aur_build,
+        extensions,
     })
 }
 
@@ -1019,6 +1053,9 @@ pub struct Machine<'a> {
     /// Собрать и поставить пакеты AUR помощником (окно пароля) —
     /// [`LookPlan::aur_build`].
     pub install_aur: &'a dyn Fn(&[String]) -> Result<(), String>,
+    /// Поставить расширение GNOME Shell по uuid ([`LookPlan::extensions`];
+    /// живое — [`crate::gnome_ext_section::live_install_dependency`]).
+    pub install_extension: &'a dyn Fn(&str) -> Result<crate::gnome_ext_section::DepOutcome, crate::gnome_shell_ext::ShellExtError>,
 }
 
 /// Итог применения.
@@ -1122,6 +1159,19 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
         }
     }
 
+    // Расширения GNOME Shell — сразу, без вопроса Rexon: защита — окно
+    // подтверждения оболочки. Отказ в нём, нет выпуска под эту версию GNOME,
+    // сбой сети — образ всё равно применяется, а человеку честно сказано,
+    // чего без расширения не будет.
+    let mut ext_lines: Vec<String> = Vec::new();
+    for e in &plan.extensions {
+        let without = e.kinds.iter().map(|k| kind_label(k)).collect::<Vec<_>>().join(", ");
+        let r = (m.install_extension)(&e.uuid);
+        if let Some(line) = crate::gnome_ext_section::dependency_note(&e.uuid, &without, &r) {
+            ext_lines.push(line);
+        }
+    }
+
     // Файлы: подготовить, проверить, собрать шаги.
     let prepared = prepare(look, plan, t, m).map_err(&fail)?;
     let owner = owner_of_look(&plan.id);
@@ -1221,6 +1271,7 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
         .and_then(|s| s.get("after_apply"))
         .map(|v| localized(v, &t.lang));
     let mut lines = vec![trf("“%1” applied.", &[name])];
+    lines.extend(ext_lines);
     for s in &plan.skipped {
         lines.push(trf("Skipped: %1 — %2", &[&kind_label(&s.kind), &s.reason]));
     }
@@ -3278,6 +3329,10 @@ pub fn apply_live(
         report("install", &trf("Building from the AUR (this takes several minutes): %1", &[&names.join(", ")]));
         install_aur_live(names)
     };
+    let install_extension = |uuid: &str| {
+        report("install", &trf("Installing the GNOME extension %1…", &[&uuid]));
+        crate::gnome_ext_section::live_install_dependency(uuid)
+    };
     report("post_install", &trf("Applying “%1”…", &[&plan.name]));
     let m = Machine {
         ctx: &ctx,
@@ -3289,6 +3344,7 @@ pub fn apply_live(
         desktop_installed: &desktop_installed_live,
         desktop_path: &desktop_path_live,
         install_aur: &install_aur,
+        install_extension: &install_extension,
     };
     apply(look, plan, &t, &m)
 }

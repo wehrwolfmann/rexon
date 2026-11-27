@@ -2283,6 +2283,33 @@ pub fn scan_section(
     items
 }
 
+/// Раздел ли `key` (`categories::DE_SECTIONS`) из тех, где включено может
+/// быть сразу несколько и каждое включается и выключается само по себе:
+/// расширения GNOME и Cinnamon, апплеты и десклеты Cinnamon, скрипты и
+/// эффекты KWin (способ включения в матрице — список или модуль, а не одно
+/// имя) и виджеты Conky (запущен — не запущен).
+pub fn toggle_section(key: &str) -> bool {
+    use crate::de_customization::Activate;
+    let Some(kind) = crate::categories::category_kind(key) else { return false };
+    if kind == crate::de_apply::CONKY_KIND {
+        return true;
+    }
+    crate::de_customization::row(kind).is_some_and(|row| {
+        matches!(row.activate, Activate::KwinPlugin | Activate::GsettingsList { .. } | Activate::GnomeExtension)
+    })
+}
+
+/// Порядок сетки раздела-переключателя ([`toggle_section`]) — по имени, а не
+/// «включённое сверху». У тем включена одна, и её место первой понятно; а
+/// здесь «Выключить» перекладывало карточку из головы списка в середину, и
+/// человек терял её из-под курсора (живая проверка 15.11, расширения GNOME).
+/// Сортировка устойчивая: при равных именах — по номеру плитки.
+pub fn order_toggle_section(key: &str, items: &mut [ThemeItem]) {
+    if toggle_section(key) {
+        items.sort_by_cached_key(|it| (it.name.to_lowercase(), it.id.clone()));
+    }
+}
+
 /// Тема ли вида `kind` лежит в каталоге `dir` — одно правило для обзоров
 /// («Загруженные», «Системные») и для сетки раздела.
 ///
@@ -3483,10 +3510,27 @@ impl LiveScan {
     }
 
     /// Темы, применённые СЕЙЧАС (любой источник).
+    /// Контекст Conky для скана: `$XDG_CONFIG_HOME` сеанса — только для
+    /// своего дома, скан чужого дерева живые каталоги не читает.
+    fn conky_ctx(&self) -> crate::de_apply::Ctx {
+        crate::de_apply::Ctx::for_home(&self.home)
+    }
+
+    /// Пакет Conky из нескольких виджетов — плитка на каждый
+    /// ([`crate::conky_scan::split_package_items`]).
+    fn split_conky(&self, items: Vec<ThemeItem>, active_map: &HashMap<String, String>) -> Vec<ThemeItem> {
+        if !items.iter().any(|it| it.id.starts_with("local:conky:")) {
+            return items;
+        }
+        let running: Vec<String> = active_names(active_map, "conky").into_iter().map(str::to_string).collect();
+        crate::conky_scan::split_package_items(&crate::animations::SystemIo, &self.conky_ctx(), items, &running)
+    }
+
     pub fn active(&self, active_map: &HashMap<String, String>) -> Vec<ThemeItem> {
         self.migrate_nested();
         let types = self.types();
-        let mut items = self.with_env(&self.scan_roots(), true, |env| scan_active_in(env, &types, active_map));
+        let items = self.with_env(&self.scan_roots(), true, |env| scan_active_in(env, &types, active_map));
+        let mut items = self.split_conky(items, active_map);
         // Встроенная рамка KDE (Breeze по умолчанию) — только в сеансе KDE:
         // в другом столе `kwinrc` ничего не рисует.
         let kde = self.de.as_deref().and_then(crate::de_customization::de_from_id)
@@ -3505,11 +3549,15 @@ impl LiveScan {
         let types = self.types();
         let journal = crate::appearance_installer::installed_log_paths();
         let loose = self.loose_system_themes();
-        self.with_env(&self.scan_roots(), true, |env| {
+        let items = self.with_env(&self.scan_roots(), true, |env| {
             let mut items = scan_downloaded_in(env, &types, active_map);
             items.extend(scan_rexon_system(env, &types, active_map, &journal, &loose));
             items
-        })
+        });
+        // Здесь — только не запущенные (запущенные — в «Включённых»).
+        let mut items = self.split_conky(items, active_map);
+        items.retain(|it| !(it.id.starts_with("local:conky:") && it.local_kind.as_deref() == Some("active")));
+        items
     }
 
     /// Каталоги тем экрана входа и заставки загрузки, у которых нет
@@ -3592,6 +3640,7 @@ impl LiveScan {
             }
         }
         let mut items = self.with_env(&roots, true, |env| scan_section(env, &types, active_map));
+        order_toggle_section(apply_kind, &mut items);
         // Встроенные рамки KDE (Breeze, Oxygen, темы QML Aurorae) — рядом с
         // темами SVG, как в окне KDE; текущая — по `library` из `kwinrc`.
         if apply_kind == "aurorae" {
@@ -3603,17 +3652,11 @@ impl LiveScan {
         // Виджеты Conky вне каталога Rexon (`~/.conky`, `~/.conkyrc`, свои
         // папки) — плитками «Найдено на диске» после своих.
         if apply_kind == "conky" {
+            let ctx = self.conky_ctx();
+            items = self.split_conky(items, active_map);
             items.extend(crate::conky_scan::live_found_items(&self.home));
             // Картинка рядом с файлом настроек и «Источник»/«Авторы» из
             // source.txt/credits.txt — и своим, и найденным на диске.
-            // `$XDG_CONFIG_HOME` сеанса — только для своего дома: скан
-            // чужого дерева живые каталоги не читает.
-            let live = crate::de_apply::Ctx::live();
-            let ctx = if live.home.trim_end_matches('/') == self.home.trim_end_matches('/') {
-                live
-            } else {
-                crate::de_apply::Ctx { home: self.home.clone(), xdg_config_home: None, wayland: false, de: String::new() }
-            };
             for it in &mut items {
                 crate::conky_scan::decorate_item(&crate::animations::SystemIo, &ctx, it);
             }
@@ -3675,6 +3718,40 @@ impl LiveScan {
 // без единой ошибки.
 #[cfg(test)]
 mod tests {
+    /// Разделы-переключатели — по имени (включение карточку не двигает),
+    /// разделы тем — как были (включённая первой).
+    #[test]
+    fn toggle_sections_keep_order_by_name() {
+        for key in ["gnomeext", "kwineffects", "kwinscripts", "cinnamonapplets", "cinnamondesklets", "cinnamonext", "conky"] {
+            assert!(toggle_section(key), "{key}");
+        }
+        for key in ["gtk", "icons", "cursor", "global", "xfwm4", "gnomeshell", "tabbox", "nemoactions", ""] {
+            assert!(!toggle_section(key), "{key}");
+        }
+        let tile = |id: &str, name: &str, active: bool| ThemeItem {
+            id: format!("local:gnomeext:{id}"),
+            name: name.into(),
+            local_kind: active.then(|| "active".to_string()),
+            ..Default::default()
+        };
+        let names = |items: &[ThemeItem]| items.iter().map(|i| i.name.clone()).collect::<Vec<_>>();
+        // Обзор кладёт включённое первым: до и после «Выключить» у Caffeine.
+        let mut before = vec![tile("c", "Caffeine", true), tile("a", "appindicator", false), tile("d", "Dash to Dock", false)];
+        let mut after = vec![tile("a", "appindicator", false), tile("c", "Caffeine", false), tile("d", "Dash to Dock", false)];
+        order_toggle_section("gnomeext", &mut before);
+        order_toggle_section("gnomeext", &mut after);
+        assert_eq!(names(&before), ["appindicator", "Caffeine", "Dash to Dock"]);
+        assert_eq!(names(&before), names(&after), "переключение не двигает карточки");
+        // Равные имена — по номеру, устойчиво.
+        let mut twins = vec![tile("z", "Same", true), tile("b", "Same", false)];
+        order_toggle_section("gnomeext", &mut twins);
+        assert_eq!(twins[0].id, "local:gnomeext:b");
+        // Тема: порядок обзора не трогаем.
+        let mut themes = vec![tile("x", "Zeta", true), tile("y", "Alpha", false)];
+        order_toggle_section("gtk", &mut themes);
+        assert_eq!(names(&themes), ["Zeta", "Alpha"]);
+    }
+
     /// Новая тема в `~/.themes` меняет отметку корней.
     #[test]
     fn roots_stamp_sees_new_theme() {

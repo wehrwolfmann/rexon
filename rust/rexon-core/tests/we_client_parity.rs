@@ -1115,6 +1115,33 @@ fn планы_автозапуска() {
     }
 }
 
+/// `supported`/`unavailableReason` для `W.AutostartGetQuery` (waywallen
+/// с #380 держит переключатель серым, пока `supported` ложно). Локальному
+/// автозапуску Rexon мешает только отсутствие движка — ровно там, где
+/// `enable_plan` отвечает `NoBinary`; при этом причина обязана быть
+/// человеческой и переведённой, а при поддержке — пустой.
+#[test]
+fn доступность_автозапуска_совпадает_с_планом_включения() {
+    let _lang = i18n_pin::ru();
+    for systemd in [true, false] {
+        let (supported, reason) = wc::autostart_availability(Some("/opt/ww/waywallen"));
+        assert!(supported);
+        assert_eq!(reason, "");
+        assert!(!matches!(
+            wc::enable_plan(Some("/opt/ww/waywallen"), None, HOME, systemd),
+            wc::EnablePlan::NoBinary { .. }
+        ));
+
+        let (supported, reason) = wc::autostart_availability(None);
+        assert!(!supported);
+        assert!(matches!(
+            wc::enable_plan(None, None, HOME, systemd),
+            wc::EnablePlan::NoBinary { .. }
+        ));
+        assert_eq!(reason, "Движок waywallen не установлен — запускать при входе нечего.");
+    }
+}
+
 #[test]
 fn тексты_ошибок_автозапуска() {
     let _lang = i18n_pin::ru();

@@ -874,7 +874,7 @@ fn notice_texts_translated_ru_de() {
         w::install_rexon_version_label(),
         "Could not install the Plasma wallpaper plugin: %1".to_string(),
     ];
-    for lang in ["ru", "de"] {
+    for lang in rexon_core::i18n::parse_linguas(rexon_core::i18n::LINGUAS) {
         let po = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("../../po/{lang}.po"));
         let out = std::env::temp_dir().join(format!("rexon-wkp-{lang}-{}.mo", std::process::id()));
         let status = std::process::Command::new("msgfmt")

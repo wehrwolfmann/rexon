@@ -528,6 +528,10 @@ impl Paths {
     pub fn config(&self) -> String {
         format!("{}/rexon/day-night.json", self.config_home)
     }
+    /// Общие настройки Rexon (там — плейлист обоев).
+    pub fn settings(&self) -> String {
+        format!("{}/rexon/settings.json", self.config_home)
+    }
     pub fn memo(&self) -> String {
         format!("{}/rexon/day-night.json", self.state_home)
     }
@@ -805,9 +809,20 @@ pub fn current_phase(cfg: &Config, clock: Clock, place: Option<(f64, f64)>) -> P
 /// Исполнить план. Возвращает сбои (по строке на часть).
 pub fn run_plan(io: &dyn DayNightIo, paths: &Paths, de: &str, actions: &[Action]) -> Vec<String> {
     let mut failed = Vec::new();
+    // Один хозяин обоев: играет плейлист обоев Rexon — пара картинок
+    // расписания экран не трогает (темы и схемы переключаются как обычно).
+    let playlist_owns = io
+        .read(&paths.settings())
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v.as_object().map(crate::wallpaper_playlist::owns_wallpaper))
+        .unwrap_or(false);
     for action in actions {
         let (ok, detail) = match action {
             Action::Theme { kind, name } => io.apply_theme(de, kind, name),
+            Action::Wallpaper { .. } if playlist_owns => {
+                crate::log_info!("day-night", "обои не меняю: их ведёт плейлист обоев");
+                (true, String::new())
+            }
             Action::Wallpaper { path } => io.apply_wallpaper(path),
             Action::Run { argv } => io.run(argv),
             Action::CosmicDark { dark } => {

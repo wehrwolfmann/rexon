@@ -40,6 +40,9 @@ pub mod constants;
 pub mod conky_safety;
 /// Автозапуск виджета Conky: задержка, окружение, строки композиторов.
 pub mod conky_autostart;
+pub mod conky_layout;
+/// Палитра найденных цветов виджета Conky: замена во всех местах и возврат.
+pub mod conky_colors;
 pub mod conky_log;
 /// Настройки виджета Conky поверх файла автора (накладка `rexon.conf`).
 pub mod conky_overlay;
@@ -70,6 +73,12 @@ pub mod favorites;
 pub mod fs_watch;
 /// «Сохранить текущее оформление…» — своя глобальная тема из того, что стоит сейчас.
 pub mod global_save;
+/// Сайт расширений GNOME (extensions.gnome.org): витрина, выпуски, совместимость.
+pub mod gnome_ego;
+/// Раздел «Расширения GNOME»: установленное из оболочки, действия плитки, обновления.
+pub mod gnome_ext_section;
+/// Расширения GNOME через саму оболочку: D-Bus org.gnome.Shell.Extensions и запасной путь zip.
+pub mod gnome_shell_ext;
 pub mod gtk_sanitizer;
 pub mod gtk4_theme;
 pub mod i18n;
@@ -177,6 +186,9 @@ pub mod wallpaper_backend;
 pub mod wallpaper_engine;
 pub mod wallpaper_exec;
 pub mod wallpaper_mmap;
+/// Плейлист собственных обоев Rexon: модель, решения ротатора, таймер.
+pub mod wallpaper_playlist;
+pub mod wallpaper_screens;
 pub mod waywallen_client;
 pub mod we_client;
 pub mod we_manage;

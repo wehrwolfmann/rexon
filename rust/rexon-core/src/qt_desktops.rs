@@ -569,6 +569,13 @@ pub fn look_confirm(offer: &dl::Offer, values: &crate::rxn_manifest::PropValues,
             &[&esc(&install.join(", "))],
         ));
     }
+    if !plan.extensions.is_empty() {
+        let uuids: Vec<&str> = plan.extensions.iter().map(|e| e.uuid.as_str()).collect();
+        lines.push(trf(
+            "Rexon will install the GNOME extensions it needs: %1. If GNOME Shell is running, it will ask you to confirm.",
+            &[&esc(&uuids.join(", "))],
+        ));
+    }
     for s in &plan.skipped {
         // Вид «по желанию», который человек не выбрал, — это галочка ниже,
         // а не «не будет применено».

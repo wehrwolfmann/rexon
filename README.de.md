@@ -1,4 +1,4 @@
-[English](README.md) | [Русский](README.ru.md) | Deutsch | [简体中文](README.zh-CN.md) | [Français](README.fr.md)
+[English](README.md) | [Русский](README.ru.md) | Deutsch | [简体中文](README.zh-CN.md) | [Français](README.fr.md) | [Español](README.es.md)
 
 # Rexon
 
@@ -31,7 +31,7 @@ Plattform für Entwicklung und Tests ist Arch Linux / CachyOS.
 
 Eine Schritt-für-Schritt-Anleitung zu allen Reitern — Desktops,
 Erscheinungsbild, Erweiterungen, Wallpaper Engine, Steam und Einstellungen —
-auf Deutsch, Englisch, Russisch, Chinesisch und Französisch: [guide/](guide/README.md).
+auf Deutsch, Englisch, Russisch, Chinesisch, Französisch und Spanisch: [guide/](guide/README.md).
 
 ## Funktionen
 
@@ -372,7 +372,7 @@ Rettungs-Units für die Anmeldung entfernt (es sind Dateien, die zum Paket gehö
 Die Oberfläche wird mit GNU gettext übersetzt: ein Katalog für den Rust-Code und die
 QML-Seiten zugleich. Die Vorlage ist [`po/rexon.pot`](po/rexon.pot), jede Sprache ist
 eine Datei in [`po/`](po/). Die Basissprache ist Englisch; Übersetzungen gibt es auf
-Russisch, Deutsch, vereinfachtem Chinesisch und Französisch. Wie man eine Sprache hinzufügt, steht in
+Russisch, Deutsch, vereinfachtem Chinesisch, Französisch und Spanisch. Wie man eine Sprache hinzufügt, steht in
 [`po/README.md`](po/README.md) – Änderungen am Code sind dafür nicht nötig.
 
 ## Danksagungen

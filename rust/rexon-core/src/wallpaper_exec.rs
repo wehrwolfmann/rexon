@@ -383,6 +383,44 @@ pub trait WpSys {
     /// «Цвет акцента из обоев» вне Plasma ([`crate::accent::follow_wallpaper`]).
     /// По умолчанию ничего: подставные швы настоящих настроек не трогают.
     fn static_wallpaper_changed(&mut self, _path: &str) {}
+
+    /// Живые обои применены — убедиться, что сторож падений
+    /// ([`crate::renderer_watch::ensure_running`]) работает в этом процессе.
+    /// По умолчанию ничего: подставные швы живого сторожа не поднимают.
+    fn start_watch(&mut self) {}
+}
+
+/// Что человек применил своим хостом — то, что сторож падений поднимет
+/// заново тем же применением, что по кнопке.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct HostRequest {
+    path: String,
+    fmt: String,
+    name: String,
+    audio: bool,
+}
+
+/// Форматы, которые показывает собственный хост обоев и сторожит
+/// [`crate::renderer_watch::HostWatch`].
+pub fn host_watched_format(fmt: &str) -> bool {
+    matches!(fmt, "video" | "web" | "swf")
+}
+
+/// Что исполнитель знает о своём хосте для прохода сторожа.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HostSnapshot {
+    /// Что должно показываться (`формат:путь`); `None` — своих обоев нет.
+    pub subject: Option<String>,
+    /// Наш процесс (или спутник на другом мониторе) завершился сам.
+    pub exited: bool,
+    /// Номера живых процессов хоста — наших детей.
+    pub pids: Vec<i64>,
+    /// Заморожен надзором за нагрузкой.
+    pub paused: bool,
+    /// Хост — ребёнок расширения оболочки (GNOME/Cinnamon-Wayland).
+    pub via_extension: bool,
+    /// Путь бинаря хоста — сверять процессы расширения по нему.
+    pub host_binary: Option<String>,
 }
 
 // ============================================================================
@@ -560,6 +598,10 @@ impl LiveSys {
 impl WpSys for LiveSys {
     fn static_wallpaper_changed(&mut self, path: &str) {
         crate::accent::live_follow_wallpaper(path);
+    }
+
+    fn start_watch(&mut self) {
+        crate::renderer_watch::ensure_running();
     }
 
     fn release_waywallen_display(&mut self) {
@@ -1323,6 +1365,8 @@ pub struct WallpaperExec<S: WpSys> {
     perf_paused: bool,
     /// Приписка «WE-обоя осталась поверх» к итогу текущего применения.
     we_note: Option<String>,
+    /// Последнее удачное применение своим хостом — для сторожа падений.
+    host_request: Option<HostRequest>,
 }
 
 // ============================================================================
@@ -1676,7 +1720,11 @@ pub fn run_in_slot<S: WpSys + Default + Send + 'static, R>(
     slot: &ExecSlot<S>,
     work: impl FnOnce(&mut WallpaperExec<S>) -> R,
 ) -> R {
-    let out = with_slot(slot, work);
+    let out = with_slot(slot, |exec| {
+        let out = work(exec);
+        exec.sys.start_watch();
+        out
+    });
     spawn_load_monitor(slot.clone());
     out
 }
@@ -1705,6 +1753,7 @@ impl<S: WpSys> WallpaperExec<S> {
             bridge_flag: None,
             perf_paused: false,
             we_note: None,
+            host_request: None,
         }
     }
 
@@ -2346,6 +2395,13 @@ impl<S: WpSys> WallpaperExec<S> {
             return MonitorVerdict::Done;
         }
         if let Some(rc) = self.sys.poll(watched) {
+            // Свой хост поднимает сторож падений (`renderer_watch`): вернуть
+            // стол здесь значило бы мигнуть прежней картинкой перед
+            // подъёмом и лишить сторожа того, что поднимать.
+            if self.host_request.is_some() {
+                log_line("warning", &format!("хост обоев завершился сам (код {rc}) — решает сторож падений"));
+                return MonitorVerdict::Done;
+            }
             self.on_process_crashed(rc);
             return MonitorVerdict::Done;
         }
@@ -2396,6 +2452,130 @@ impl<S: WpSys> WallpaperExec<S> {
         self.remove_pidfile();
         // Для слушателя моста падение — та же остановка, что и по кнопке.
         self.notify_live_wallpaper(None, true);
+    }
+
+    // ── сторож падений хоста: исполнение ──────────────────────────────────
+    //
+    // Решает `renderer_watch::HostWatch`; здесь — только что он видит и
+    // чем его решения делаются.
+
+    /// Что видно о своём хосте прямо сейчас.
+    pub fn host_snapshot(&mut self) -> HostSnapshot {
+        let Some(req) = self.host_request.clone() else {
+            return HostSnapshot::default();
+        };
+        // Формат сменили мимо применения (падение не своим хостом и т. п.)
+        // — следить не за чем.
+        if self.current_format.as_deref() != Some(req.fmt.as_str()) {
+            return HostSnapshot::default();
+        }
+        let mut snap = HostSnapshot {
+            subject: Some(format!("{}:{}", req.fmt, req.path)),
+            paused: self.perf_paused,
+            host_binary: self.sys.wallpaper_host(),
+            ..HostSnapshot::default()
+        };
+        match self.process {
+            Some(main) => {
+                for proc in std::iter::once(main).chain(self.companions.clone()) {
+                    if self.sys.poll(proc).is_some() {
+                        snap.exited = true;
+                    } else if let Some(pid) = self.sys.pid(proc) {
+                        snap.pids.push(pid);
+                    }
+                }
+            }
+            None if wpe::needs_shell_extension(&self.de, &self.session_type) => {
+                snap.via_extension = true;
+            }
+            // Ни процесса, ни расширения: показывает не хост (запасной путь
+            // плана) — сторожу нечего поднимать.
+            None => snap.subject = None,
+        }
+        snap
+    }
+
+    /// Поднять те же обои заново — тем же применением, что по кнопке.
+    pub fn restart_host(&mut self) -> WallpaperResult {
+        let Some(req) = self.host_request.clone() else {
+            // Только для журнала сторожа: человеку этот итог не показывается.
+            return WallpaperResult::fail("nothing to restart".to_string());
+        };
+        if self.process.is_none() && wpe::needs_shell_extension(&self.de, &self.session_type) {
+            // Расширение перезапускает хост по смене своих настроек, а то же
+            // значение смены не даёт: сначала погасить (пустой источник),
+            // потом применение запишет источник заново.
+            self.shell_extension_stop();
+        }
+        self.apply_with_audio(&req.path, &req.fmt, &req.name, req.audio)
+    }
+
+    /// Обои падают подряд: снять их и поставить неподвижный кадр этих же
+    /// обоев. Истина — кадр встал; ложь — кадра нет, возвращена прежняя
+    /// картинка стола (как по «Остановить»).
+    pub fn show_still_frame(&mut self) -> bool {
+        let req = self.host_request.take();
+        self.resume_if_paused();
+        if let Some(proc) = self.process.take() {
+            self.sys.kill_process(proc);
+        }
+        self.kill_companions();
+        if wpe::needs_shell_extension(&self.de, &self.session_type) {
+            self.shell_extension_stop();
+        }
+        self.remove_pidfile();
+        let still = req.as_ref().and_then(|r| self.still_frame_for(r));
+        if let Some(still) = still {
+            let tools = self.plan_tools();
+            let hint = self.sys.package_hint("swww");
+            let plan = wpe::static_plan(&self.de, &self.static_session(), &still, &tools, &hint);
+            if self.run_plan(&plan, &still).ok {
+                // Прежняя картинка остаётся запомненной: «Остановить» и
+                // следующие живые обои вернут именно её, а не кадр.
+                self.current_format = Some("static".to_string());
+                self.current_path = Some(still);
+                self.blur_path = None;
+                self.notify_live_wallpaper(None, true);
+                return true;
+            }
+        }
+        log_line("warning", "кадра обоев нет — возвращаю прежнюю картинку стола");
+        self.set_desktop_icons(true);
+        self.restore_wallpaper();
+        self.restore_kde_wallpaper_plugin();
+        self.blur_path = None;
+        self.current_format = None;
+        self.current_path = None;
+        self.current_name.clear();
+        self.notify_live_wallpaper(None, true);
+        false
+    }
+
+    /// Неподвижный кадр обоев: у видео — кадр из ролика (в кеш), у веба и
+    /// Flash — превью рядом с обоями. `None` — кадра нет.
+    fn still_frame_for(&mut self, req: &HostRequest) -> Option<String> {
+        if req.fmt == "video" {
+            let key = crate::conky_overlay::key(&req.path);
+            let out = format!("{}/rexon/still-frames/{key}.png", self.cache_home());
+            let ok = self.sys.extract_frame(&req.path, &out, 3.0) || self.sys.extract_frame(&req.path, &out, 0.0);
+            return ok.then_some(out);
+        }
+        let project = crate::renderer_watch::still_frame_dir(&req.path)
+            .and_then(|dir| self.sys.read_text(&format!("{dir}/project.json")));
+        crate::renderer_watch::still_frame_candidates(&req.path, project.as_deref())
+            .into_iter()
+            .find(|c| self.sys.exists(c) && !self.sys.is_dir(c))
+    }
+
+    /// Погасить обои расширения оболочки (пустой источник в его настройках).
+    fn shell_extension_stop(&mut self) {
+        let Some(argv) = wpe::shell_ext_stop_argv(&self.de) else { return };
+        let argv = match self.shell_extension_schema_dir() {
+            Some(dir) => wpe::with_schemadir(&argv, &dir),
+            None => argv,
+        };
+        let timeout = utils::default_timeout_secs(&argv) as f64;
+        self.sys.run(&argv, timeout);
     }
 
     /// Снять удерживающий фон процесс (swaybg/wbg), если он наш.
@@ -2505,6 +2685,17 @@ impl<S: WpSys> WallpaperExec<S> {
         let mut res = self.apply_with_audio_inner(path, fmt, name, audio);
         if res.ok && fmt == "static" {
             self.sys.static_wallpaper_changed(path);
+        }
+        // Сторожу падений — что поднимать, если хост ляжет. Запоминается
+        // ЗАПРОС человека (исходный путь, не служебная копия видео): подъём
+        // идёт тем же применением, что по кнопке.
+        if res.ok {
+            self.host_request = host_watched_format(fmt).then(|| HostRequest {
+                path: path.to_string(),
+                fmt: fmt.to_string(),
+                name: name.to_string(),
+                audio,
+            });
         }
         self.attach_we_note(&mut res);
         self.attach_desktop_icons_note(&mut res, fmt);
@@ -3081,6 +3272,8 @@ impl<S: WpSys> WallpaperExec<S> {
         // записывает в состояние свой формат — и собранное в конце сообщение
         // называло бы `static` даже после видео.
         let fmt = self.current_format.clone();
+        // Остановленное намеренно сторож не поднимает.
+        self.host_request = None;
 
         // Замороженный надзором процесс сперва размораживается: SIGTERM до
         // остановленного процесса не доходит, и остановка ждала бы SIGKILL.
@@ -3120,14 +3313,7 @@ impl<S: WpSys> WallpaperExec<S> {
         // мы — снять его можно только через его же настройки, иначе обои
         // продолжали бы играть после «Остановить».
         if wpe::needs_shell_extension(&self.de, &self.session_type) {
-            if let Some(argv) = wpe::shell_ext_stop_argv(&self.de) {
-                let argv = match self.shell_extension_schema_dir() {
-                    Some(dir) => wpe::with_schemadir(&argv, &dir),
-                    None => argv,
-                };
-                let timeout = utils::default_timeout_secs(&argv) as f64;
-                self.sys.run(&argv, timeout);
-            }
+            self.shell_extension_stop();
         }
 
         self.restore_wallpaper();
@@ -5364,13 +5550,21 @@ mod tests {
         assert_eq!(e.sys_mut().killed, vec![h]);
     }
 
-    /// Упавший процесс: стол возвращается, мост узнаёт об остановке, надзор
-    /// кончается.
+    /// Упавший процесс: надзор кончается. Свой хост надзор оставляет сторожу
+    /// падений (стол не возвращает — сторож поднимет те же обои); чужой
+    /// процесс (поток YouTube через mpv) — стол возвращается, мост узнаёт об
+    /// остановке.
     #[test]
     fn monitor_restores_the_desktop_when_the_host_crashes() {
         let (mut e, h) = exec_with_live_process();
         e.sys_mut().spawn_rc = vec![Some(1)];
         let mut strikes = 0;
+        assert_eq!(e.monitor_apply(h, &mut strikes, &CALM), MonitorVerdict::Done);
+        assert_eq!(e.status().format.as_deref(), Some("web"), "надзор вернул стол вместо сторожа");
+        assert!(e.host_snapshot().exited);
+
+        // Не свой хост — прежний путь: стол назад.
+        e.host_request = None;
         assert_eq!(e.monitor_apply(h, &mut strikes, &CALM), MonitorVerdict::Done);
         let st = e.status();
         assert!(!st.running);
@@ -6352,6 +6546,135 @@ mod tests {
         ];
         assert_eq!(largest_output(&same).map(|o| o.name.as_str()), Some("DP-1"));
         assert_eq!(smallest_output(&same).map(|o| o.name.as_str()), Some("DP-1"));
+    }
+
+    // ── сторож падений хоста ─────────────────────────────────────────────
+
+    /// Свой хост лёг сам: исполнитель отдаёт это сторожу (стол не
+    /// возвращает, процесс помнит), подъём — то же применение, что по кнопке.
+    #[test]
+    fn a_crashed_host_is_left_to_the_watch_and_restarted_by_apply() {
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        let mut e = exec("sway", "wayland", sys);
+        assert!(e.apply_with_audio("/home/u/волны.mp4", "video", "Волны", false).ok);
+        let snap = e.host_snapshot();
+        assert_eq!(snap.subject.as_deref(), Some("video:/home/u/волны.mp4"));
+        assert!(!snap.exited && !snap.via_extension);
+        assert_eq!(snap.pids.len(), 1);
+
+        // Процесс лёг (SIGSEGV).
+        e.sys_mut().spawn_rc = vec![Some(-1)];
+        let watched = e.process.unwrap();
+        let mut strikes = 0;
+        assert_eq!(e.monitor_apply(watched, &mut strikes, &LoadObservation::default()), MonitorVerdict::Done);
+        assert_eq!(e.current_format(), Some("video"), "надзор вернул стол сам — сторожу нечего поднимать");
+        assert!(e.host_snapshot().exited);
+
+        let before = e.sys_mut().spawned.len();
+        let res = e.restart_host();
+        assert!(res.ok, "{}", res.message);
+        let spawned = e.sys_mut().spawned.clone();
+        assert_eq!(spawned.len(), before + 1, "{spawned:?}");
+        let last = &spawned.last().unwrap().0;
+        assert_eq!(last[..4], [HOST, "--mode", "video", "/home/u/волны.mp4"]);
+        assert!(last.iter().any(|a| a == "--no-audio"), "подъём потерял выбор звука: {last:?}");
+        assert!(!e.host_snapshot().exited, "после подъёма хост всё ещё «мёртв»");
+    }
+
+    /// Остановленное человеком и чужие форматы сторож не сторожит.
+    #[test]
+    fn stopped_and_foreign_wallpapers_are_not_watched() {
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        let mut e = exec("sway", "wayland", sys);
+        assert!(e.apply("/home/u/волны.mp4", "video", "").ok);
+        e.stop(true);
+        assert_eq!(e.host_snapshot(), HostSnapshot::default());
+
+        let mut sys = FakeSys::default();
+        sys.tools.push("swaybg".to_string());
+        let mut e = exec("sway", "wayland", sys);
+        assert!(e.apply("/home/u/лес.png", "static", "").ok);
+        assert_eq!(e.host_snapshot().subject, None);
+        assert!(!host_watched_format("youtube") && !host_watched_format("static"));
+    }
+
+    /// GNOME: хост — ребёнок расширения. Подъём гасит источник и пишет его
+    /// заново: то же значение расширение за смену не считает.
+    #[test]
+    fn extension_host_is_restarted_through_its_settings() {
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        sys.answer("gdbus", 0, GDBUS_EXT_ACTIVE);
+        let mut e = exec("gnome", "wayland", sys);
+        assert!(e.apply("/home/u/волны.mp4", "video", "").ok);
+        let snap = e.host_snapshot();
+        assert!(snap.via_extension);
+        assert_eq!(snap.host_binary.as_deref(), Some(HOST));
+        assert!(snap.pids.is_empty());
+
+        e.sys_mut().ran.clear();
+        assert!(e.restart_host().ok);
+        let ran = lines(&mut e);
+        let clear = ran.iter().position(|l| l.ends_with("source ")).expect("источник не погашен");
+        let again = ran.iter().position(|l| l.contains("source /home/u/волны.mp4")).expect("источник не записан");
+        assert!(clear < again, "{ran:?}");
+    }
+
+    /// Падения подряд: у видео — кадр из ролика встаёт картинкой стола, а
+    /// прежняя картинка остаётся запомненной для «Остановить».
+    #[test]
+    fn still_frame_of_a_video_replaces_the_live_wallpaper() {
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        let mut e = exec("sway", "wayland", sys);
+        assert!(e.apply("/home/u/волны.mp4", "video", "").ok);
+        e.saved_wallpaper = Some("/home/u/прежняя.png".to_string());
+        e.sys_mut().frame_ok = true;
+        e.sys_mut().tools.push("swaymsg".to_string());
+        e.sys_mut().spawn_rc = vec![Some(-1)];
+        assert!(e.show_still_frame());
+        assert_eq!(e.current_format(), Some("static"));
+        let still = e.current_path().unwrap().to_string();
+        assert!(still.contains("/rexon/still-frames/") && still.ends_with(".png"), "{still}");
+        let frames = e.sys_mut().frames.clone();
+        assert!(frames.iter().any(|(src, out)| src == "/home/u/волны.mp4" && *out == still), "{frames:?}");
+        assert_eq!(e.saved_wallpaper.as_deref(), Some("/home/u/прежняя.png"));
+        assert_eq!(e.host_snapshot().subject, None, "после кадра сторож всё ещё поднимает обои");
+        assert!(e.process.is_none());
+    }
+
+    /// Кадра нет (веб-адрес сайта) — прежняя картинка стола, как по
+    /// «Остановить»; у локальной веб-страницы — превью рядом.
+    #[test]
+    fn still_frame_falls_back_to_the_previous_picture() {
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        let mut e = exec("sway", "wayland", sys);
+        e.current_format = Some("web".to_string());
+        e.host_request = Some(HostRequest {
+            path: "https://example.com".into(),
+            fmt: "web".into(),
+            name: String::new(),
+            audio: true,
+        });
+        assert!(!e.show_still_frame());
+        assert_eq!(e.current_format(), None);
+
+        let mut sys = FakeSys::default();
+        sys.host = Some(HOST.to_string());
+        sys.tools.push("swaymsg".to_string());
+        let mut e = exec("sway", "wayland", sys);
+        e.current_format = Some("web".to_string());
+        e.host_request = Some(HostRequest {
+            path: "file:///home/u/стр/index.html".into(),
+            fmt: "web".into(),
+            name: String::new(),
+            audio: true,
+        });
+        assert!(e.show_still_frame());
+        assert_eq!(e.current_path(), Some("/home/u/стр/preview.jpg"));
     }
 
 }

@@ -174,11 +174,11 @@ impl ThemeCategory {
 /// раздела с каталогом (переключатель «Магазин:»,
 /// `appearance_page::source_keys_for`).
 ///
-/// Cinnamon Spices есть у пяти разделов Cinnamon (`crate::cinnamon_spices`).
-/// ⚠️ extensions.gnome.org и cosmic-themes.org пока только названы:
-/// клиента у них в странице ещё нет, и ни один раздел их не получает.
-/// Раздел с таким источником вкладка сочла бы сетевым — заводить его можно
-/// только вместе с клиентом.
+/// Cinnamon Spices есть у пяти разделов Cinnamon (`crate::cinnamon_spices`),
+/// extensions.gnome.org — у раздела «Расширения GNOME» (`crate::gnome_ego`).
+/// ⚠️ cosmic-themes.org пока только назван: клиента у него в странице ещё
+/// нет, и ни один раздел его не получает. Раздел с таким источником
+/// вкладка сочла бы сетевым — заводить его можно только вместе с клиентом.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CatalogSource {
@@ -192,7 +192,7 @@ pub enum CatalogSource {
     /// Cinnamon Spices (`cinnamon-spices.linuxmint.com`): вид каталога —
     /// `themes`, `applets`, `desklets`, `extensions`, `actions`.
     Spices(String),
-    /// extensions.gnome.org.
+    /// extensions.gnome.org (`crate::gnome_ego`).
     GnomeExtensions,
     /// cosmic-themes.org.
     CosmicThemes,

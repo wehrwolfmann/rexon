@@ -167,6 +167,18 @@ impl Ctx {
         }
     }
 
+    /// Контекст для дома `home`: живой сеанс, если это дом этого процесса
+    /// (`$XDG_CONFIG_HOME` сеанса), иначе — чужое дерево без переменных
+    /// сеанса (сверки на подставном доме живые каталоги не читают).
+    pub fn for_home(home: &str) -> Self {
+        let live = Ctx::live();
+        if live.home.trim_end_matches('/') == home.trim_end_matches('/') {
+            live
+        } else {
+            Ctx { home: home.to_string(), xdg_config_home: None, wayland: false, de: String::new() }
+        }
+    }
+
     pub(crate) fn config(&self, rel: &str) -> String {
         match &self.xdg_config_home {
             Some(x) => format!("{x}/{rel}"),
@@ -410,6 +422,12 @@ pub fn enabled_addons(io: &dyn LookIo, ctx: &Ctx, kind: &str, row: &Row) -> Vec<
             out
         }
         Activate::GnomeExtension => {
+            // В сеансе GNOME правда — сама оболочка: включено в её
+            // настройке (даже если запуститься не смогло). Ключ
+            // `enabled-extensions` — запасной путь без оболочки.
+            if let Some(list) = io.gnome_shell_extensions() {
+                return crate::gnome_ext_section::enabled_uuids(&list);
+            }
             let (ok, out) = io.run(&argv(&["gsettings", "get", "org.gnome.shell", "enabled-extensions"]));
             if ok { parse_gsettings_list(&out) } else { Vec::new() }
         }
@@ -442,9 +460,36 @@ pub fn active_names(io: &dyn LookIo, ctx: &Ctx, kind: &str) -> Vec<String> {
             .filter(|name| kind != MARCO_KIND || marco_theme_problem(io, ctx, name).is_none())
             .into_iter()
             .collect(),
+        // «Активно» у расширения GNOME — то, что оболочка запустила
+        // (`state` = включено), а не только записано в настройке: упавшее
+        // при включении активным не показывается.
+        Some(Mode::Addon(row)) if kind == crate::gnome_ext_section::KIND => match io.gnome_shell_extensions() {
+            Some(list) => crate::gnome_ext_section::active_uuids(&list),
+            None => enabled_addons(io, ctx, kind, row),
+        },
         Some(Mode::Addon(row)) => enabled_addons(io, ctx, kind, row),
         Some(Mode::Conky) => conky_running_ids(io, ctx),
         None => Vec::new(),
+    }
+}
+
+/// Шаг вызова оболочки GNOME (`EnableExtension`/`DisableExtension`) через
+/// `gdbus` — тем же исполнителем, что прочие шаги кнопки.
+fn gnome_shell_call(method: &str, uuid: &str) -> crate::ext_manager::ExtStep {
+    crate::ext_manager::ExtStep::Run {
+        argv: argv(&[
+            "gdbus",
+            "call",
+            "--session",
+            "--dest",
+            crate::gnome_shell_ext::BUS_NAME,
+            "--object-path",
+            crate::gnome_shell_ext::OBJECT_PATH,
+            "--method",
+            &format!("{}.{method}", crate::gnome_shell_ext::INTERFACE),
+            uuid,
+        ]),
+        timeout_secs: Some(30),
     }
 }
 
@@ -689,6 +734,10 @@ pub fn enable_steps(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> Vec<c
     if kind == OPENBOX_KIND {
         return rc_theme_steps(io, ctx, name).unwrap_or_default();
     }
+    // Живая оболочка включает сама и сразу; сценарий — запасной путь.
+    if kind == crate::gnome_ext_section::KIND && io.gnome_shell_extensions().is_some() {
+        return vec![gnome_shell_call("EnableExtension", name)];
+    }
     with_ext_env(io, ctx, |env| crate::ext_manager::de_enable_steps(env, kind, name))
 }
 
@@ -697,6 +746,9 @@ pub fn disable_steps(io: &dyn LookIo, ctx: &Ctx, kind: &str, name: &str) -> Vec<
     if kind == NEMO_KIND {
         let (schema, key) = NEMO_DISABLED;
         return vec![sh(dec::gsettings_list_add_script(schema, key, name, &format!("'{name}'")))];
+    }
+    if kind == crate::gnome_ext_section::KIND && io.gnome_shell_extensions().is_some() {
+        return vec![gnome_shell_call("DisableExtension", name)];
     }
     with_ext_env(io, ctx, |env| crate::ext_manager::de_disable_steps(env, kind, name))
 }
@@ -895,6 +947,102 @@ pub fn conky_root(ctx: &Ctx) -> String {
         .unwrap_or_else(|| format!("{}/.config/conky", ctx.home))
 }
 
+// ── Несколько виджетов в одном пакете ───────────────────────────────────
+//
+// Обычный пакет Conky (`theme-conky`, не набор) лежит одним каталогом
+// `<корень>/<id>`. Если в его `data/` нет своего файла настроек, а
+// подпапок с файлами настроек две и больше (`data/A`, `data/B`), — это
+// несколько виджетов: каждый — своя плитка с именем `<id>/A` (запуск,
+// автозапуск, удаление, «Цвета», починка путей — по нему). Файлы при этом
+// лежат в одном месте, `<корень>/<id>/A`; прежняя вторая копия в
+// `<корень>/A` больше не кладётся (дефект 14.11.2026). Решение — по
+// установленной копии пакета (`<конфиги>/rexon/extensions/<id>`), а не по
+// тому, что осталось в `<корень>/<id>`: снятый виджет не меняет имён
+// остальных.
+
+/// Имя без косой черты и не `.`/`..`.
+fn conky_plain_name(n: &str) -> bool {
+    !n.is_empty() && n != "." && n != ".." && !n.contains('/')
+}
+
+/// Вложенные виджеты пакета `top` (`["top/A", "top/B"]`); пусто — пакет
+/// (или каталог не из пакета) — один виджет `top`.
+pub fn conky_nested_widgets(io: &dyn LookIo, ctx: &Ctx, top: &str) -> Vec<String> {
+    if !conky_plain_name(top) {
+        return Vec::new();
+    }
+    let pkg = ctx.config(&format!("rexon/extensions/{top}"));
+    let Some(manifest) = io
+        .read(&format!("{pkg}/manifest.json"))
+        .and_then(|t| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&t).ok())
+    else {
+        return Vec::new();
+    };
+    if manifest.get("type").and_then(|v| v.as_str()) != Some(CONKY_KIND)
+        || manifest.get("id").and_then(|v| v.as_str()) != Some(top)
+        || manifest.get(crate::conky_sets::SET_MANIFEST_KEY).is_some_and(|v| v.is_object())
+    {
+        return Vec::new();
+    }
+    let data = format!("{pkg}/data");
+    let mut names = io.list_dir(&data);
+    names.sort();
+    let conf_named = |f: &str| {
+        f == "conky.conf" || f.ends_with(".conkyrc") || (f.to_lowercase().contains("conky") && f.ends_with(".conf"))
+    };
+    let top_conf = crate::conky_scan::config_files(io, &data)
+        .iter()
+        .any(|c| c.rsplit_once('/').is_some_and(|(d, _)| d == data))
+        || names.iter().any(|f| conf_named(f) && io.list_dir(&format!("{data}/{f}")).is_empty());
+    if top_conf {
+        return Vec::new();
+    }
+    let subs: Vec<String> = names
+        .into_iter()
+        .filter(|n| conky_plain_name(n) && !n.starts_with('.'))
+        .filter(|n| !crate::conky_scan::config_files(io, &format!("{data}/{n}")).is_empty())
+        .map(|n| format!("{top}/{n}"))
+        .collect();
+    if subs.len() < 2 {
+        return Vec::new();
+    }
+    subs
+}
+
+/// Виджет по пути под корнем Conky: `<корень>/<имя>` — `<имя>`,
+/// `<корень>/<id>/<подпапка>` вложенного виджета — `<id>/<подпапка>`
+/// ([`conky_nested_widgets`]). Глубже — тот виджет, которому путь
+/// принадлежит, если `deeper`; иначе `None`.
+fn conky_widget_under_root(io: &dyn LookIo, ctx: &Ctx, path: &str, deeper: bool) -> Option<String> {
+    let root = format!("{}/", conky_root(ctx));
+    let rest = path.trim_end_matches('/').strip_prefix(&root)?;
+    let mut parts = rest.split('/');
+    let top = parts.next().filter(|t| conky_plain_name(t))?;
+    let Some(sub) = parts.next() else { return Some(top.to_string()) };
+    let more = parts.next().is_some();
+    let nested = format!("{top}/{sub}");
+    if conky_plain_name(sub) && conky_nested_widgets(io, ctx, top).contains(&nested) {
+        return (deeper || !more).then_some(nested);
+    }
+    deeper.then(|| top.to_string())
+}
+
+/// Папка ли `path` виджета в каталоге Rexon (свой или вложенный): имя
+/// виджета; иначе `None`.
+pub fn conky_widget_of_dir(io: &dyn LookIo, ctx: &Ctx, path: &str) -> Option<String> {
+    conky_widget_under_root(io, ctx, path, false)
+}
+
+/// Виджет Rexon, которому принадлежит файл настроек `conf` (по пути, без
+/// обхода диска, кроме описания пакета). `None` — файл не в папке виджета.
+pub fn conky_widget_of_conf(io: &dyn LookIo, ctx: &Ctx, conf: &str) -> Option<String> {
+    let root = format!("{}/", conky_root(ctx));
+    if !conf.strip_prefix(&root).is_some_and(|r| r.contains('/')) {
+        return None;
+    }
+    conky_widget_under_root(io, ctx, conf, true)
+}
+
 /// Файл настроек виджета: `conky.conf`, `.conkyrc`, `*.conkyrc`, затем
 /// любой `*conky*.conf` уровнем ниже — тот же порядок, что у установки.
 ///
@@ -983,18 +1131,15 @@ fn conky_processes(io: &dyn LookIo) -> Vec<(String, String)> {
 }
 
 /// Виджет, которому принадлежит файл настроек (`<корень>/<id>/…`).
-fn conky_id_of_conf(ctx: &Ctx, conf: &str) -> Option<String> {
-    let root = format!("{}/", conky_root(ctx));
-    let rest = conf.strip_prefix(&root)?;
-    let id = rest.split('/').next()?;
-    (!id.is_empty() && rest.contains('/')).then(|| id.to_string())
+fn conky_id_of_conf(io: &dyn LookIo, ctx: &Ctx, conf: &str) -> Option<String> {
+    conky_widget_of_conf(io, ctx, conf)
 }
 
 /// Виджеты Conky, которые работают сейчас.
 pub fn conky_running_ids(io: &dyn LookIo, ctx: &Ctx) -> Vec<String> {
     let mut ids = Vec::new();
     for (_, conf) in conky_processes(io) {
-        if let Some(id) = conky_id_of_conf(ctx, &conf) {
+        if let Some(id) = conky_id_of_conf(io, ctx, &conf) {
             if !ids.contains(&id) {
                 ids.push(id);
             }
@@ -1460,7 +1605,7 @@ fn conky_stop(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
     } else {
         conky_processes(io)
             .into_iter()
-            .filter(|(_, conf)| conky_id_of_conf(ctx, conf).as_deref() == Some(id))
+            .filter(|(_, conf)| conky_id_of_conf(io, ctx, conf).as_deref() == Some(id))
             .map(|(pid, _)| pid)
             .collect()
     };
@@ -1483,15 +1628,21 @@ fn conky_stop(io: &dyn LookIo, ctx: &Ctx, id: &str) -> (bool, String) {
 /// папка виджета (`<корень Conky>/<id>`) — ничего не делается. `Some(id)` —
 /// виджет опознан.
 pub fn conky_forget_widget(io: &dyn LookIo, ctx: &Ctx, widget_dir: &str) -> Option<String> {
-    let root = format!("{}/", conky_root(ctx));
-    let id = widget_dir.trim_end_matches('/').strip_prefix(&root)?;
-    if id.is_empty() || id.contains('/') || id == "." || id == ".." {
-        return None;
+    let id = conky_widget_of_dir(io, ctx, widget_dir)?;
+    // Пакет с несколькими виджетами: каждый вложенный — свои процессы и
+    // свой автозапуск (папки уже может не быть — имя берётся из пакета).
+    if !id.contains('/') {
+        for nested in conky_nested_widgets(io, ctx, &id) {
+            let _ = conky_stop(io, ctx, &nested);
+            conky_autostart_forget(ctx, &nested);
+            crate::conky_colors::forget(ctx, &crate::conky_scan::widget_path(ctx, &nested));
+        }
     }
-    let _ = conky_stop(io, ctx, id);
-    conky_autostart_forget(ctx, id);
+    let _ = conky_stop(io, ctx, &id);
+    conky_autostart_forget(ctx, &id);
     crate::conky_overlay::forget_under(ctx, widget_dir);
-    Some(id.to_string())
+    crate::conky_colors::forget(ctx, widget_dir);
+    Some(id)
 }
 
 /// Файл автозапуска виджета (имя то же, что писала прежняя установка, —
@@ -1731,8 +1882,9 @@ mod tests {
         assert_eq!(conky_conf_of_cmdline("/usr/bin/conky\0--config=/x\0").as_deref(), Some("/x"));
         assert_eq!(conky_conf_of_cmdline("bash\0-c\0conky\0"), None);
         let ctx = Ctx { home: "/h".into(), xdg_config_home: None, wayland: false, de: String::new() };
-        assert_eq!(conky_id_of_conf(&ctx, "/h/.config/conky/w/sub/conky.conf").as_deref(), Some("w"));
-        assert_eq!(conky_id_of_conf(&ctx, "/h/.config/conky/conky.conf"), None);
+        let io = crate::animations::SystemIo;
+        assert_eq!(conky_id_of_conf(&io, &ctx, "/h/.config/conky/w/sub/conky.conf").as_deref(), Some("w"));
+        assert_eq!(conky_id_of_conf(&io, &ctx, "/h/.config/conky/conky.conf"), None);
     }
 
     /// Кнопка «Запустить» пускает conky из папки файла настроек: виджеты с
@@ -2155,5 +2307,71 @@ mod tests {
         assert!(refresh_note(&silent, row, &wl, "x@y").is_some());
         let x11 = Ctx { wayland: false, ..wl };
         assert_eq!(refresh_note(&unseen, row, &x11, "x@y"), None);
+    }
+
+    /// В сеансе GNOME «Активно» и направление кнопки берутся у оболочки:
+    /// активно — только запущенное (`state` = 1), упавшее при включении —
+    /// включено, но не активно; кнопка зовёт D-Bus через `gdbus`, сценарий
+    /// с `gnome-extensions` — только без оболочки.
+    #[test]
+    fn gnome_extensions_follow_the_live_shell() {
+        use crate::gnome_shell_ext::{ExtInfo, ExtState};
+        use std::cell::RefCell;
+        struct Fake {
+            shell: Option<Vec<ExtInfo>>,
+            runs: RefCell<Vec<String>>,
+        }
+        impl LookIo for Fake {
+            fn run(&self, argv: &[String]) -> (bool, String) {
+                self.runs.borrow_mut().push(argv.join(" "));
+                (true, "['old@example.org']".into())
+            }
+            fn have(&self, _t: &str) -> bool { true }
+            fn read(&self, _p: &str) -> Option<String> { None }
+            fn write(&self, _p: &str, _t: &str) -> bool { false }
+            fn list_dir(&self, _p: &str) -> Vec<String> { Vec::new() }
+            fn gnome_shell_extensions(&self) -> Option<Vec<ExtInfo>> { self.shell.clone() }
+        }
+        let ext = |uuid: &str, state: ExtState, enabled: bool| ExtInfo {
+            uuid: uuid.into(),
+            name: uuid.into(),
+            description: String::new(),
+            state,
+            enabled,
+            error: String::new(),
+            has_prefs: false,
+            has_update: false,
+            can_change: true,
+            is_system: false,
+            path: String::new(),
+            url: String::new(),
+            version: String::new(),
+            version_name: String::new(),
+            shell_versions: Vec::new(),
+            session_modes: Vec::new(),
+            donations: Default::default(),
+        };
+        let ctx = Ctx { home: "/h".into(), xdg_config_home: None, wayland: true, de: "gnome".into() };
+        let kind = crate::gnome_ext_section::KIND;
+        let live = Fake {
+            shell: Some(vec![
+                ext("run@example.org", ExtState::Active, true),
+                ext("broken@example.org", ExtState::Error, true),
+                ext("off@example.org", ExtState::Inactive, false),
+            ]),
+            runs: RefCell::new(Vec::new()),
+        };
+        assert_eq!(active_names(&live, &ctx, kind), vec!["run@example.org".to_string()]);
+        assert!(addon_enabled(&live, &ctx, kind, "broken@example.org"));
+        assert!(live.runs.borrow().is_empty(), "при оболочке gsettings не спрашиваем");
+        let on = enable_steps(&live, &ctx, kind, "off@example.org");
+        let off = disable_steps(&live, &ctx, kind, "run@example.org");
+        let text = |steps: &[crate::ext_manager::ExtStep]| format!("{steps:?}");
+        assert!(text(&on).contains("org.gnome.Shell.Extensions.EnableExtension"), "{on:?}");
+        assert!(text(&off).contains("org.gnome.Shell.Extensions.DisableExtension"), "{off:?}");
+        // Оболочки нет — прежний путь: ключ и сценарий.
+        let down = Fake { shell: None, runs: RefCell::new(Vec::new()) };
+        assert_eq!(active_names(&down, &ctx, kind), vec!["old@example.org".to_string()]);
+        assert!(!text(&enable_steps(&down, &ctx, kind, "off@example.org")).contains("gdbus"));
     }
 }

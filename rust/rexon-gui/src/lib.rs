@@ -435,6 +435,10 @@ pub mod sound_preview_actions;
 pub mod window_buttons_actions;
 /// «Отклик при запуске»: курсор и панель задач, пока программа запускается.
 pub mod launch_feedback_actions;
+/// Источник «Razer Axon» раздела обоев «Оформления» и блок его настроек.
+pub mod axon_actions;
+/// Плейлист обоев Rexon: блок в «⚙️ Настройках» раздела «Обои HD».
+pub mod wallpaper_playlist_actions;
 /// «Цвет акцента» над сеткой «Цветовых схем».
 pub mod accent_actions;
 /// «Светлое и тёмное» по расписанию над «Глобальными темами» и «Цветовыми схемами».

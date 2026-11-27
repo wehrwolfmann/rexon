@@ -473,6 +473,32 @@ fn shell_extensions_share_launch_diagnostics() {
     );
 }
 
+/// Сторож: падение хоста на ходу оба расширения отдают сторожу Rexon, а не
+/// показывают своё сообщение на каждое падение, и запоздалый выход прежнего
+/// хоста не снимает актёров нового.
+///
+/// Что стерегём. Сторож падений (`renderer_watch::HostWatch`) поднимает хост
+/// сменой настроек расширения и сам говорит человеку ОДИН раз. Расширение,
+/// ругающееся на каждый выход, дало бы второе уведомление на каждое падение;
+/// а выход прежнего хоста, пришедший после подъёма нового, стирал бы
+/// актёры нового — стол оставался бы без обоев при живом хосте.
+#[test]
+fn shell_extensions_leave_crashes_to_rexon() {
+    for (de, src) in shell_extension_sources() {
+        let block = launch_diagnostics_block(&src, de);
+        assert!(block.contains("function isLaunchFailure("), "{de}: в общем блоке нет isLaunchFailure");
+        let outside = src.replace(&block, "");
+        assert!(
+            outside.contains("isLaunchFailure(livedMs)"),
+            "{de}: выход хоста показывается сообщением без разбора «отказ запуска / падение на ходу»"
+        );
+        assert!(
+            outside.contains("_daemon_pid !== _p"),
+            "{de}: выход прежнего хоста не отличается от выхода текущего"
+        );
+    }
+}
+
 /// Вырезать общий блок чтения кадра между метками.
 fn frame_read_block(src: &str, de: &str) -> String {
     let begin = "[rexon-wp:frame-read:begin]";
