@@ -180,7 +180,7 @@ Item {
             spacing: root.m.columnSpacing
 
             // ── Заголовок страницы ────────────────────────────────────────
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt.title
                 color: root.colText
@@ -188,7 +188,7 @@ Item {
                 font.weight: root.m.titleFontWeight
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.txt.subtitle
                 color: root.colTextMuted
@@ -205,7 +205,7 @@ Item {
                 Layout.bottomMargin: root.m.panePadding
                 spacing: root.m.paneSpacing
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: root.txt.sectionUpstream
                     color: root.colText
@@ -233,7 +233,7 @@ Item {
 
                 // Подпись версии движка — одна на всю жизнь поля (починка 3
                 // ядра: раньше поле называлось двумя разными именами).
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     objectName: "devVersionLabel"
                     text: page.versionLabel
@@ -262,6 +262,9 @@ Item {
                         font.pixelSize: root.m.statusFontSize
                         font.bold: modelData.bold
                         wrapMode: Text.WordWrap
+                        // Начало строки: без явного выравнивания поле берёт его из самого
+                        // текста, а явное `AlignLeft` зеркалирование переворачивает.
+                        horizontalAlignment: TextEdit.AlignLeft
                     }
                 }
 
@@ -313,7 +316,7 @@ Item {
                     Item { Layout.fillWidth: true }
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     objectName: "devUpdateStatus"
                     text: page.updateStatus
@@ -326,7 +329,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: root.m.rowSpacing
 
-                    Text {
+                    RexonText {
                         text: root.txt.labelChangelog
                         color: root.colText
                         font.pixelSize: root.m.statusFontSize
@@ -362,6 +365,13 @@ Item {
                         font.family: "monospace"
                         font.pixelSize: root.m.monoFontSize
                         wrapMode: TextEdit.NoWrap
+                        // Список изменений — заголовки коммитов движка —
+                        // читается слева направо при любом языке интерфейса, поэтому
+                        // поле физически слева: явное `AlignLeft` зеркалирование
+                        // перевернуло бы вправо, а `AlignRight` при зеркалировании даёт
+                        // левый край (как окно PKGBUILD в «Оформлении»).
+                        horizontalAlignment: LayoutMirroring.enabled ? TextEdit.AlignRight
+                                                                     : TextEdit.AlignLeft
 
                         // ⚠️ Подложка панели ЕСТЬ и она темнее страницы. У
                         // виджетной версии её рисует сам `QPlainTextEdit`
@@ -388,7 +398,7 @@ Item {
                 Layout.bottomMargin: root.m.panePadding
                 spacing: root.m.paneSpacing
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: root.txt.sectionParity
                     color: root.colText
@@ -419,7 +429,7 @@ Item {
                         onClicked: parity.reload()
                     }
 
-                    Text {
+                    RexonText {
                         objectName: "devParityBadge"
                         text: parity.badgeText
                         color: root.statusColor(parity.badgeColor)
@@ -441,6 +451,9 @@ Item {
                     font.family: "monospace"
                     font.pixelSize: root.m.monoFontSize
                     wrapMode: Text.WordWrap
+                    // Начало строки: без явного выравнивания поле берёт его из самого
+                    // текста, а явное `AlignLeft` зеркалирование переворачивает.
+                    horizontalAlignment: TextEdit.AlignLeft
                 }
             }
 
@@ -498,7 +511,7 @@ Item {
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: confirmDialog.heading
                 color: root.colText
@@ -507,7 +520,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: confirmDialog.question
                 color: root.colText

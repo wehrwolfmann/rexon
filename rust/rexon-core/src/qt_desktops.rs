@@ -263,6 +263,7 @@ pub fn tool_buttons(_current_de: &str, panel_backup: bool) -> Vec<ToolButton> {
 
 /// Подпись кнопки возврата из встроенного «Сравнения DE».
 pub fn compare_back_text() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("← Desktops")
 }
 
@@ -630,6 +631,10 @@ pub fn look_result_html(message: &str) -> String {
 // ============================================================================
 
 pub fn placeholder_text() -> String {
+    // Список столов стоит в начале строки: при языке справа налево он
+    // справа, и перевод обязан это сказать (подпись не физическая).
+    // TRANSLATORS: in right-to-left languages the list is on the right: say "on the right" and use the arrow →.
+    // Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("← Choose a desktop from the list on the left")
 }
 pub const CARD_TITLE_POINT_SIZE: i32 = 22;
@@ -1183,9 +1188,11 @@ pub fn carousel_zoom_button_tooltip() -> String {
     tr("View full screen")
 }
 pub fn zoom_prev_tooltip() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("Previous (←)")
 }
 pub fn zoom_next_tooltip() -> String {
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     tr("Next (→)")
 }
 pub fn zoom_close_tooltip() -> String {
@@ -1623,6 +1630,7 @@ pub fn zoom_hint(index: usize, count: usize) -> String {
     }
     let nav = if count > 1 {
         // TRANSLATORS: %1 is the number of the shown screenshot, %2 how many there are.
+        // Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         format!(" · {}", trf("←/→ to browse  ·  %1/%2", &[&(index + 1), &count]))
     } else {
         String::new()
@@ -1868,11 +1876,23 @@ pub fn session_offer_button() -> String {
 
 /// Пояснение под этой кнопкой.
 pub fn session_offer_hint(de_id: &str) -> String {
-    trf(
-        "%1 can also run on Wayland — newer and smoother, but still experimental. \
-         Rexon can add it, and the X11 version will stay.",
-        &[&display_name(de_id)],
-    )
+    // Зрелость Wayland — свойство стола, а не семейства: выбор сеанса есть
+    // только в Arch, оттуда и берём.
+    let experimental = crate::system::session_variants(de_id, PkgFamily::Arch)
+        .map_or(true, |v| v.wayland_experimental());
+    if experimental {
+        trf(
+            "%1 can also run on Wayland — newer and smoother, but still experimental. \
+             Rexon can add it, and the X11 version will stay.",
+            &[&display_name(de_id)],
+        )
+    } else {
+        trf(
+            "%1 can also run on Wayland — newer and smoother. \
+             Rexon can add it, and the X11 version will stay.",
+            &[&display_name(de_id)],
+        )
+    }
 }
 
 /// Вопрос, ход и итог «добавить сеанс Wayland» к установленному столу.

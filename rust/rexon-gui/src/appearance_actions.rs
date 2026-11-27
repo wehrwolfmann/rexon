@@ -772,6 +772,7 @@ use rexon_core::aur::{self, AurPackage};
 use rexon_core::aur_install;
 use rexon_core::categories;
 use rexon_core::cinnamon_spices as cs;
+use rexon_core::wallhaven as wh;
 use rexon_core::de_apply;
 use rexon_core::favorites;
 use rexon_core::i18n;
@@ -2450,6 +2451,7 @@ fn fetch_kind(state: &Arc<State>, req: &Value, token: &CancelToken, kind: &str) 
         "local" => scan_local(state, req),
         "aur" => fetch_aur(state, req, token),
         "spices" => fetch_spices(state, req),
+        "wallhaven" => fetch_wallhaven(state, req, token),
         _ => fetch_ocs(state, req, token),
     }
 }
@@ -2689,6 +2691,35 @@ fn fetch_spices(state: &Arc<State>, req: &Value) -> String {
     Value::Object(answer).to_string()
 }
 
+/// Магазин Wallhaven раздела «Обои HD»: страница Rexon из страниц API
+/// (`wallhaven::live_page` — свой счётчик 45 запросов в минуту и память
+/// ответов сессии; «Обновить» идёт мимо памяти). Карточки — обычные товары
+/// раздела обоев: «установлено» — по общему журналу установленного.
+fn fetch_wallhaven(state: &Arc<State>, req: &Value, token: &CancelToken) -> String {
+    let mut answer = Map::new();
+    answer.insert("key".to_string(), Value::from(s(req, "key")));
+    let force = req.get("force").and_then(Value::as_bool).unwrap_or(false);
+    let size = page_size(req).max(1);
+    let page = match wh::live_page(s(req, "query"), s(req, "sort"), num(req, "page"), size, force, token) {
+        Ok(p) => p,
+        Err(e) => {
+            rexon_core::log_warn!("wallhaven", "страница каталога: {e:?}");
+            answer.insert("items".to_string(), Value::Array(Vec::new()));
+            answer.insert("total".to_string(), Value::from(0));
+            answer.insert("error".to_string(), Value::from(e.message()));
+            return Value::Object(answer).to_string();
+        }
+    };
+    let mut items: Vec<ThemeItem> = page.items.iter().map(wh::theme_item).collect();
+    ap::stamp_installed_live(&home(), &mut items);
+    remember_items(state, &items);
+    let rows: Vec<Value> = items.iter().zip(&page.items).map(|(it, w)| wh::catalog_row(it, w)).collect();
+    answer.insert("items".to_string(), Value::Array(rows));
+    answer.insert("total".to_string(), Value::from(page.total));
+    answer.insert("hasMore".to_string(), Value::from(page.has_more));
+    Value::Object(answer).to_string()
+}
+
 /// Плиткам установленного раздела Cinnamon — пометка `spicesDanger`, если
 /// код спайса зовёт блокирующие вызовы (`cinnamon_spices::scan_for_danger`).
 fn mark_spice_danger(items: &mut [Value]) {
@@ -2918,23 +2949,33 @@ fn local_row(item: &ThemeItem, which: &str) -> Value {
 // Панель деталей
 // ============================================================================
 
-/// Кадры карусели, затем полные детали, затем остальные кадры, затем перевод
-/// описания.
+/// Перевод описания (своим потоком), кадры карусели, затем полные детали,
+/// затем остальные кадры.
 ///
 /// ⭐ Сначала КАРТИНКИ, потом текст: ссылки на скриншоты известны уже в момент
 /// щелчка, а детальный ответ магазина шёл до 20 с — всё это время человек
 /// смотрел на «Загрузка скриншота».
 ///
-/// ⭐ Перевод — ПОСЛЕДНИМ и отдельным сигналом, а не полем `detail_ready`.
-/// Причина та же, по которой картинки идут первыми: показ карточки не должен
-/// ждать ничего, что можно дослать. Модель поднимается 0,3–1 с, описание из
-/// двадцати предложений переводится около секунды — задержи на это первый
-/// показ, и щелчок по плитке снова выглядел бы зависанием.
+/// ⭐ Перевод — отдельным сигналом, а не полем `detail_ready`: показ карточки
+/// не должен ждать ничего, что можно дослать. Но и сам перевод НЕ ждёт
+/// картинок: до 06.11 он шёл последним в этом же потоке, и у темы 2380824
+/// (восемь скриншотов) приходил через минуту, а карточка всё это время
+/// показывала английский текст. Теперь описание с плитки уходит переводиться
+/// своим потоком сразу, а полные детали — вторым заходом, только если их
+/// описание другое (одинаковое возьмёт кеш, и страница сохранит перевод,
+/// `detail_answer`).
 fn fetch_detail(state: &Arc<State>, handle: &Handle, item: ThemeItem) {
     let io = LiveOcsIo::new(&home());
     let preview_dir = io.preview_dir();
     let mut client = OcsClient::new(io, &preview_dir);
     let id = item.id.clone();
+
+    // Описание плитки — переводить сразу, не дожидаясь ни картинок, ни
+    // деталей (у KDE Store оно в списке уже полное).
+    let tile_description = item.description.clone();
+    if !tile_description.trim().is_empty() {
+        spawn_description_translation(state, handle, &item);
+    }
 
     let mut seen: HashMap<usize, String> = HashMap::new();
     for (i, url) in ap::gallery_urls(&item.preview_urls, &item.preview_url)
@@ -2956,6 +2997,16 @@ fn fetch_detail(state: &Arc<State>, handle: &Handle, item: ThemeItem) {
     // карточке из индекса.
     let mut full = if id.starts_with(cs::ID_PREFIX) {
         item
+    } else if let Some(wid) = wh::parse_item_id(&id) {
+        // Wallhaven: автор загрузки и метки есть только в сведениях о
+        // картинке (один запрос к API; не вышло — карточка как в сетке).
+        match wh::live_detail(wid, &CancelToken::new()) {
+            Ok(w) => wh::theme_item(&w),
+            Err(e) => {
+                rexon_core::log_warn!("wallhaven", "сведения о {wid}: {e:?}");
+                item
+            }
+        }
     } else {
         client
             .get_item_cached(&id, rexon_core::ocs::DETAIL_TTL_SECS)
@@ -2986,6 +3037,12 @@ fn fetch_detail(state: &Arc<State>, handle: &Handle, item: ThemeItem) {
         object.as_mut().detail_ready(QString::from(&payload));
     });
 
+    // Полные детали принесли ДРУГОЕ описание (или у плитки его не было) —
+    // переводим и его, своим потоком, параллельно остальной галерее.
+    if full.description != tile_description || tile_description.trim().is_empty() {
+        spawn_description_translation(state, handle, &full);
+    }
+
     // Детальный ответ знает БОЛЬШЕ скриншотов, чем список: проходим полный
     // набор, пропуская уже скачанное по тому же адресу.
     let mut got = 0usize;
@@ -3008,14 +3065,31 @@ fn fetch_detail(state: &Arc<State>, handle: &Handle, item: ThemeItem) {
     post(handle, move |mut object| {
         object.as_mut().gallery_finished(QString::from(&count));
     });
-
-    translate_detail_description(state, handle, &full);
 }
+
+/// Перевести описание своим потоком: окну не нужно ждать ни галерею, ни
+/// проверку источника — перевод приходит, как только готов.
+fn spawn_description_translation(state: &Arc<State>, handle: &Handle, item: &ThemeItem) {
+    let (state, handle, item) = (state.clone(), handle.clone(), item.clone());
+    std::thread::spawn(move || translate_detail_description(&state, &handle, &item));
+}
+
+/// Через сколько показывать пометку «Перевожу описание…».
+///
+/// ⭐ Порог, а не «сразу», — чтобы пометка не мигала. Замеры 06.11 на живой
+/// модели (тема 2380824, 51 текстовый узел): перевод из кеша — миллисекунды,
+/// перевод тёплой моделью — 0,27–0,31 с, а холодный (поднять модель 0,3–1 с
+/// + перевести) — до ~1,3 с. 0,7 с выше тёплого перевода с запасом в два
+/// раза, так что на кеше и тёплой модели пометки нет вовсе, а на холодном
+/// старте и длинных описаниях она появляется — там, где ожидание уже
+/// заметно глазу (за секунду внимание уходит, и тишина выглядит как «не
+/// переводится»).
+const TRANSLATING_NOTE_DELAY: std::time::Duration = std::time::Duration::from_millis(700);
 
 /// Второй проход: перевести описание открытого товара и дослать его на панель.
 ///
-/// Работа идёт в ТОМ ЖЕ потоке, что и остальная долгая работа панели, — окно её
-/// не ждёт. Наружу смотрит одна дверь ядра,
+/// Работа идёт СВОИМ потоком ([`spawn_description_translation`]): окно её не
+/// ждёт, и она не ждёт галерею. Наружу смотрит одна дверь ядра,
 /// [`rexon_core::translator_engine::translate_live_guarded`]: она сама берёт целевой
 /// язык из локали, отличает прозу от техники, ходит в кеш и поднимает движок.
 ///
@@ -3024,11 +3098,35 @@ fn fetch_detail(state: &Arc<State>, handle: &Handle, item: ThemeItem) {
 ///   * товар уже закрыли (человек ушёл на другой) — перевод чужой карточке не
 ///     нужен, и `still_open` спрашивается ДВАЖДЫ: до долгой работы и после неё;
 ///   * `was_translated == false` — модели в поставке нет, текст уже на языке
-///     покупателя либо это техника. Сигнала нет, жалобы нет, на панели остаётся
-///     оригинал: перевод — удобство, а не условие работы вкладки.
+///     покупателя либо это техника. Жалобы нет, на панели остаётся оригинал:
+///     перевод — удобство, а не условие работы вкладки. Если пометка
+///     «Перевожу описание…» уже была показана, она снимается (`pending:
+///     false`).
+///
+/// Пометка — по порогу [`TRANSLATING_NOTE_DELAY`]: короткий перевод (кеш,
+/// тёплая модель) приходит раньше, и пометка не мигает.
 fn translate_detail_description(state: &Arc<State>, handle: &Handle, item: &ThemeItem) {
     if item.description.trim().is_empty() || !still_open(state, &item.id) {
         return;
+    }
+    let locale = rexon_core::translator::interface_locale();
+    // Пометка «Перевожу описание…» — только если перевод вообще возможен
+    // (не русский текст для русского покупателя) и только если он идёт
+    // дольше порога. Замок общий у таймера и у итога: пометка не может
+    // прийти ПОСЛЕ ответа и повиснуть над готовым переводом.
+    let note = Arc::new(Mutex::new(NoteState::default()));
+    if te::translation_may_follow(&item.description, &locale) {
+        let (note, state, handle) = (note.clone(), state.clone(), handle.clone());
+        let (id, source) = (item.id.clone(), item.description.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(TRANSLATING_NOTE_DELAY);
+            let Ok(mut note) = note.lock() else { return };
+            if note.finished || !still_open(&state, &id) {
+                return;
+            }
+            note.shown = true;
+            post_description(&handle, json!({ "itemId": id, "source": source, "pending": true }));
+        });
     }
     let mut cache = rexon_core::appearance_cache::LiveCache::open(&home());
     // Название темы и имя автора движку не отдаются: без этого «Sweet Mars»
@@ -3036,15 +3134,40 @@ fn translate_detail_description(state: &Arc<State>, handle: &Handle, item: &Them
     // отбрасывает пустые и слишком короткие имена, поэтому сверять тут нечего.
     let done = te::translate_live_guarded(
         &item.description,
-        &rexon_core::translator::interface_locale(),
+        &locale,
         &te::LiveEngine::new(),
         &mut cache,
         &[item.name.as_str(), item.author.as_str()],
     );
-    if !done.was_translated || !still_open(state, &item.id) {
-        return;
+    let Ok(mut note) = note.lock() else { return };
+    note.finished = true;
+    let translated = done.was_translated && still_open(state, &item.id);
+    if translated {
+        post_description(
+            handle,
+            json!({ "itemId": item.id, "source": item.description, "translated": done.text }),
+        );
+    } else if note.shown {
+        // Перевода не будет — пометку снять.
+        post_description(
+            handle,
+            json!({ "itemId": item.id, "source": item.description, "pending": false }),
+        );
     }
-    let payload = json!({ "itemId": item.id, "translated": done.text }).to_string();
+}
+
+/// Что уже сказано странице о переводе одного описания.
+#[derive(Default)]
+struct NoteState {
+    /// Перевод закончен (с результатом или без).
+    finished: bool,
+    /// Пометка «Перевожу описание…» отправлена.
+    shown: bool,
+}
+
+/// Дослать странице ответ о переводе описания (`descriptionReady`).
+fn post_description(handle: &Handle, payload: Value) {
+    let payload = payload.to_string();
     post(handle, move |mut object| {
         object.as_mut().description_ready(QString::from(&payload));
     });
@@ -4165,6 +4288,24 @@ impl qobject::AppearanceActions {
             // AUR (с паузами) и к GitHub, картинки и перевод её не ждут.
             spawn_aur_trust(&state, &handle, &name, info.clone());
 
+            // Перевод описания — тем же проходом, что у товара магазина, и
+            // так же своим потоком ДО картинок: страницы проектов отдают
+            // скриншоты медленно, перевод их не ждёт. Имя пакета и
+            // сопровождающего движку не отдаются.
+            let base = info.as_ref().map(|i| i.as_package()).or_else(|| tile.clone());
+            if let Some(pkg) = base {
+                let item = ThemeItem {
+                    id: name.clone(),
+                    name: pkg.name.clone(),
+                    author: pkg.maintainer.clone(),
+                    description: pkg.description.clone(),
+                    ..Default::default()
+                };
+                // Охрана имени при переводе комментариев берёт товар отсюда.
+                remember_items(&state, std::slice::from_ref(&item));
+                spawn_description_translation(&state, &handle, &item);
+            }
+
             // Картинки: адрес проекта из паспорта, без него — с плитки.
             let upstream = info
                 .as_ref()
@@ -4192,21 +4333,6 @@ impl qobject::AppearanceActions {
                 });
             }
 
-            // Перевод описания — тем же вторым проходом, что у товара
-            // магазина; имя пакета и сопровождающего движку не отдаются.
-            let base = info.map(|i| i.as_package()).or(tile);
-            if let Some(pkg) = base {
-                let item = ThemeItem {
-                    id: name.clone(),
-                    name: pkg.name.clone(),
-                    author: pkg.maintainer.clone(),
-                    description: pkg.description.clone(),
-                    ..Default::default()
-                };
-                // Охрана имени при переводе комментариев берёт товар отсюда.
-                remember_items(&state, std::slice::from_ref(&item));
-                translate_detail_description(&state, &handle, &item);
-            }
         });
     }
 

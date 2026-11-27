@@ -68,7 +68,7 @@
   },
   "about": {
     "title": "О программе Rexon",
-    "body": "<h2>Rexon {__version__}</h2><p>Менеджер рабочих столов для Linux</p><p>Установка, удаление и настройка DE, тем, иконок, курсоров, шрифтов, обоев (вкл. Wallpaper&nbsp;Engine), SDDM/Plymouth, виджетов и расширений — через единый интерфейс.</p><p><b>Поддержка:</b> KDE, GNOME, Cinnamon, XFCE, MATE, Budgie, Pantheon, LXQt, COSMIC, Hyprland (обои также на sway, niri, river)</p><p>© 2026 Wehrwolfmann · лицензия Apache 2.0</p><p style='color:#888;font-size:11px'>Использует Qt (LGPL-3.0) и KDE&nbsp;Frameworks (LGPL-2.1+) — динамическая линковка.</p>"
+    "body": "<h2>Rexon {__version__}</h2><p>Менеджер рабочих столов для Linux</p><p>Установка, удаление и настройка DE, тем, значков, курсоров, шрифтов, обоев (вкл. Wallpaper&nbsp;Engine), SDDM/Plymouth, виджетов и расширений — через единый интерфейс.</p><p><b>Поддержка:</b> KDE, GNOME, Cinnamon, XFCE, MATE, Budgie, Pantheon, LXQt, COSMIC, Hyprland (обои также на sway, niri, river)</p><p>© 2026 Wehrwolfmann · лицензия Apache 2.0</p><p style='color:#888;font-size:11px'>Использует Qt (LGPL-3.0) и KDE&nbsp;Frameworks (LGPL-2.1+) — динамическая линковка.</p>"
   },
   "tab_switch": {
     "widget_fallback_env": "REXON_WIDGET_TAB",

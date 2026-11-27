@@ -246,9 +246,15 @@ Item {
                                                                : ScrollBar.AlwaysOff
                 }
 
+                // Место под полосу прокрутки — с её стороны: при языке справа
+                // налево полоса встаёт к левому краю, и якоря с отступом
+                // зеркалятся вместе с ней (ширина «минус полоса» от x = 0
+                // оставила бы текст под полосой).
                 ColumnLayout {
                     id: column
-                    width: flick.width - (flick.contentHeight > flick.height ? 14 : 0)
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.rightMargin: flick.contentHeight > flick.height ? 14 : 0
                     spacing: 10
 
                     // ── Значок и заголовок ────────────────────────────────
@@ -272,18 +278,20 @@ Item {
 
                             // Стилизованное окно рабочего стола: шапка и поле.
                             Rectangle {
-                                x: 12
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: 12
                                 y: 14
-                                width: parent.width - 24
                                 height: 7
                                 radius: 2
                                 color: root.pal.accent
                             }
 
                             Rectangle {
-                                x: 12
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: 12
                                 y: 25
-                                width: parent.width - 24
                                 height: parent.height - 39
                                 radius: 2
                                 color: "transparent"
@@ -296,7 +304,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: 4
 
-                            Text {
+                            RexonText {
                                 objectName: "firstRunWizardTitle"
                                 Layout.fillWidth: true
                                 text: root.texts.title !== undefined ? root.texts.title : ""
@@ -306,7 +314,7 @@ Item {
                                 wrapMode: Text.WordWrap
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: root.texts.description !== undefined
                                       ? root.texts.description : ""
@@ -338,7 +346,7 @@ Item {
                                 color: root.pal.accent
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: benefitRow.modelData
                                 color: root.pal.text_secondary
@@ -350,7 +358,7 @@ Item {
 
                     // Сухой прогон: «готово» без единой записи на диск иначе
                     // читалось бы как настоящая установка.
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         Layout.topMargin: 4
                         visible: root.dryNotice !== ""
@@ -363,7 +371,7 @@ Item {
 
                     // ── Для кого установить ───────────────────────────────
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         Layout.topMargin: 6
                         text: root.texts.modesTitle !== undefined ? root.texts.modesTitle : ""
@@ -458,7 +466,7 @@ Item {
                                         }
                                     }
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         text: String(modeCard.modelData.title)
                                         color: modeCard.enabled ? root.pal.text_primary
@@ -469,7 +477,7 @@ Item {
                                     }
                                 }
 
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     Layout.leftMargin: 28
                                     text: String(modeCard.modelData.description)
@@ -481,7 +489,7 @@ Item {
 
                                 // Почему режим недоступен — прямо под ним, а не
                                 // молчанием выключенной кнопки.
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     Layout.leftMargin: 28
                                     visible: modeCard.blocked !== ""
@@ -528,7 +536,7 @@ Item {
                             anchors.margins: 12
                             spacing: 4
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: root.consent.title !== undefined ? root.consent.title : ""
                                 color: root.pal.text_primary
@@ -537,7 +545,7 @@ Item {
                                 wrapMode: Text.WordWrap
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: root.consent.description !== undefined
                                       ? root.consent.description : ""
@@ -550,7 +558,7 @@ Item {
                                 model: [root.consent.what, root.consent.who,
                                         root.consent.risk, root.consent.undo]
 
-                                delegate: Text {
+                                delegate: RexonText {
                                     id: consentLine
                                     required property var modelData
 
@@ -605,7 +613,7 @@ Item {
                         ToolTip.delay: 600
                     }
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: root.texts.dontAskAgainHint !== undefined
                               ? root.texts.dontAskAgainHint : ""

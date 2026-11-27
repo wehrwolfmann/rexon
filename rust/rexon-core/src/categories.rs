@@ -499,6 +499,7 @@ pub fn moved_settings_links(de_id: &str) -> Vec<(String, String)> {
         .into_iter()
         .filter(|c| is_settings_panel(&c.key) && c.key != SCREEN_EFFECTS_KEY && category_available(&c.key, de_id))
         // TRANSLATORS: link in the Settings tab to a section that moved; %1 is the section name.
+        // Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         .map(|c| (c.key.clone(), crate::i18n::trf("Appearance → %1", &[&c.name])))
         .collect()
 }

@@ -227,7 +227,8 @@
     "gsettings get org.gnome.desktop.interface font-name",
     "env GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.interface font-name",
     "gsettings get org.gnome.desktop.interface font-name",
-    "gsettings set org.gnome.desktop.interface font-name Fira Sans 10"
+    "gsettings set org.gnome.desktop.interface font-name Fira Sans 10",
+    "gsettings get org.gnome.desktop.interface gtk-theme"
   ],
   "missing": [],
   "message": "“Like Garuda Linux (Dr460nized)” applied.\nSkipped: window frames — Sway draws window borders itself, and there are no themes for them\nSkipped: desktop shell theme — Sway has no shell theme of its own. If you use Noctalia or DankMaterialShell, press “Pass Palette to Shell” in Color Schemes after applying: they take the colours of this look\nSkipped: panel layout — Sway has no panel of its own: a bar such as Waybar is chosen separately, in the Shells block of its card in Desktops\nSkipped: desktop behaviour — it changes only things Plasma has: KWin window effects, the Plasma lock screen picture, KRunner in the middle of the screen — Sway has none of them",

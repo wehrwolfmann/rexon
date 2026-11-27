@@ -165,7 +165,7 @@ Item {
                 width: scroll.availableWidth
                 spacing: 10
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: dialog.q.title || ""
                     color: section.pal.text_primary
@@ -174,7 +174,7 @@ Item {
                     wrapMode: Text.WordWrap
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: dialog.q.intro || ""
                     color: section.pal.text_secondary
@@ -187,7 +187,7 @@ Item {
                     columnSpacing: 10
                     rowSpacing: 6
 
-                    Text {
+                    RexonText {
                         text: dialog.q.nameLabel || ""
                         color: section.pal.text_primary
                     }
@@ -202,7 +202,7 @@ Item {
                     }
 
                     Item { implicitWidth: 1; implicitHeight: 1; visible: problemText.visible }
-                    Text {
+                    RexonText {
                         id: problemText
                         Layout.fillWidth: true
                         // Пустое имя — без предупреждения: поле и так ждёт ввода.
@@ -212,7 +212,7 @@ Item {
                         wrapMode: Text.WordWrap
                     }
 
-                    Text {
+                    RexonText {
                         text: dialog.q.authorLabel || ""
                         color: section.pal.text_primary
                     }
@@ -224,7 +224,7 @@ Item {
                     }
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: dialog.q.partsHeading || ""
                     color: section.pal.text_primary
@@ -250,7 +250,7 @@ Item {
                                   + ((partRow.modelData.value || "") !== "" ? " — " + partRow.modelData.value : "")
                             onToggled: dialog.setPicked(partRow.modelData.id, checked)
                         }
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.leftMargin: 32
                             visible: (partRow.modelData.reason || "") !== ""
@@ -262,7 +262,7 @@ Item {
                     }
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: dialog.q.previewHeading || ""
                     color: section.pal.text_primary
@@ -321,7 +321,7 @@ Item {
                             text: dialog.q.tileText || ""
                             onClicked: dialog.preview = ""
                         }
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             visible: dialog.preview === ""
                             text: dialog.q.previewNote || ""
@@ -332,7 +332,7 @@ Item {
                     }
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     visible: dialog.message !== ""
                     text: dialog.message

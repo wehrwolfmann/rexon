@@ -116,7 +116,7 @@ Item {
 
             Keys.onEscapePressed: root.dismissOperation()
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: root.op ? root.op.title : ""
                 color: root.pal.text_primary
@@ -126,7 +126,7 @@ Item {
             }
 
             // Вопрос, отказ или объяснение шага пароля.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: root.opPhase === "confirm" || root.opPhase === "blocked"
                          || root.opPhase === "password"
@@ -150,7 +150,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: 4
 
-                    Text {
+                    RexonText {
                         text: choiceRow.modelData.label
                         color: root.pal.text_primary
                         font.pointSize: 11
@@ -211,7 +211,7 @@ Item {
                         root.actions.setOperationOption(want);
                 }
             }
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: opOption.visible && root.op && root.op.optionHint !== undefined
                          && root.op.optionHint !== ""
@@ -223,7 +223,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: root.opPhase === "blocked" && root.op && root.op.informative !== ""
                 text: root.op ? root.op.informative : ""
@@ -259,7 +259,7 @@ Item {
                                  ? root.op.passwordRepeatText : ""
                 onAccepted: root.submitPassword()
             }
-            Text {
+            RexonText {
                 objectName: "desktopsPasswordError"
                 Layout.fillWidth: true
                 visible: root.opPhase === "password" && root.op && root.op.passwordError !== ""
@@ -270,7 +270,7 @@ Item {
             }
 
             // Ход дела.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: root.opPhase === "running" || root.opPhase === "done"
                 text: root.op ? root.op.status : ""
@@ -296,7 +296,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: (root.opPhase === "running" || root.opPhase === "done")
                          && root.op && root.op.current !== ""
@@ -318,6 +318,13 @@ Item {
                     readOnly: true
                     // По словам; в любом месте — только длинный путь.
                     wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
+                    // Журнал операции — вывод программ и пути —
+                    // читается слева направо при любом языке интерфейса, поэтому
+                    // поле физически слева: явное `AlignLeft` зеркалирование
+                    // перевернуло бы вправо, а `AlignRight` при зеркалировании даёт
+                    // левый край (как окно PKGBUILD в «Оформлении»).
+                    horizontalAlignment: LayoutMirroring.enabled ? TextEdit.AlignRight
+                                                                 : TextEdit.AlignLeft
                     color: root.pal.text_primary
                     font.family: "monospace"
                     font.pointSize: 9
@@ -330,7 +337,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: root.opPhase === "done" && root.op && root.op.resultText !== ""
                 text: root.op ? root.op.resultText : ""

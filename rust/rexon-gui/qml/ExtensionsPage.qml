@@ -292,9 +292,10 @@ Item {
         // страница схлопывается в полоску.
         ColumnLayout {
             id: pageColumn
-            x: root.st.page.margin
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: root.st.page.margin
             y: root.st.page.margin
-            width: flick.width - 2 * root.st.page.margin
             height: implicitHeight
             spacing: root.st.page.spacing
 
@@ -303,7 +304,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Text {
+                RexonText {
                     text: page.headerTitle
                     color: root.colText
                     font.pointSize: page.headerTitlePointSize
@@ -414,7 +415,7 @@ Item {
             }
 
             // ── Статистика ────────────────────────────────────────────────
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: page.statsLine
                 textFormat: Text.RichText
@@ -428,7 +429,7 @@ Item {
             }
 
             // ── «Мои расширения» ──────────────────────────────────────────
-            Text {
+            RexonText {
                 text: page.myHeader
                 visible: page.myHeader !== ""
                 color: root.colText
@@ -521,9 +522,10 @@ Item {
 
                         ColumnLayout {
                             id: cardColumn
-                            x: root.st.card.margin
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.margins: root.st.card.margin
                             y: root.st.card.margin
-                            width: parent.width - 2 * root.st.card.margin
                             // Высоту берём от плитки, а не от своего
                             // implicitHeight: плитку растянул ряд, и ряд
                             // кнопок ниже обязан этим воспользоваться, чтобы
@@ -550,7 +552,7 @@ Item {
                                     visible: status === Image.Ready
                                 }
 
-                                Text {
+                                RexonText {
                                     anchors.centerIn: parent
                                     visible: !cardImage.visible
                                     text: card.placeholder
@@ -574,7 +576,7 @@ Item {
                             // Тип и автор — вторичные подписи оригинала:
                             // цвет из пары `ui_base` (починка №2 в ядре),
                             // начертание 600 — как там.
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: card.typeLine
                                 color: root.colTextSecondary
@@ -582,7 +584,7 @@ Item {
                                 elide: Text.ElideRight
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: card.name
                                 color: root.colText
@@ -598,7 +600,7 @@ Item {
                                 }
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 visible: card.authorLine !== ""
                                 text: card.authorLine
@@ -607,7 +609,7 @@ Item {
                                 elide: Text.ElideRight
                             }
 
-                            Text {
+                            RexonText {
                                 visible: card.hasToggle
                                 text: card.stateText
                                 color: card.stateColor
@@ -724,7 +726,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: root.st.page.gridSpacing
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.topMargin: root.st.group.paddingTop
                             Layout.bottomMargin: root.st.group.paddingBottom
@@ -754,13 +756,14 @@ Item {
 
                             RowLayout {
                                 id: rowLayout
-                                x: rowFrame.padH
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.margins: rowFrame.padH
                                 y: rowFrame.padV
-                                width: parent.width - 2 * rowFrame.padH
                                 height: implicitHeight
                                 spacing: root.st.row.spacing
 
-                                Text {
+                                RexonText {
                                     Layout.preferredWidth: root.st.row.iconWidth
                                     text: rowBlock.placeholder
                                     color: root.colText
@@ -771,7 +774,7 @@ Item {
                                     Layout.fillWidth: true
                                     spacing: 0
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         text: rowBlock.titleHtml
                                         textFormat: Text.RichText
@@ -779,7 +782,7 @@ Item {
                                         elide: Text.ElideRight
                                     }
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         visible: rowBlock.subtitle !== ""
                                         text: rowBlock.subtitle
@@ -824,7 +827,7 @@ Item {
             }
 
             // ── Пустое состояние ──────────────────────────────────────────
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 Layout.margins: root.st.page.emptyPadding
                 visible: page.emptyText !== ""
@@ -836,7 +839,7 @@ Item {
             }
 
             // ── Блок «⬇ Установить» ───────────────────────────────────────
-            Text {
+            RexonText {
                 text: page.installSectionHeader
                 color: root.colText
                 font.pointSize: page.sectionPointSize
@@ -883,7 +886,7 @@ Item {
             // `visible: statusText !== ""`, строка схлопывалась, планы
             // поднимались на 30 точек выше оригинала, а при первой же
             // установке вся страница дёргалась вниз.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: page.statusText
                 wrapMode: Text.WordWrap
@@ -892,7 +895,7 @@ Item {
             }
 
             // ── Планы ─────────────────────────────────────────────────────
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: page.roadmapNote
                 wrapMode: Text.WordWrap
@@ -995,7 +998,7 @@ Item {
         contentItem: ColumnLayout {
             spacing: root.st.dialog.detailSpacing
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: detailDialog.view ? detailDialog.view.headingHtml : ""
                 textFormat: Text.RichText
@@ -1005,7 +1008,7 @@ Item {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: detailDialog.view ? detailDialog.view.metaLine : ""
                 color: root.colTextSecondary
@@ -1083,10 +1086,14 @@ Item {
                     // тем же текстом, что показывал QTextBrowser виджетной
                     // вкладки, только с экранированными угловыми скобками
                     // (починка #1: оригинал терял на них куски текста).
-                    Text {
+                    RexonText {
                         id: bodyText
-                        width: bodyFlick.width
-                                - (bodyBar.visible ? bodyBar.width : 0)
+                        // Ширина якорями, место под полосу — отступом с её
+                        // стороны: справа налево полоса уходит влево, и
+                        // зеркалирование переносит туда же и отступ.
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.rightMargin: bodyBar.visible ? bodyBar.width : 0
                         text: detailDialog.view ? detailDialog.view.bodyHtml : ""
                         textFormat: Text.RichText
                         wrapMode: Text.WordWrap
@@ -1096,7 +1103,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: detailDialog.view && detailDialog.view.tagsLine !== ""
                 text: detailDialog.view ? detailDialog.view.tagsLine : ""
@@ -1104,7 +1111,7 @@ Item {
                 color: root.colInfo
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 Layout.topMargin: root.st.dialog.techPaddingV
                 Layout.bottomMargin: root.st.dialog.techPaddingV
@@ -1117,7 +1124,7 @@ Item {
                 onLinkActivated: (link) => Qt.openUrlExternally(link)
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: detailDialog.view ? detailDialog.view.pathHtml : ""
                 textFormat: Text.RichText
@@ -1277,7 +1284,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: axonDialog.texts.title || ""
                     color: root.colText
@@ -1306,7 +1313,7 @@ Item {
                 }
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: text !== ""
                 text: axonDialog.lib.note
@@ -1332,7 +1339,7 @@ Item {
                     }
                 }
 
-                Text {
+                RexonText {
                     objectName: "axonPrepareLine"
                     Layout.fillWidth: true
                     text: axonDialog.prep.line
@@ -1365,7 +1372,7 @@ Item {
                     anchors.margins: 8
                     spacing: 8
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: axonDialog.texts.restoreWarning || ""
                         wrapMode: Text.WordWrap
@@ -1426,7 +1433,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: 2
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: axonRow.modelData.title
                                 color: root.colText
@@ -1434,7 +1441,7 @@ Item {
                                 elide: Text.ElideRight
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: [axonRow.modelData.author, axonRow.modelData.line]
                                           .filter(s => s !== "").join(" · ")
@@ -1468,7 +1475,7 @@ Item {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Text {
+                RexonText {
                     objectName: "axonStatus"
                     Layout.fillWidth: true
                     text: axonDialog.status
@@ -1521,7 +1528,7 @@ Item {
             // умолчанию, и он ýже разборного (6 против 10).
             spacing: root.st.dialog.createSpacing
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: page.createHeader
                 textFormat: Text.RichText
@@ -1553,10 +1560,14 @@ Item {
 
                     ScrollBar.vertical: ScrollBar { id: createBar }
 
-                    Text {
+                    RexonText {
                         id: createText
-                        width: createFlick.width
-                                - (createBar.visible ? createBar.width : 0)
+                        // Ширина якорями, место под полосу — отступом с её
+                        // стороны: справа налево полоса уходит влево, и
+                        // зеркалирование переносит туда же и отступ.
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.rightMargin: createBar.visible ? createBar.width : 0
                         text: page.createBody
                         textFormat: Text.RichText
                         wrapMode: Text.WordWrap

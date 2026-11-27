@@ -19,7 +19,7 @@
   {
    "id": 104,
    "key": "plasma",
-   "name": "Plasma Styles",
+   "name": "Стили Plasma",
    "icon": "🖥️",
    "install_dir": "/home/tester/.local/share/plasma/desktoptheme",
    "apply_kind": "plasma",
@@ -67,7 +67,7 @@
   {
    "id": 132,
    "key": "icons",
-   "name": "Иконки",
+   "name": "Значки",
    "icon": "📁",
    "install_dir": "/home/tester/.local/share/icons",
    "apply_kind": "icons",
@@ -430,7 +430,7 @@
   {
    "id": 104,
    "key": "plasma",
-   "name": "Plasma Styles",
+   "name": "Стили Plasma",
    "icon": "🖥️",
    "install_dir": "/home/tester/.local/share/plasma/desktoptheme",
    "apply_kind": "plasma",
@@ -478,7 +478,7 @@
   {
    "id": 132,
    "key": "icons",
-   "name": "Иконки",
+   "name": "Значки",
    "icon": "📁",
    "install_dir": "/home/tester/.local/share/icons",
    "apply_kind": "icons",

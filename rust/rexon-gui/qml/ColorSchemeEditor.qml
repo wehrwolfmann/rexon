@@ -81,7 +81,7 @@ Popup {
         anchors.right: parent.right
         spacing: 10
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: editor.texts.title || ""
             color: editor.pal.text_primary || "#ffffff"
@@ -93,7 +93,7 @@ Popup {
             Layout.fillWidth: true
             spacing: 8
 
-            Text {
+            RexonText {
                 text: editor.texts.name_label || ""
                 color: editor.pal.text_primary || "#ffffff"
             }
@@ -112,14 +112,14 @@ Popup {
             spacing: 12
 
             Item { Layout.fillWidth: true; implicitHeight: 1 }
-            Text {
+            RexonText {
                 Layout.preferredWidth: 72
                 horizontalAlignment: Text.AlignHCenter
                 text: editor.texts.background || ""
                 color: editor.pal.text_secondary || "#c7d5e0"
                 elide: Text.ElideRight
             }
-            Text {
+            RexonText {
                 Layout.preferredWidth: 72
                 horizontalAlignment: Text.AlignHCenter
                 text: editor.texts.foreground || ""
@@ -153,7 +153,7 @@ Popup {
                             radius: 3
                             color: roleRow.modelData.background
                             border.color: editor.pal.border || "#2a4055"
-                            Text {
+                            RexonText {
                                 anchors.fill: parent
                                 anchors.leftMargin: 10
                                 verticalAlignment: Text.AlignVCenter
@@ -194,7 +194,7 @@ Popup {
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: editor.error !== "" ? editor.error : (editor.texts.hint || "")
             color: editor.error !== "" ? (editor.pal.rating_star || "#ffcc00")

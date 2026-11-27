@@ -427,6 +427,8 @@ fn run_window(req: &cli::CrashDialogRequest) -> i32 {
     // Значок окна в панели задач X11 — тот же, что у главного окна.
     crate::tray::set_app_window_icon();
     QGuiApplication::set_desktop_file_name(&QString::from(qt_app::DESKTOP_FILE_NAME));
+    // Окно о крахе говорит на языке Rexon — и справа налево тоже.
+    crate::fonts::install_rtl_fallbacks();
 
     let mut engine = QQmlApplicationEngine::new();
     let Some(mut engine) = engine.as_mut() else {
@@ -525,6 +527,8 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: root
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.childrenInherit: true
 
     required property string dialogTitle
     required property string mainText

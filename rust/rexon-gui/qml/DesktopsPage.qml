@@ -54,6 +54,10 @@ Item {
     // хозяин страницы (сравнение — отдельное окно, внутрь сцены не встаёт),
     // но текст всё равно приходит из ядра, а не второй копией на Python.
     readonly property string compareBackText: page.compareBackText
+    /// Стрелки ← → в подписях страницы — по её зеркалированию.
+    readonly property RexonArrows arrows: RexonArrows {
+        mirrored: root.LayoutMirroring.enabled
+    }
     // Выбранный стол и стол сеанса — для прогона `--selftest` главного окна:
     // вкладка обязана открываться на ТЕКУЩЕМ столе, а не на первом в списке.
     readonly property string selectedDe: page.selectedDe
@@ -300,8 +304,31 @@ Item {
             color: root.pal.split_handle
         }
 
+        // Язык справа налево: `SplitView` зеркалирование не учитывает (Qt
+        // кладёт панели слева направо в порядке детей — снимок при
+        // `-reverse`: список остался слева), поэтому порядок панелей
+        // переворачиваем сами — список у начала строки, справа.
+        readonly property bool panelsMirrored: split.LayoutMirroring.enabled
+        onPanelsMirroredChanged: split.orderPanels()
+        Component.onCompleted: split.orderPanels()
+
+        function orderPanels() {
+            const want = split.panelsMirrored ? [cardPanel, middlePanel, listPanel]
+                                              : [listPanel, middlePanel, cardPanel];
+            for (let i = 0; i < want.length; ++i) {
+                for (let j = i; j < split.count; ++j) {
+                    if (split.itemAt(j) === want[i]) {
+                        if (j !== i)
+                            split.moveItem(j, i);
+                        break;
+                    }
+                }
+            }
+        }
+
         // ── Левая панель: список рабочих столов ───────────────────────────
         Item {
+            id: listPanel
             SplitView.preferredWidth: root.m.listInitialWidth
             SplitView.minimumWidth: root.m.listMinWidth
             SplitView.maximumWidth: root.m.listMaxWidth
@@ -314,7 +341,7 @@ Item {
                 anchors.bottomMargin: root.m.listMarginBottom
                 spacing: root.m.listSpacing
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: page.listHeader
                     color: root.colText
@@ -392,7 +419,7 @@ Item {
                         // Заголовок секции: виден, но не выбирается — в
                         // оригинале у него стоял `NoItemFlags`, а красился он
                         // ролью PlaceholderText палитры скина.
-                        Text {
+                        RexonText {
                             id: sectionLabel
                             visible: !listRow.selectable
                             anchors.left: parent.left
@@ -438,14 +465,13 @@ Item {
                                 border.width: 1
                             }
 
-                            contentItem: Text {
+                            contentItem: RexonText {
                                 text: deButton.text
                                 color: deButton.current ? root.pal.list_selected_text
                                                         : root.colText
                                 font.pointSize: page.listItemPointSize
                                 font.weight: root.pal.text_secondary_weight
                                 elide: Text.ElideRight
-                                horizontalAlignment: Text.AlignLeft
                                 verticalAlignment: Text.AlignVCenter
                             }
 
@@ -539,12 +565,14 @@ Item {
                     // ── «Как в дистрибутиве» ──────────────────────────────
                     ColumnLayout {
                         id: looksBody
-                        x: 0
+                        // Отступы от края — якорями: справа налево блоки
+                        // меняются сторонами сами (`LayoutMirroring`).
+                        anchors.left: parent.left
                         y: 0
                         width: middleBody.blockWidth
                         spacing: root.m.toolsSpacing
 
-                        Text {
+                        RexonText {
                             id: looksHeaderText
                             Layout.fillWidth: true
                             text: page.looksHeader
@@ -556,7 +584,7 @@ Item {
                         // Пояснение по ширине блока (в колонку плиток не
                         // кладём: длинная строка растянула бы её по своей
                         // ширине).
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.preferredWidth: looksBody.width
                             text: page.looksHint
@@ -611,7 +639,7 @@ Item {
                                         anchors.margins: root.m.shellsPanelPadding
                                         spacing: root.m.statSpacing * 3
 
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             text: lookTile.modelData.name
                                             color: root.colText
@@ -619,7 +647,7 @@ Item {
                                             wrapMode: Text.WordWrap
                                         }
 
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             visible: lookTile.modelData.badge !== ""
                                             text: lookTile.modelData.badge
@@ -656,7 +684,8 @@ Item {
                     // вертикальная, когда блоки рядом, горизонтальная, когда
                     // «Инструменты» ушли вниз.
                     Rectangle {
-                        x: middleBody.sideBySide
+                        anchors.left: parent.left
+                        anchors.leftMargin: middleBody.sideBySide
                            ? middleBody.blockWidth + Math.floor(middleBody.gap / 2) : 0
                         y: middleBody.sideBySide
                            ? 0 : looksBody.implicitHeight + Math.floor(middleBody.gap / 2)
@@ -672,12 +701,14 @@ Item {
                     ColumnLayout {
                         id: toolsBody
                         objectName: "toolsBlock"
-                        x: middleBody.sideBySide ? middleBody.blockWidth + middleBody.gap : 0
+                        anchors.left: parent.left
+                        anchors.leftMargin: middleBody.sideBySide
+                                            ? middleBody.blockWidth + middleBody.gap : 0
                         y: middleBody.sideBySide ? 0 : looksBody.implicitHeight + middleBody.gap
                         width: middleBody.blockWidth
                         spacing: root.m.toolsSpacing
 
-                        Text {
+                        RexonText {
                             id: toolsHeaderText
                             Layout.fillWidth: true
                             text: page.toolsHeader
@@ -723,7 +754,7 @@ Item {
                         // Почему часть кнопок неактивна — одной фразой по
                         // ширине блока (в колонку кнопок не кладём: длинная
                         // строка растянула бы её по своей ширине).
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.preferredWidth: toolsBody.width
                             visible: page.toolsNotice !== ""
@@ -738,6 +769,7 @@ Item {
 
         // ── Правая панель: карточка выбранного стола ──────────────────────
         Item {
+            id: cardPanel
             SplitView.fillWidth: true
             // Потолок ширины — от высоты окна, как у сплиттера оригинала:
             // дальше лишняя ширина уходит средней панели («Как в
@@ -745,11 +777,12 @@ Item {
             SplitView.maximumWidth: page.detailPanelMaxWidth(root.height)
 
             // Приглашение выбрать стол — когда выбранного нет вовсе.
-            Text {
+            RexonText {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.verticalCenter: cardFlick.verticalCenter
                 visible: !root.card || root.card.deId === ""
-                text: page.placeholderText
+                // Стрелка смотрит на список столов (`RexonArrows.keyHint`).
+                text: root.arrows.keyHint(page.placeholderText)
                 color: root.colTextSecondary
                 font.weight: root.pal.text_secondary_weight
                 font.pointSize: root.m.placeholderPointSize
@@ -793,7 +826,10 @@ Item {
                     readonly property int gapLeft: page.cardLeftSpacer(viewport)
                                                    + page.cardGapLeft
 
-                    x: cardColumn.gapLeft
+                    // Отступ от начала строки — якорем: справа налево
+                    // полоса прокрутки уходит влево, карточка — к ней.
+                    anchors.left: parent.left
+                    anchors.leftMargin: cardColumn.gapLeft
                     y: root.m.cardMarginTop
                     width: Math.min(cardColumn.viewport - cardColumn.gapLeft
                                     - root.m.cardMarginRight,
@@ -813,6 +849,11 @@ Item {
                         readonly property var images: root.card && root.card.images
                                                       ? root.card.images : []
                         readonly property int count: carousel.images.length
+                        /// Значки «назад/вперёд» по зеркалированию листалки:
+                        /// справа налево «вперёд» — влево (`RexonArrows`).
+                        readonly property RexonArrows arrows: RexonArrows {
+                            mirrored: carousel.LayoutMirroring.enabled
+                        }
                         readonly property string source: carousel.count > 0
                             ? carousel.images[Math.min(root.slide, carousel.count - 1)]
                             : ""
@@ -922,7 +963,7 @@ Item {
                                 }
                             }
 
-                            Text {
+                            RexonText {
                                 anchors.centerIn: parent
                                 visible: carousel.count === 0
                                 text: root.carouselTexts.emptyText
@@ -947,7 +988,7 @@ Item {
                                 pal: root.pal
                                 tone: root.pal.arrow_tone
                                 font.pointSize: root.m.arrowPointSize
-                                text: "❮"
+                                text: carousel.arrows.previous
                                 ToolTip.visible: prevBtn.hovered
                                 ToolTip.text: root.carouselTexts.prevTooltip
                                 onClicked: carousel.step(-1)
@@ -965,7 +1006,7 @@ Item {
                                 pal: root.pal
                                 tone: root.pal.arrow_tone
                                 font.pointSize: root.m.arrowPointSize
-                                text: "❯"
+                                text: carousel.arrows.next
                                 ToolTip.visible: nextBtn.hovered
                                 ToolTip.text: root.carouselTexts.nextTooltip
                                 onClicked: carousel.step(1)
@@ -993,7 +1034,7 @@ Item {
                         // Точки-индикаторы по центру колонки со скриншотом:
                         // приглушённый текст оригинала — тот же вторичный
                         // цвет и вес, без своей прозрачности.
-                        Text {
+                        RexonText {
                             id: dots
                             anchors.top: frame.bottom
                             anchors.topMargin: root.m.carouselDotsSpacing
@@ -1040,7 +1081,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: root.m.headerRowSpacing
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: root.card.title
                                 color: root.colText
@@ -1049,7 +1090,7 @@ Item {
                                 elide: Text.ElideRight
                             }
 
-                            Text {
+                            RexonText {
                                 text: root.card.statusText
                                 color: root.card.statusColor === ""
                                        ? root.colTextSecondary : root.card.statusColor
@@ -1062,7 +1103,7 @@ Item {
                         }
 
                         // Описание
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             text: root.card.description
                             wrapMode: Text.WordWrap
@@ -1096,14 +1137,14 @@ Item {
                                     Layout.preferredWidth: 1
                                     spacing: root.m.statSpacing
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         text: statCell.modelData.icon
                                         color: root.colText
                                         horizontalAlignment: Text.AlignHCenter
                                     }
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         // Пустое значение держит место, но не
                                         // видно: колонки иначе разъезжаются
@@ -1116,7 +1157,7 @@ Item {
                                         horizontalAlignment: Text.AlignHCenter
                                     }
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         text: statCell.modelData.label
                                         color: root.colTextSecondary
@@ -1136,7 +1177,7 @@ Item {
 
                         // Сколько пакетов поставится и откуда; у
                         // установленного — всё ли на месте.
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             text: root.packagesLine !== "" ? root.packagesLine
                                                            : root.card.packagesText
@@ -1149,7 +1190,7 @@ Item {
                         // Что из набора сейчас не ставится (ждёт пересборки
                         // в репозитории) — до нажатия «Установить», а не
                         // после пароля в журнале pacman.
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             visible: root.packagesNotice !== ""
                             text: root.packagesNotice
@@ -1181,7 +1222,7 @@ Item {
                                     root.ensureVisible(rebuildButton)
                             }
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: root.rebuildHint
                                 wrapMode: Text.WordWrap
@@ -1199,7 +1240,7 @@ Item {
 
                             // Стол недоступен на этом дистрибутиве — вместо
                             // кнопок объяснение.
-                            Text {
+                            RexonText {
                                 visible: !root.card.available
                                 text: root.card.notice
                                 color: root.pal.status_unavailable
@@ -1207,7 +1248,7 @@ Item {
 
                             // Это текущий стол: ни «Переключиться» (мы уже в
                             // нём), ни «Удалить» (остались бы без графики).
-                            Text {
+                            RexonText {
                                 id: currentBadge
                                 visible: root.card.isCurrent && root.card.available
                                 text: root.card.currentBadgeText
@@ -1271,7 +1312,7 @@ Item {
                         // Отдельной строкой под кнопками: рядом с тремя
                         // кнопками ей оставалось место на полтора слова
                         // («Установлена верс…», приёмка 10.10.2026).
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             Layout.minimumWidth: 0
                             wrapMode: Text.WordWrap
@@ -1287,7 +1328,7 @@ Item {
 
                         // SteamOS (Steam Deck и Steam Machine): почему кнопки
                         // выше неактивны — одной фразой из ядра.
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             visible: (root.card.blockedNotice || "") !== ""
                             text: root.card.blockedNotice || ""
@@ -1327,7 +1368,7 @@ Item {
                             anchors.margins: root.m.shellsPanelPadding
                             spacing: root.m.shellsRowSpacing
 
-                            Text {
+                            RexonText {
                                 id: shellsHeaderText
                                 Layout.fillWidth: true
                                 text: root.card.shellsHeader || ""
@@ -1361,7 +1402,7 @@ Item {
                                     RowLayout {
                                         Layout.fillWidth: true
 
-                                        Text {
+                                        RexonText {
                                             Layout.fillWidth: true
                                             text: shellRow.modelData.name
                                             color: root.colText
@@ -1369,7 +1410,7 @@ Item {
                                             elide: Text.ElideRight
                                         }
 
-                                        Text {
+                                        RexonText {
                                             visible: shellRow.modelData.statusText !== ""
                                             text: shellRow.modelData.statusText
                                             color: shellRow.modelData.running
@@ -1379,7 +1420,7 @@ Item {
                                         }
                                     }
 
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         text: shellRow.modelData.description
                                         wrapMode: Text.WordWrap
@@ -1425,7 +1466,7 @@ Item {
 
                                     // Почему кнопка неактивна — словами, а не
                                     // только подсказкой под курсором (геймпад).
-                                    Text {
+                                    RexonText {
                                         Layout.fillWidth: true
                                         visible: shellRow.modelData.hint !== ""
                                         text: shellRow.modelData.hint
@@ -1467,6 +1508,11 @@ Item {
     // одном из двух входов.
     Window {
         id: zoom
+
+        // Отдельное окно корневого зеркалирования главного окна не наследует —
+        // включается своим (то же правило, что в MainWindow.qml).
+        LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+        LayoutMirroring.childrenInherit: true
 
         transientParent: null
         flags: Qt.Window | Qt.FramelessWindowHint
@@ -1519,8 +1565,16 @@ Item {
             // виджетного просмотра пробел листал вперёд.
             focus: true
 
+            /// Значки и клавиши ← → (и их пары A/D) — по зеркалированию
+            /// окна просмотра: справа налево «вперёд» — влево. Пробел — всегда
+            /// вперёд: он про порядок, а не про сторону.
+            readonly property RexonArrows arrows: RexonArrows {
+                mirrored: zoomBody.LayoutMirroring.enabled
+            }
+
             // Набор — как у виджетного просмотра (`keyPressEvent`):
-            // ←/A назад, →/D/пробел вперёд, Esc/Q закрыть.
+            // ←/A назад, →/D/пробел вперёд, Esc/Q закрыть (справа налево
+            // ←/A и →/D меняются ролями — `zoomBody.arrows`).
             //
             // ⚠️ Esc назван здесь ПОИМЁННО. У `Popup` его закрывал
             // `closePolicy`, у окна такого свойства нет вовсе: пока строки
@@ -1531,11 +1585,14 @@ Item {
                 switch (event.key) {
                 case Qt.Key_Left:
                 case Qt.Key_A:
-                    carousel.step(-1);
+                    carousel.step(zoomBody.arrows.leftStep);
                     event.accepted = true;
                     break;
                 case Qt.Key_Right:
                 case Qt.Key_D:
+                    carousel.step(zoomBody.arrows.rightStep);
+                    event.accepted = true;
+                    break;
                 case Qt.Key_Space:
                     carousel.step(1);
                     event.accepted = true;
@@ -1575,9 +1632,9 @@ Item {
                 pal: root.pal
                 tone: root.pal.zoom_arrow_tone
                 font.pointSize: root.m.zoomArrowPointSize
-                text: "❮"
+                text: zoomBody.arrows.previous
                 ToolTip.visible: zoomPrev.hovered
-                ToolTip.text: root.carouselTexts.zoomPrevTooltip
+                ToolTip.text: zoomBody.arrows.keyHint(root.carouselTexts.zoomPrevTooltip)
                 onClicked: carousel.step(-1)
             }
 
@@ -1593,9 +1650,9 @@ Item {
                 pal: root.pal
                 tone: root.pal.zoom_arrow_tone
                 font.pointSize: root.m.zoomArrowPointSize
-                text: "❯"
+                text: zoomBody.arrows.next
                 ToolTip.visible: zoomNext.hovered
-                ToolTip.text: root.carouselTexts.zoomNextTooltip
+                ToolTip.text: zoomBody.arrows.keyHint(root.carouselTexts.zoomNextTooltip)
                 onClicked: carousel.step(1)
             }
 
@@ -1616,11 +1673,11 @@ Item {
                 onClicked: zoom.hideZoom()
             }
 
-            Text {
+            RexonText {
                 anchors.bottom: parent.bottom
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottomMargin: root.m.zoomHintPadding
-                text: page.zoomHint(root.slide, carousel.count)
+                text: zoomBody.arrows.keyHint(page.zoomHint(root.slide, carousel.count))
                 color: root.pal.zoom_hint
             }
         }

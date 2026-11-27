@@ -31,7 +31,9 @@ CheckBox {
     indicator: Rectangle {
         implicitWidth: 20
         implicitHeight: 20
-        x: control.leftPadding
+        // Квадрат — в начале строки: слева, при языке справа налево справа.
+        x: control.mirrored ? control.width - width - control.rightPadding
+                            : control.leftPadding
         y: control.topPadding + (control.availableHeight - height) / 2
         radius: 3
         // Включённый флажок — сам знак «✅»: это уже зелёный квадрат с
@@ -46,7 +48,7 @@ CheckBox {
 
         // Сама галочка: знак шрифта, а не картинка — иначе понадобился бы
         // внешний файл, а страница обязана оставаться самодостаточной.
-        Text {
+        RexonText {
             anchors.centerIn: parent
             visible: control.checked
             text: "✅"
@@ -68,8 +70,10 @@ CheckBox {
         }
     }
 
-    contentItem: Text {
-        leftPadding: control.indicator.width + control.spacing
+    // Место под квадрат — с той стороны, где он стоит.
+    contentItem: RexonText {
+        leftPadding: control.mirrored ? 0 : control.indicator.width + control.spacing
+        rightPadding: control.mirrored ? control.indicator.width + control.spacing : 0
         text: control.text
         color: control.colText
         font: control.font

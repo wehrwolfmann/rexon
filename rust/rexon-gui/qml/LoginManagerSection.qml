@@ -218,12 +218,13 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: (section.sty.group ? section.sty.group.marginH : 12) + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: (section.sty.group ? section.sty.group.marginH : 12) + section.border.width
         y: (section.sty.group ? section.sty.group.marginV : 10) + section.border.width
-        width: parent.width - 2 * x
         spacing: section.sty.group ? section.sty.group.spacing : 8
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Login manager")
             color: section.pal.text_primary
@@ -232,14 +233,14 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "The program that shows the sign-in screen when the computer starts. A new default one appears after a restart; your current session isn't interrupted.")
             color: section.pal.text_secondary
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: text !== ""
             text: section.st.note || ""
@@ -253,7 +254,7 @@ Rectangle {
             visible: section.sessionOffer !== null
             spacing: 10
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: section.sessionOffer ? section.sessionOffer.text : ""
                 color: section.pal.state_warn
@@ -286,9 +287,10 @@ Rectangle {
 
                 RowLayout {
                     id: rowLayout
-                    x: 12
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 12
                     y: 8
-                    width: parent.width - 24
                     spacing: 10
 
                     ColumnLayout {
@@ -299,21 +301,21 @@ Rectangle {
                             Layout.fillWidth: true
                             spacing: 8
 
-                            Text {
+                            RexonText {
                                 text: row.modelData.label
                                 color: section.pal.text_primary
                                 font.bold: true
                             }
 
                             // «Основной» — метка, а не кнопка.
-                            Text {
+                            RexonText {
                                 visible: row.modelData.active === true
                                 text: qsTranslate("rexon", "Default", "login manager")
                                 color: section.pal.accent
                                 font.bold: true
                             }
 
-                            Text {
+                            RexonText {
                                 visible: row.modelData.running === true && row.modelData.active !== true
                                 text: qsTranslate("rexon", "Running now")
                                 color: section.pal.text_secondary
@@ -322,7 +324,7 @@ Rectangle {
                             Item { Layout.fillWidth: true }
                         }
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             visible: text !== ""
                             text: row.modelData.reason || ""
@@ -334,7 +336,7 @@ Rectangle {
                         Repeater {
                             model: row.modelData.warnings || []
 
-                            delegate: Text {
+                            delegate: RexonText {
                                 required property string modelData
                                 Layout.fillWidth: true
                                 text: "• " + modelData
@@ -344,7 +346,7 @@ Rectangle {
                         }
                     }
 
-                    Text {
+                    RexonText {
                         visible: greeterCombo.visible
                         text: qsTranslate("rexon", "Greeter:")
                         color: section.pal.text_secondary
@@ -380,7 +382,7 @@ Rectangle {
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: text !== ""
             text: section.st.pending || ""
@@ -388,7 +390,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: text !== ""
             text: section.shownMessage()
@@ -398,7 +400,7 @@ Rectangle {
 
         // «Как вернуть» — текст, который помощник оставил для консоли
         // (`/etc/rexon/previous-display-manager`). Выделяется и копируется.
-        Text {
+        RexonText {
             Layout.fillWidth: true
             Layout.topMargin: 4
             visible: rollbackText.text !== ""
@@ -418,6 +420,9 @@ Rectangle {
             color: section.pal.text_secondary
             selectionColor: section.pal.accent
             wrapMode: TextEdit.Wrap
+            // Начало строки: без явного выравнивания поле берёт его из самого
+            // текста, а явное `AlignLeft` зеркалирование переворачивает.
+            horizontalAlignment: TextEdit.AlignLeft
         }
 
         // ── Фон и оформление экрана входа (SDDM, Plasma Login Manager) ───
@@ -435,7 +440,7 @@ Rectangle {
                 color: section.pal.border
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: section.greeter ? section.greeter.title : ""
                 color: section.pal.text_primary
@@ -445,7 +450,7 @@ Rectangle {
             }
 
             // Тема — только у SDDM: у Plasma Login Manager тем нет.
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: text !== ""
                 text: section.greeter ? section.greeter.theme : ""
@@ -453,7 +458,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: text !== ""
                 text: section.greeter ? section.greeter.blocked : ""
@@ -488,7 +493,7 @@ Rectangle {
                                 ? "file://" + section.greeter.background.image : ""
                     }
 
-                    Text {
+                    RexonText {
                         anchors.centerIn: parent
                         visible: greeterPreview.status !== Image.Ready
                         text: qsTranslate("rexon", "No picture")
@@ -500,7 +505,7 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 6
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         visible: text !== ""
                         text: section.greeter ? (section.greeter.background.state || section.greeter.background.note) : ""
@@ -594,7 +599,7 @@ Rectangle {
             }
 
             // Почему превью нет (запертая кнопка подсказку не покажет).
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 visible: text !== "" && !section.previewRunning
                 text: section.greeter && !section.greeter.preview.available ? section.greeter.preview.note : ""
@@ -602,7 +607,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 objectName: "sddmGreeterMessage"
                 Layout.fillWidth: true
                 visible: text !== ""
@@ -667,7 +672,7 @@ Rectangle {
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: confirmDialog.heading
                 color: section.pal.text_primary
@@ -684,6 +689,9 @@ Rectangle {
                 color: section.pal.text_primary
                 selectionColor: section.pal.accent
                 wrapMode: TextEdit.Wrap
+                // Начало строки: без явного выравнивания поле берёт его из самого
+                // текста, а явное `AlignLeft` зеркалирование переворачивает.
+                horizontalAlignment: TextEdit.AlignLeft
             }
 
             RowLayout {

@@ -75,7 +75,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         Layout.topMargin: 4
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: box.t.title || ""
             color: box.colHint
@@ -97,7 +97,7 @@ ColumnLayout {
         }
     }
 
-    Text {
+    RexonText {
         Layout.fillWidth: true
         visible: box.view.available === false
         text: box.view.reason || ""
@@ -112,14 +112,20 @@ ColumnLayout {
         spacing: 6
 
         // ── Положение и размер ────────────────────────────────────────
-        Text { text: box.t.position || ""; color: box.colText; font.bold: true }
+        RexonText { text: box.t.position || ""; color: box.colText; font.bold: true }
 
         RowLayout {
             spacing: 16
             Grid {
+                id: alignmentGrid
                 objectName: "conkyAlignmentGrid"
                 columns: 3
                 spacing: 2
+                // Физическая зона: сетка 3×3 — углы и края экрана, где встанет
+                // виджет (у кнопок стрелки ↖ ↑ ↗). Левый верхний угол экрана —
+                // левый при любом языке, поэтому сетка не зеркалится.
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
                 Repeater {
                     model: box.view.alignments || []
                     delegate: RexonButton {
@@ -155,7 +161,7 @@ ColumnLayout {
                         id: numRow
                         required property var modelData
                         spacing: 6
-                        Text {
+                        RexonText {
                             text: numRow.modelData.label
                             color: box.colText
                             Layout.preferredWidth: 150
@@ -182,7 +188,7 @@ ColumnLayout {
         }
 
         // ── Фон ───────────────────────────────────────────────────────
-        Text { text: box.t.background || ""; color: box.colText; font.bold: true; Layout.topMargin: 4 }
+        RexonText { text: box.t.background || ""; color: box.colText; font.bold: true; Layout.topMargin: 4 }
 
         RowLayout {
             spacing: 12
@@ -194,7 +200,7 @@ ColumnLayout {
                 checked: box.field("bg_none").value === true
                 onToggled: box.set("bg_none", checked)
             }
-            Text { text: box.t.bg_opacity || ""; color: box.colText }
+            RexonText { text: box.t.bg_opacity || ""; color: box.colText }
             RexonSlider {
                 id: opacitySlider
                 objectName: "conkyBgOpacity"
@@ -207,12 +213,12 @@ ColumnLayout {
                 value: box.field("bg_opacity").value
                 onMoved: opacityTimer.restart()
             }
-            Text { text: Math.round(opacitySlider.value) + " %"; color: box.colHint }
+            RexonText { text: Math.round(opacitySlider.value) + " %"; color: box.colHint }
         }
 
         RowLayout {
             spacing: 8
-            Text { text: box.t.bg_colour || ""; color: box.colText }
+            RexonText { text: box.t.bg_colour || ""; color: box.colText }
             Rectangle {
                 Layout.preferredWidth: 22
                 Layout.preferredHeight: 22
@@ -235,7 +241,7 @@ ColumnLayout {
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (box.view.compositor_note || "") !== ""
             text: box.view.compositor_note || ""
@@ -244,7 +250,7 @@ ColumnLayout {
         }
 
         // ── Окно и экран ──────────────────────────────────────────────
-        Text { text: box.t.window || ""; color: box.colText; font.bold: true; Layout.topMargin: 4 }
+        RexonText { text: box.t.window || ""; color: box.colText; font.bold: true; Layout.topMargin: 4 }
 
         RexonCheckBox {
             objectName: "conkyWindowPreset"
@@ -257,7 +263,7 @@ ColumnLayout {
             onToggled: box.set("window_preset", checked ? true : null)
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (box.view.preset_note || "") !== ""
             text: box.view.preset_note || ""
@@ -268,7 +274,7 @@ ColumnLayout {
         RowLayout {
             visible: (box.view.monitors || []).length > 1
             spacing: 8
-            Text { text: box.t.screen || ""; color: box.colText }
+            RexonText { text: box.t.screen || ""; color: box.colText }
             RexonComboBox {
                 objectName: "conkyScreen"
                 pal: box.pal
@@ -280,7 +286,7 @@ ColumnLayout {
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (box.view.monitor_note || "") !== ""
             text: box.view.monitor_note || ""
@@ -290,7 +296,7 @@ ColumnLayout {
 
         RowLayout {
             spacing: 8
-            Text { text: box.t.update_interval || ""; color: box.colText }
+            RexonText { text: box.t.update_interval || ""; color: box.colText }
             RexonTextField {
                 objectName: "conkyUpdateInterval"
                 pal: box.pal
@@ -322,7 +328,7 @@ ColumnLayout {
                 id: netRow
                 required property var modelData
                 spacing: 8
-                Text { text: netRow.modelData.label; color: box.colText }
+                RexonText { text: netRow.modelData.label; color: box.colText }
                 RexonComboBox {
                     objectName: "conkyNet_" + netRow.modelData.from
                     pal: box.pal
@@ -335,7 +341,7 @@ ColumnLayout {
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (box.view.nets || []).length > 0
             text: box.t.net_note || ""

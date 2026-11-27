@@ -6254,6 +6254,7 @@ pub fn font_group_export_status(group: &str, dest: &str, result: &Result<usize, 
     match result {
         Ok(n) => crate::i18n::fill(
             // TRANSLATORS: %n is the number of font files, %1 the name of a font group, %2 the archive path.
+            // Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             &ntr("📦 Group %1 exported: %n font file → %2", "📦 Group %1 exported: %n font files → %2", *n as u64),
             &[&group, &dest],
         ),
@@ -6931,6 +6932,7 @@ pub const TEXTS: &[(&str, &str)] = &[
     // файловый менеджер
     ("fm.installed", n_("✅ installed")),
     ("fm.missing", n_("❌ not installed")),
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     ("fm.auto_hint", n_("← follows the desktop")),
     (
         "fm.wm_note",
@@ -7190,6 +7192,7 @@ pub const TEXTS: &[(&str, &str)] = &[
     (
         "amb.volume_set",
         // TRANSLATORS: %1 is a sound name, %2 is the volume in percent.
+        // Also: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         n_("🔊 Volume of “%1” → %2%"),
     ),
     ("amb.not_playing", n_("⚠️ This sound is no longer playing")),
@@ -7209,6 +7212,7 @@ pub const TEXTS: &[(&str, &str)] = &[
     ("snd.test_label", n_("<b>Sound test:</b>")),
     (
         "snd.themes_hint",
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         n_("💡 Not many themes? There are more in Appearance → Sounds."),
     ),
     ("snd.no_events", n_("This theme has no sounds to test")),
@@ -7332,6 +7336,15 @@ pub const TEXTS: &[(&str, &str)] = &[
     // (правило #13). Смысл тот же, слова человеческие.
     ("prot.snapshot_error", n_("⚠️ Could not remember the choice: %1")),
     ("prot.restore_ok", n_("✅ Default apps restored")),
+    // цвета терминала после смены темы (`terminal_guard`)
+    ("prot.terminal_colors", n_("Don't let themes spoil terminal colors  (recommended)")),
+    (
+        "prot.terminal_colors_tip",
+        n_("Some terminals take their text and background colors from the theme, and a dark \
+            theme can leave them dark gray on black. After a theme, color scheme or accent \
+            changes, Rexon gives such terminals readable colors of their own. Colors you \
+            picked yourself are left alone, and “Return as It Was” brings the old ones back."),
+    ),
     // панель Plasma
     ("plasma.backup_title", n_("<b>Save the current panel layout</b>")),
     (

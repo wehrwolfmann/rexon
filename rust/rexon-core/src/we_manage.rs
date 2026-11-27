@@ -956,9 +956,12 @@ pub fn apply_source_list(
         return Ok(out);
     };
     if let Some(pb::response::Payload::SourceList(sl)) = rsp.payload {
+        // Границы вкладки WE: источник библиотек, у которого только скрытые
+        // типы (папки glTF), в список «Добавить библиотеку» не попадает.
         data.sources = sl
             .sources
             .into_iter()
+            .filter(|s| we_query::we_tab_keeps_plugin(&s.types))
             .map(|s| {
                 let settings: Vec<Value> = s
                     .settings
@@ -970,7 +973,7 @@ pub fn apply_source_list(
                     "version": s.version,
                     "libraryLabel": s.library_label,
                     "libraryHint": s.library_hint,
-                    "types": s.types,
+                    "types": we_query::we_tab_types(s.types),
                     "pluginId": s.plugin_id,
                     "settings": settings,
                 })
@@ -1514,6 +1517,32 @@ mod tests {
         apply_source_list(&mut st, &mut data, &frame(payload)).expect("кадр разобран");
         assert_eq!(data.sources[0]["pluginId"], "org.waywallen.wallhaven");
         assert_eq!(data.sources[0]["settings"][0]["key"], "api_key");
+    }
+
+    /// Границы вкладки WE: источник только с glTF в «Добавить библиотеку»
+    /// не попадает, у смешанного вычёркивается сам тип, источник без типов
+    /// остаётся.
+    #[test]
+    fn source_list_hides_gltf_only_sources() {
+        let src = |name: &str, types: &[&str]| pb::SourcePluginInfo {
+            name: name.into(),
+            types: types.iter().map(|t| t.to_string()).collect(),
+            ..Default::default()
+        };
+        let payload = pb::response::Payload::SourceList(pb::SourceListResponse {
+            sources: vec![
+                src("image", &["image"]),
+                src("gltf", &["gltf"]),
+                src("mixed", &["video", "gltf"]),
+                src("untyped", &[]),
+            ],
+        });
+        let mut st = QueryState::default();
+        let mut data = SourceListData::default();
+        apply_source_list(&mut st, &mut data, &frame(payload)).expect("кадр разобран");
+        let names: Vec<&str> = data.sources.iter().map(|s| s["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["image", "mixed", "untyped"]);
+        assert_eq!(data.sources[1]["types"], serde_json::json!(["video"]));
     }
 
     #[test]

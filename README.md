@@ -1,4 +1,4 @@
-English | [Русский](README.ru.md) | [Deutsch](README.de.md)
+English | [Русский](README.ru.md) | [Deutsch](README.de.md) | [简体中文](README.zh-CN.md)
 
 # Rexon
 
@@ -25,6 +25,12 @@ and test platform is Arch Linux / CachyOS.
     <td><img src=".github/screenshots/compare.png" alt="Side-by-side comparison of desktop environments"></td>
   </tr>
 </table>
+
+## User guide
+
+A step-by-step guide to every tab — Desktops, Appearance, Extensions,
+Wallpaper Engine, Steam and Settings — in English, Russian and German:
+[guide/](guide/README.md).
 
 ## Features
 
@@ -66,7 +72,15 @@ and test platform is Arch Linux / CachyOS.
   says honestly what the compositor allows there.
 - Backups of desktop settings and an emergency "Recover desktop appearance" menu
   entry (KDE) for when a theme breaks the desktop.
-- Extensions: GNOME Shell and Cinnamon extensions, and Rexon's own `.rxn` packages.
+- GNOME Shell and Cinnamon extensions.
+
+**Extensions**
+
+- Rexon's own `.rxn` packages (themes, wallpaper packs, fonts, desktop tools and
+  plugins): install from a file or by dragging it into the window, turn on and
+  off, remove.
+- Windows themes (`.themepack`, `.msstyles`), cursors and icon packs are
+  converted for Linux when you install them.
 
 **Live wallpapers**
 
@@ -84,6 +98,13 @@ and test platform is Arch Linux / CachyOS.
 - A startup movie after login, like on the Steam Deck, chosen from the movies in
   your Steam library.
 - Steam profile backgrounds you own, as wallpapers.
+
+**Settings**
+
+- Interface language and skin, tray icon, a wallpaper library with blur and
+  ambient sounds, event sounds and system fonts.
+- Saved copies of the KDE Plasma panel, the default-app protection switch and
+  import of Windows themes.
 
 **System safety**
 
@@ -304,8 +325,9 @@ the install and uninstall scripts of `.rxn` extension packages of the
 - **Login screen failure:** while Rexon is installed, every login manager has a
   systemd `OnFailure=` drop-in (`rexon-login-rescue`) that shows a plain-text
   explanation on the console instead of a black screen.
-- **Appearance:** desktop settings are backed up before changes (Settings →
-  Desktop backups). KDE has an emergency "Recover desktop appearance" menu entry that
+- **Appearance:** what Rexon changes can be undone with "Put Back as It Was", and the
+  KDE panel layout can be saved and restored in Desktops → Tools ("Save Panel" /
+  "Restore Panel"). KDE has an emergency "Recover desktop appearance" menu entry that
   works even if the Rexon window doesn't start.
 - **"Like a distribution" looks** remember what they changed and can be reverted.
 - **Login screen and boot splash** themes can be reset to the distribution default.

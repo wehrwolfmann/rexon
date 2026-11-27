@@ -40,6 +40,19 @@ TextField {
     readonly property color colText: control.pal ? control.pal.text_primary : "#ffffff"
     readonly property color colHint: control.pal ? control.pal.text_secondary : "#8f98a0"
 
+    // ── Начало строки при языке справа налево ────────────────────────────
+    //
+    // Без явного выравнивания поле берёт его из САМОГО текста, а пустое — из
+    // направления ввода, но не из зеркалирования окна. Подсказка
+    // (`placeholderText`) в Qt Quick Controls — отдельный `Text`, который
+    // повторяет выравнивание поля, только если оно задано явно; иначе и она
+    // выравнивается по своей строке. Итог при `-reverse`: русская подсказка
+    // стояла слева. Явное `AlignLeft` зеркалирование переворачивает
+    // (`effectiveHorizontalAlignment` — вправо) — и у вводимого текста, и у
+    // подсказки; при языке слева направо всё остаётся как было. Отступы
+    // слева и справа равны, поэтому место текста перекладывать не нужно.
+    horizontalAlignment: TextInput.AlignLeft
+
     implicitHeight: 40
     leftPadding: 10
     rightPadding: 10

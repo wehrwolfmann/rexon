@@ -157,7 +157,7 @@ pub mod qobject {
                     READ = page_next_text, CONSTANT)]
         // Сортировки: [{label, key}, …] — таблица ядра, за время жизни
         // вкладки не меняется.
-        #[qproperty(QList_QVariant, sorts, READ = sorts, CONSTANT)]
+        #[qproperty(QList_QVariant, sorts, READ = sorts, NOTIFY = chrome_changed)]
 
         // ── Палитра действующего скина (правило #17) ────────────────────
         #[qproperty(QMap_QString_QVariant, palette, READ = palette,
@@ -1660,6 +1660,7 @@ use rexon_core::aur::AurPackage;
 use rexon_core::aur_install;
 use rexon_core::categories;
 use rexon_core::cinnamon_spices as cs;
+use rexon_core::wallhaven as wh;
 use rexon_core::models::{ThemeCategory, ThemeItem};
 use rexon_core::ocs;
 use rexon_core::ui_base;
@@ -1768,6 +1769,27 @@ pub struct SpiceExtra {
     /// Поставленную тему включает сама карточка («Применить») — так в
     /// разделах GTK и рамок окон (`cinnamon_spices::PART_SECTIONS`).
     pub apply: bool,
+}
+
+/// То, что знает о плитке сторонний магазин со своим сайтом (сейчас —
+/// Wallhaven): страница товара на сайте и своя строка оценки вместо
+/// «★ оценка ⬇ скачивания» KDE Store. Ключи строки ответа — `site*`.
+#[derive(Debug, Clone, Default)]
+pub struct SiteExtra {
+    pub page: String,
+    pub stats: String,
+    pub stats_tooltip: String,
+}
+
+impl SiteExtra {
+    fn from_row(raw: &Value) -> Option<Self> {
+        let page = raw.get("sitePage").and_then(Value::as_str).unwrap_or("");
+        if page.is_empty() {
+            return None;
+        }
+        let text = |k: &str| raw.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+        Some(SiteExtra { page: page.to_string(), stats: text("siteStats"), stats_tooltip: text("siteStatsTooltip") })
+    }
 }
 
 impl SpiceExtra {
@@ -2049,6 +2071,8 @@ pub struct AppearanceModelRust {
     removal: BTreeMap<String, RemovalUi>,
     /// Плитки Cinnamon Spices: номер плитки → сведения сайта ([`SpiceExtra`]).
     spices: BTreeMap<String, SpiceExtra>,
+    /// Плитки сторонних магазинов со своим сайтом (Wallhaven) → [`SiteExtra`].
+    site: BTreeMap<String, SiteExtra>,
     /// Всего работ у раздела по ответу магазина.
     total: i64,
     /// Есть ли что за страницей — у потока магазина с добором
@@ -2087,6 +2111,10 @@ pub struct AppearanceModelRust {
     detail: Option<Box<ThemeItem>>,
     /// Показывать оригинал описания вместо перевода.
     detail_show_original: bool,
+    /// Перевод описания идёт дольше порога — под текстом «Перевожу
+    /// описание…». Ставит и снимает сигнал `descriptionReady` (поле
+    /// `pending`), сбрасывает открытие другого товара.
+    detail_translating: bool,
     /// Итог последнего действия под кнопками.
     detail_status: String,
     /// Идёт долгое действие над товаром.
@@ -2199,6 +2227,7 @@ impl Default for AppearanceModelRust {
             favorites: BTreeSet::new(),
             removal: BTreeMap::new(),
             spices: BTreeMap::new(),
+            site: BTreeMap::new(),
             total: 0,
             has_more: None,
             grid_cols: 0,
@@ -2213,6 +2242,7 @@ impl Default for AppearanceModelRust {
             plm_can_open: false,
             detail: None,
             detail_show_original: false,
+            detail_translating: false,
             detail_status: String::new(),
             action_busy: false,
             action_kind: String::new(),
@@ -2402,7 +2432,7 @@ impl qobject::AppearanceModel {
 
     fn sorts(&self) -> QList<QVariant> {
         let mut out = QList::<QVariant>::default();
-        for (label, key) in ap::SORTS {
+        for (label, key) in self.rust().view.sorts() {
             out.append(QVariant::from(&vmap(vec![
                 ("label", qstr(&ap::sort_label(label))),
                 ("key", qstr(key)),
@@ -2843,6 +2873,16 @@ impl qobject::AppearanceModel {
         if let Some(v) = self.spice_role(item, local, name) {
             return v;
         }
+        if !local {
+            if let Some(x) = self.rust().site.get(&item.id) {
+                match name {
+                    "stats" => return qstr(&x.stats),
+                    "statsTooltip" => return qstr(&x.stats_tooltip),
+                    "starGlyph" => return qstr(""),
+                    _ => {}
+                }
+            }
+        }
         match name {
             "kind" => qstr(if local { "local" } else { "ocs" }),
             "itemId" => qstr(&item.id),
@@ -2953,9 +2993,18 @@ impl qobject::AppearanceModel {
         })
     }
 
-    /// Страница плитки Cinnamon Spices на сайте (пусто — плитка не оттуда).
+    /// Страница плитки на сайте её магазина — Cinnamon Spices или
+    /// Wallhaven (пусто — плитка не оттуда, у KDE Store адрес свой).
     fn spice_page(&self, item_id: &str) -> Option<String> {
-        self.rust().spices.get(item_id).map(|x| x.page.clone()).filter(|p| !p.is_empty())
+        let me = self.rust();
+        me.spices
+            .get(item_id)
+            .map(|x| x.page.clone())
+            .or_else(|| me.site.get(item_id).map(|x| x.page.clone()))
+            // Карточка Wallhaven из избранного приходит без строки ответа —
+            // адрес собирается из самого id.
+            .or_else(|| wh::parse_item_id(item_id).map(wh::page_url))
+            .filter(|p| !p.is_empty())
     }
 
     /// Что показать на плитке пакета `name` по очереди установок AUR.
@@ -3483,8 +3532,9 @@ impl qobject::AppearanceModel {
         {
             let mut me = self.as_mut().rust_mut();
             me.requests.forget_page_prefetches();
-            // «Обновить» у Cinnamon Spices — заново спросить сайт, а не кеш.
-            me.site_force = me.view.spices_mode();
+            // «Обновить» у Cinnamon Spices и Wallhaven — заново спросить
+            // сайт, а не кеш.
+            me.site_force = me.view.own_site_store();
             // «Обновить» у сетки установленного — заново прочитать диск и
             // журнал установленных, а не отдать прежний скан из кеша: иначе
             // тема, положенная мимо Rexon, появлялась только после перезапуска.
@@ -3619,6 +3669,14 @@ impl qobject::AppearanceModel {
                     }
                     if let Some(ui) = RemovalUi::from_row(raw) {
                         self.as_mut().rust_mut().removal.insert(item.id.clone(), ui);
+                    }
+                    match SiteExtra::from_row(raw) {
+                        Some(x) => {
+                            self.as_mut().rust_mut().site.insert(item.id.clone(), x);
+                        }
+                        None => {
+                            self.as_mut().rust_mut().site.remove(&item.id);
+                        }
                     }
                     match SpiceExtra::from_row(raw) {
                         Some(x) => {
@@ -3897,6 +3955,8 @@ fn store_kind(view: &ap::CatalogView) -> &'static str {
         "both"
     } else if view.spices_mode() {
         "spices"
+    } else if view.wallhaven_mode() {
+        "wallhaven"
     } else {
         "ocs"
     }
@@ -4087,6 +4147,8 @@ impl qobject::AppearanceModel {
                 let score = self.rust().spices.get(&it.id).map_or(0, |x| x.score);
                 QString::from(&cs::detail_stars(score))
             }
+            // Оценки у Wallhaven нет — только «избранное» и просмотры.
+            Some(it) if wh::is_item_id(&it.id) => QString::default(),
             Some(it) if it.local_kind.is_none() => {
                 QString::from(&ap::detail_stars_label(it.rating_stars()))
             }
@@ -4099,8 +4161,9 @@ impl qobject::AppearanceModel {
             return QString::default();
         }
         match self.rust().detail.as_ref() {
-            // Чисел скачиваний у Cinnamon Spices нет — строку не показываем.
-            Some(it) if it.id.starts_with(cs::ID_PREFIX) => QString::default(),
+            // Чисел скачиваний у Cinnamon Spices и Wallhaven нет — строку
+            // не показываем.
+            Some(it) if it.id.starts_with(cs::ID_PREFIX) || wh::is_item_id(&it.id) => QString::default(),
             Some(it) if it.local_kind.is_none() => {
                 QString::from(&ap::detail_downloads_label(it.downloads))
             }
@@ -4142,7 +4205,15 @@ impl qobject::AppearanceModel {
             .get("accent")
             .cloned()
             .unwrap_or_default();
-        QString::from(&ap::description_html(
+        // Пока перевод в пути (и дольше порога), под оригиналом — пометка
+        // «Перевожу описание…»: иначе английский текст выглядел так, будто
+        // переводить его никто не собирается (06.11, тема 2380824).
+        let note = if me.detail_translating && !was_translated {
+            ap::description_translating_html()
+        } else {
+            String::new()
+        };
+        QString::from(&(ap::description_html(
             &item.description,
             // ⚠️ ВИДИМОЕ описание (`display_description` — перевод если есть,
             // иначе оригинал), а не поле перевода. Здесь стояло
@@ -4157,7 +4228,7 @@ impl qobject::AppearanceModel {
             was_translated,
             me.detail_show_original,
             &accent,
-        ))
+        ) + &note))
     }
 
     fn detail_button(&self) -> ap::InstallButton {
@@ -4474,6 +4545,7 @@ impl qobject::AppearanceModel {
                 })
             });
             me.detail_show_original = false;
+            me.detail_translating = false;
             // Итог прошлого товара к новому не относится — гасим (дефект
             // оригинала: сообщение висело на чужой панели). Полоса хода и
             // запертые кнопки — оттуда же.
@@ -4576,6 +4648,15 @@ impl qobject::AppearanceModel {
             if item.preview_local.is_empty() {
                 item.preview_local = shown.clone();
             }
+            // Перевод описания с плитки мог прийти РАНЬШЕ деталей (он идёт
+            // своим потоком, не дожидаясь магазина). Описание то же — перевод
+            // сохраняется, иначе текст мигнул бы английским до второго
+            // (кешированного) ответа.
+            if let Some(old) = me.detail.as_ref() {
+                if item.description_translated.is_empty() && old.description == item.description {
+                    item.description_translated = old.description_translated.clone();
+                }
+            }
             me.detail = Some(Box::new(item));
             shown
         };
@@ -4608,8 +4689,9 @@ impl qobject::AppearanceModel {
         }
         self.as_mut().detail_changed();
         self.as_mut().sync_frame();
-        // У Cinnamon Spices комментариев для программ нет.
-        if !local && !id.is_empty() && !id.starts_with(cs::ID_PREFIX) {
+        // У Cinnamon Spices комментариев для программ нет, у Wallhaven —
+        // своего API для них.
+        if !local && !id.is_empty() && !id.starts_with(cs::ID_PREFIX) && !wh::is_item_id(&id) {
             self.as_mut()
                 .comments_wanted(QString::from(&id), QString::from("0"));
         }
@@ -4621,10 +4703,15 @@ impl qobject::AppearanceModel {
         };
         let id = v.get("itemId").and_then(Value::as_str).unwrap_or_default();
         let translated = v.get("translated").and_then(Value::as_str).unwrap_or_default();
-        // Пустой перевод — не перевод: он бы только зажёг ссылку «показать
-        // оригинал» над пустым местом (`description_html` держится за
-        // `was_translated`).
-        if id.is_empty() || translated.trim().is_empty() {
+        // Исходник, с которого считался перевод: панель могла за это время
+        // получить другое описание (свежие детали, паспорт AUR), и перевод
+        // чужого текста ей не нужен.
+        let source = v.get("source").and_then(Value::as_str);
+        // `pending` — только пометка «перевожу»: `true` — перевод идёт дольше
+        // порога, `false` — работа кончилась без перевода (ядро решило «не
+        // переводить» или модели нет).
+        let pending = v.get("pending").and_then(Value::as_bool);
+        if id.is_empty() {
             return;
         }
         {
@@ -4633,9 +4720,27 @@ impl qobject::AppearanceModel {
             // отбрасываем — ровно как в `detail_answer`. Сторож у ядра свой, но
             // между его проверкой и этой строкой очередь окна успевает
             // повернуться, и последнее слово о том, что открыто, — за страницей.
-            match me.detail.as_mut() {
-                Some(open) if open.id == id => open.description_translated = translated.to_string(),
-                _ => return,
+            let me = &mut *me;
+            let Some(open) = me.detail.as_mut().filter(|o| o.id == id) else {
+                return;
+            };
+            if source.is_some_and(|s| s != open.description) {
+                return;
+            }
+            if let Some(pending) = pending {
+                if me.detail_translating == pending {
+                    return;
+                }
+                me.detail_translating = pending;
+            } else {
+                // Пустой перевод — не перевод: он бы только зажёг ссылку
+                // «показать оригинал» над пустым местом (`description_html`
+                // держится за `was_translated`).
+                if translated.trim().is_empty() {
+                    return;
+                }
+                open.description_translated = translated.to_string();
+                me.detail_translating = false;
             }
             // Переключатель «перевод ⇄ оригинал» остаётся в том положении, в
             // каком его оставил человек: он мог нажать «показать оригинал» до
@@ -5413,7 +5518,7 @@ impl qobject::AppearanceModel {
             // листается по своему индексу — греть у них нечего.
             if me.view.is_local()
                 || me.view.aur_mode()
-                || me.view.spices_mode()
+                || me.view.own_site_store()
                 || me.total <= 0
                 || self.installed_only()
             {
@@ -6515,6 +6620,8 @@ impl qobject::AppearanceModel {
             "local"
         } else if me.detail.as_ref().is_some_and(|it| it.id.starts_with(cs::ID_PREFIX)) {
             "spices"
+        } else if me.detail.as_ref().is_some_and(|it| wh::is_item_id(&it.id)) {
+            "wallhaven"
         } else {
             "store"
         };

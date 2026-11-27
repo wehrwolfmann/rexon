@@ -108,13 +108,14 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         height: implicitHeight
         spacing: section.sty.group.spacing
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "MATE panel")
             color: section.pal.text_primary
@@ -123,7 +124,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Ready-made panel layouts: pick one and press “Apply”. The panel changes right away, without logging out.")
             color: section.pal.text_secondary
@@ -163,22 +164,23 @@ Rectangle {
 
                 ColumnLayout {
                     id: rowColumn
-                    x: 12
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 12
                     y: 8
-                    width: parent.width - 24
                     spacing: 2
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        Text {
+                        RexonText {
                             text: (row.chosen ? "◉ " : "○ ") + row.modelData.title
                             color: section.pal.text_primary
                             font.bold: true
                         }
 
-                        Text {
+                        RexonText {
                             visible: row.modelData.current === true
                             text: qsTranslate("rexon", "(current)")
                             color: section.pal.accent
@@ -187,7 +189,7 @@ Rectangle {
                         Item { Layout.fillWidth: true }
                     }
 
-                    Text {
+                    RexonText {
                         Layout.fillWidth: true
                         text: row.modelData.description
                         color: section.pal.text_secondary
@@ -197,7 +199,7 @@ Rectangle {
                     Repeater {
                         model: row.modelData.notes || []
 
-                        delegate: Text {
+                        delegate: RexonText {
                             required property string modelData
                             Layout.fillWidth: true
                             text: "• " + modelData
@@ -273,7 +275,7 @@ Rectangle {
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: confirmDialog.heading
                 color: section.pal.text_primary
@@ -282,7 +284,7 @@ Rectangle {
                 wrapMode: Text.WordWrap
             }
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 text: confirmDialog.question
                 color: section.pal.text_primary

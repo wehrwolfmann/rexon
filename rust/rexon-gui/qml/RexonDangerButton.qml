@@ -89,7 +89,7 @@ Button {
             font: control.font
         }
 
-        Text {
+        RexonText {
             id: label
             width: parent.width
             y: Math.round((parent.height - labelMetrics.height) / 2

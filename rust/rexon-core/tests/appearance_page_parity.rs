@@ -420,14 +420,14 @@ fn showcase_tiles_name_the_kind_of_item() {
     let _lang = i18n_pin::ru();
     let home = Path::new("/home/u");
     let item = |cat: i64| ThemeItem { id: "1".into(), category_id: cat, author: "Автор".into(), ..Default::default() };
-    assert_eq!(ap::store_item_kind_label(&home, &item(132)).as_deref(), Some("📁 Иконки"));
+    assert_eq!(ap::store_item_kind_label(&home, &item(132)).as_deref(), Some("📁 Значки"));
     assert_eq!(ap::store_item_kind_label(&home, &item(135)).as_deref(), Some("🎨 GTK-тема"));
     assert_eq!(ap::store_item_kind_label(&home, &item(107)).as_deref(), Some("🖱️ Курсор"));
     // Вид без строки скана — подпись раздела.
     assert!(ap::store_item_kind_label(&home, &item(299)).is_some());
     assert_eq!(ap::store_item_kind_label(&home, &item(0)), None);
     // Строка автора на плитке витрины: вид · автор; в разделе — как была.
-    assert_eq!(ap::showcase_author(&home, &item(132), true), "📁 Иконки · Автор");
+    assert_eq!(ap::showcase_author(&home, &item(132), true), "📁 Значки · Автор");
     assert_eq!(ap::showcase_author(&home, &item(132), false), "Автор");
 }
 
@@ -1907,10 +1907,10 @@ fn detail_labels_match_the_original() {
     );
     // Пустые поля — прочерк, версии просто нет.
     assert_eq!(ap::detail_meta_line("", "", "", ""), "— • — • обновлено — ");
-    assert_eq!(ap::detail_stars_label(4.35), "⭐ 4.3");
-    assert_eq!(ap::detail_stars_label(5.0), "⭐ 5.0"); // не «⭐ 5»
-    assert_eq!(ap::detail_stars_label(0.0), "⭐ 0.0");
-    assert!(ap::detail_downloads_label(1234).contains("скачиваний: 1.2K"));
+    assert_eq!(ap::detail_stars_label(4.35), "⭐ 4,3"); // разделитель — по языку (i18n::format_decimal)
+    assert_eq!(ap::detail_stars_label(5.0), "⭐ 5,0"); // не «⭐ 5»
+    assert_eq!(ap::detail_stars_label(0.0), "⭐ 0,0");
+    assert!(ap::detail_downloads_label(1234).contains("скачиваний: 1,2K"));
     assert_eq!(
         ap::detail_path_label("Глобальные темы", "~/.local/share/plasma"),
         "Категория: Глобальные темы\nПуть установки: ~/.local/share/plasma"
@@ -2241,12 +2241,12 @@ fn card_labels_match_the_original() {
     let nb = "\u{a0}";
     assert_eq!(
         ap::card_stats_line(4.4, 123456, "2026-07-29 03:00:00"),
-        format!("{nb}4.4{nb}{nb}⬇️ 123.5K{nb}{nb}📅 2026-07-29")
+        format!("{nb}4,4{nb}{nb}⬇️ 123,5K{nb}{nb}📅 2026-07-29")
     );
     // Даты нет — слот просто отсутствует, «—» вместо неё не рисуем.
     assert_eq!(
         ap::card_stats_line(5.0, 0, ""),
-        format!("{nb}5.0{nb}{nb}⬇️ 0")
+        format!("{nb}5,0{nb}{nb}⬇️ 0")
     );
     assert_eq!(
         ap::card_updated_tooltip("2026-07-29 03:00:00").unwrap(),
@@ -2299,13 +2299,13 @@ fn aur_card_labels_match_the_original() {
     // Стат-строка — те же слоты, что у плитки магазина.
     assert_eq!(
         ap::aur_stats_line(1234, 3.456, "2026-07-29"),
-        format!("{nb}1.2K{nb}{nb}📈 3.5{nb}{nb}📅 2026-07-29")
+        format!("{nb}1,2K{nb}{nb}📈 3,5{nb}{nb}📅 2026-07-29")
     );
     // Нулевая популярность и без даты — слоты не рисуются.
     assert_eq!(ap::aur_stats_line(7, 0.0, ""), format!("{nb}7"));
     assert_eq!(
         ap::aur_stats_tooltip(1234, 3.456, "2026-07-29"),
-        "👍 голосов: 1234 · 📈 популярность AUR 3.46 · обновлён 2026-07-29"
+        "👍 голосов: 1234 · 📈 популярность AUR 3,46 · обновлён 2026-07-29"
     );
     assert!(ap::aur_stats_tooltip(0, 0.0, "").contains("обновлён —"));
 }

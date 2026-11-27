@@ -18,6 +18,7 @@
 #include <QtCore/QSet>
 #include <QtCore/QUrl>
 #include <QtCore/QVariant>
+#include <QtGui/QFontDatabase>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPalette>
@@ -563,4 +564,21 @@ extern "C" void rexon_set_app_link_color(bool set, unsigned char r, unsigned cha
         palette.setColor(QPalette::LinkVisited, color);
     }
     QGuiApplication::setPalette(palette);
+}
+
+// Свой C++ здесь вынужденный: `cxx` не умеет назвать вложенное в класс
+// перечисление `QChar::Script` (генератор открывает `namespace QChar`, а это
+// класс — сборка падает, проверено 06.11.2026), а без этого типа статический
+// член `QFontDatabase` из моста не объявить. Решения тут нет — только
+// перевод нашего номера в номер Qt.
+extern "C" void rexon_add_script_fallback_font(unsigned char script, const char* family, std::size_t len)
+{
+    QChar::Script qtScript;
+    switch (script) {
+    case 0: qtScript = QChar::Script_Arabic; break;
+    case 1: qtScript = QChar::Script_Hebrew; break;
+    default: return;
+    }
+    QFontDatabase::addApplicationFallbackFontFamily(
+        qtScript, QString::fromUtf8(family, static_cast<qsizetype>(len)));
 }

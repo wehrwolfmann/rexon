@@ -800,8 +800,8 @@ pub fn text_qml_modules_wrong_qt(built: (u32, u32), running: (u32, u32)) -> Stri
 but the system now runs Qt {running}. They are not loaded, so the tab does not crash.\n\n\
 Update or reinstall Rexon so they are rebuilt for the new Qt version, then restart Rexon.",
     )
-    .replace("{built}", &format!("{}.{}", built.0, built.1))
-    .replace("{running}", &format!("{}.{}", running.0, running.1))
+    .replace("{built}", &crate::i18n::isolate(&format!("{}.{}", built.0, built.1)))
+    .replace("{running}", &crate::i18n::isolate(&format!("{}.{}", running.0, running.1)))
 }
 
 /// Текст заглушки, когда QML-плагины не собраны.

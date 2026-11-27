@@ -548,6 +548,12 @@ pub mod qobject {
         #[cxx_name = "restoreDefaults"]
         fn restore_defaults(self: &SettingsActions) -> QString;
 
+        /// Включить или выключить защиту цветов терминала от тем
+        /// (`terminal_guard`, ключ `settings.json`).
+        #[qinvokable]
+        #[cxx_name = "setTerminalColorsGuard"]
+        fn set_terminal_colors_guard(self: &SettingsActions, enabled: bool) -> QString;
+
         // ── Копии панели Plasma ──────────────────────────────────────────
 
         /// Снять копию панели Plasma.
@@ -1940,6 +1946,7 @@ fn protection_state() -> Value {
         },
         "status": qs::protection_status_text(remembered_count, &changed),
         "canRestore": !changed.is_empty(),
+        "terminalColors": rexon_core::terminal_guard::enabled(&rexon_core::utils::rexon_config_dir()),
     })
 }
 
@@ -4131,6 +4138,16 @@ impl qobject::SettingsActions {
             return QString::from(&t1("status.error", &e.to_string()));
         }
         QString::default()
+    }
+
+    fn set_terminal_colors_guard(&self, enabled: bool) -> QString {
+        let Ok(mut manager) = core_settings::SettingsManager::new() else {
+            return QString::from(&t1("status.error", &rexon_core::i18n::tr("settings are unavailable")));
+        };
+        match manager.set(rexon_core::terminal_guard::SETTING_KEY, serde_json::Value::from(enabled)) {
+            Ok(_) => QString::default(),
+            Err(e) => QString::from(&t1("status.error", &e.to_string())),
+        }
     }
 
     fn snapshot(&self) -> QString {

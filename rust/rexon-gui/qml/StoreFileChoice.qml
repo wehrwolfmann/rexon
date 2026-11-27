@@ -69,13 +69,13 @@ ColumnLayout {
     onFilesJsonChanged: block.selectedName = block.autoOf(block.parse(block.filesJson))
     Component.onCompleted: block.selectedName = block.autoOf(block.parse(block.filesJson))
 
-    Text {
+    RexonText {
         text: block.title
         color: block.colTextSecondary
         font.bold: true
     }
 
-    Text {
+    RexonText {
         Layout.fillWidth: true
         text: block.hint
         color: block.colTextSecondary
@@ -113,13 +113,13 @@ ColumnLayout {
                 anchors.rightMargin: 10
                 spacing: 8
 
-                Text {
+                RexonText {
                     text: row.picked ? "◉" : "○"
                     color: row.picked ? block.colAccent : block.colTextSecondary
                     font.pixelSize: 18
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: row.modelData.name
                     color: block.colText
@@ -127,14 +127,14 @@ ColumnLayout {
                     elide: Text.ElideMiddle
                 }
 
-                Text {
+                RexonText {
                     visible: row.modelData.meta !== ""
                     text: row.modelData.meta
                     color: block.colTextSecondary
                     textFormat: Text.PlainText
                 }
 
-                Text {
+                RexonText {
                     objectName: "storeFileMark"
                     visible: row.picked
                     text: block.willInstallText

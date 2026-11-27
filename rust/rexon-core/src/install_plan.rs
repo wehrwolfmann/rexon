@@ -320,6 +320,7 @@ pub fn failure_text(f: &Failure) -> String {
     match f {
         Failure::Text(text) => text.clone(),
         Failure::MakeDirs { path, err } => trf("couldn't create the folder %1: %2", &[path, err]),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         Failure::Copy { src, dest, err } => trf("couldn't copy %1 → %2: %3", &[src, dest, err]),
         Failure::Remove { path, err } => trf("couldn't remove %1: %2", &[path, err]),
         Failure::Symlink { link, err } => trf("couldn't create the link %1: %2", &[link, err]),

@@ -429,7 +429,8 @@ fn request_carries_every_property_and_no_pagination() {
     let req = pb::WallpaperListRequest::decode(&w::encode_list_request(&d)[..]).unwrap();
     assert_eq!(req.wp_type, "scene");
     assert_eq!(req.search_text, "закат");
-    assert_eq!(req.skip_types, vec!["video".to_string()]);
+    // Границы вкладки WE: скрытые типы (gltf) дописываются в кадр после выбора человека.
+    assert_eq!(req.skip_types, vec!["video".to_string(), "gltf".to_string()]);
     assert_eq!(req.filter_tags, vec!["природа".to_string()]);
     assert_eq!(req.skip_content_ratings, vec!["mature".to_string()]);
     assert_eq!(req.sorts.len(), 1);
@@ -1302,7 +1303,8 @@ fn list_request_is_selection() {
     assert_eq!(req.sorts, s.sorts);
     assert_eq!(req.search_text, s.search_text);
     assert_eq!(req.wp_type, s.wp_type);
-    assert_eq!(req.skip_types, s.skip_types);
+    // Единственное расхождение кадра с выборкой — скрытые типы вкладки WE.
+    assert_eq!(req.skip_types, rexon_core::we_query::we_tab_skip_types(&s.skip_types));
     assert_eq!(req.filter_tags, s.filter_tags);
     assert_eq!(req.skip_content_ratings, s.skip_content_ratings);
     assert_eq!(req.hidden_filter, s.hidden_filter);

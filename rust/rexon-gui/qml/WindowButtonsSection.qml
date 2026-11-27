@@ -154,7 +154,7 @@ Rectangle {
             Drag.hotSpot.x: width / 2
             Drag.hotSpot.y: height / 2
 
-            Text {
+            RexonText {
                 anchors.centerIn: parent
                 text: ghost.info.glyph
                 color: section.pal.text_primary
@@ -197,62 +197,6 @@ Rectangle {
         return (section.st[side] || []).map(id => ({ id: id, side: side }));
     }
 
-    /// Кнопка в макете заголовка.
-    Component {
-        id: titleSlot
-        Item {
-            id: slot
-            required property var modelData
-            required property int index
-            readonly property string side: slot.modelData.side
-            readonly property string bid: slot.modelData.id
-            readonly property var info: section.shelfInfo(slot.bid)
-            readonly property bool selected: section.selSide === slot.side && section.selIndex === slot.index
-            objectName: "titleButton_" + slot.side + "_" + slot.index
-            width: slot.bid === "spacer" ? 24 : 40
-            height: 40
-            activeFocusOnTab: true
-            opacity: section.dragFrom === slot.side && section.dragIndex === slot.index ? 0.25 : 1
-
-            Rectangle {
-                anchors.fill: parent
-                radius: 6
-                color: slot.bid === "spacer" ? "transparent" : section.pal.bg_card
-                border.color: slot.selected || slot.activeFocus ? section.pal.accent : section.pal.border
-                border.width: slot.selected || slot.activeFocus ? 2 : 1
-
-                Text {
-                    anchors.centerIn: parent
-                    text: slot.info.glyph
-                    color: section.pal.text_primary
-                    font.pointSize: 15
-                }
-            }
-
-            function pick() {
-                slot.forceActiveFocus();
-                section.select(slot.side, slot.index, slot.bid);
-            }
-
-            Keys.onReturnPressed: slot.pick()
-            Keys.onSpacePressed: slot.pick()
-            Keys.onLeftPressed: { slot.pick(); section.nudge("left"); section.refocus(); }
-            Keys.onRightPressed: { slot.pick(); section.nudge("right"); section.refocus(); }
-            Keys.onDeletePressed: { slot.pick(); section.nudge("shelf"); }
-
-            TapHandler {
-                onTapped: slot.pick()
-            }
-            DragHandler {
-                id: slotDrag
-                target: null
-                grabPermissions: PointerHandler.CanTakeOverFromAnything
-                onActiveChanged: slotDrag.active ? section.beginDrag(slot, slot.bid, slot.side, slot.index) : section.endDrag()
-                onActiveTranslationChanged: section.dragTo(slotDrag.activeTranslation.x, slotDrag.activeTranslation.y)
-            }
-        }
-    }
-
     /// Кнопка на полке: значок и подпись, как в сетке модуля KDE.
     Component {
         id: shelfCell
@@ -277,7 +221,7 @@ Rectangle {
                 border.color: cell.selected || cell.activeFocus ? section.pal.accent : section.pal.border
                 border.width: cell.selected || cell.activeFocus ? 2 : 1
 
-                Text {
+                RexonText {
                     anchors.centerIn: parent
                     text: cell.modelData.glyph
                     color: section.pal.text_primary
@@ -297,7 +241,7 @@ Rectangle {
                 }
             }
 
-            Text {
+            RexonText {
                 id: cellLabel
                 anchors.top: cellTile.bottom
                 anchors.topMargin: 4
@@ -359,13 +303,14 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         height: implicitHeight
         spacing: section.sty.group.spacing
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Window title bar buttons")
             color: section.pal.text_primary
@@ -374,7 +319,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.note || "") !== ""
             text: section.st.note || ""
@@ -387,7 +332,7 @@ Rectangle {
             visible: section.st.has_side === true
             spacing: 8
 
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 text: qsTranslate("rexon", "Buttons position:")
@@ -422,6 +367,71 @@ Rectangle {
             color: section.pal.bg_secondary
             border.color: titleDrop.containsDrag ? section.pal.accent : section.pal.border
             border.width: titleDrop.containsDrag ? 2 : 1
+
+            // Физическая зона: это раскладка кнопок в заголовках окон самой
+            // системы, а не строка нашего интерфейса. «Справа, как в Windows»
+            // значит правый край окна при любом языке, поэтому при языке
+            // справа налево ряды тут НЕ зеркалятся: левая группа слева,
+            // клавиша ← и «Левее» двигают кнопку к левому краю. Подпись
+            // «Заголовок окна» — по центру, ей сторона не нужна.
+            LayoutMirroring.enabled: false
+            LayoutMirroring.childrenInherit: true
+
+            /// Кнопка в макете заголовка.
+            Component {
+                id: titleSlot
+                Item {
+                    id: slot
+                    required property var modelData
+                    required property int index
+                    readonly property string side: slot.modelData.side
+                    readonly property string bid: slot.modelData.id
+                    readonly property var info: section.shelfInfo(slot.bid)
+                    readonly property bool selected: section.selSide === slot.side && section.selIndex === slot.index
+                    objectName: "titleButton_" + slot.side + "_" + slot.index
+                    width: slot.bid === "spacer" ? 24 : 40
+                    height: 40
+                    activeFocusOnTab: true
+                    opacity: section.dragFrom === slot.side && section.dragIndex === slot.index ? 0.25 : 1
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 6
+                        color: slot.bid === "spacer" ? "transparent" : section.pal.bg_card
+                        border.color: slot.selected || slot.activeFocus ? section.pal.accent : section.pal.border
+                        border.width: slot.selected || slot.activeFocus ? 2 : 1
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: slot.info.glyph
+                            color: section.pal.text_primary
+                            font.pointSize: 15
+                        }
+                    }
+
+                    function pick() {
+                        slot.forceActiveFocus();
+                        section.select(slot.side, slot.index, slot.bid);
+                    }
+
+                    Keys.onReturnPressed: slot.pick()
+                    Keys.onSpacePressed: slot.pick()
+                    Keys.onLeftPressed: { slot.pick(); section.nudge("left"); section.refocus(); }
+                    Keys.onRightPressed: { slot.pick(); section.nudge("right"); section.refocus(); }
+                    Keys.onDeletePressed: { slot.pick(); section.nudge("shelf"); }
+
+                    TapHandler {
+                        onTapped: slot.pick()
+                    }
+                    DragHandler {
+                        id: slotDrag
+                        target: null
+                        grabPermissions: PointerHandler.CanTakeOverFromAnything
+                        onActiveChanged: slotDrag.active ? section.beginDrag(slot, slot.bid, slot.side, slot.index) : section.endDrag()
+                        onActiveTranslationChanged: section.dragTo(slotDrag.activeTranslation.x, slotDrag.activeTranslation.y)
+                    }
+                }
+            }
 
             RowLayout {
                 id: titleRow
@@ -492,9 +502,10 @@ Rectangle {
 
             Flow {
                 id: shelfFlow
-                x: 12
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.margins: 12
                 y: 12
-                width: parent.width - 24
                 spacing: 8
                 opacity: section.draggingTitle ? 0.15 : 1
 
@@ -505,7 +516,7 @@ Rectangle {
                 }
             }
 
-            Text {
+            RexonText {
                 anchors.centerIn: parent
                 width: parent.width - 24
                 horizontalAlignment: Text.AlignHCenter
@@ -528,7 +539,7 @@ Rectangle {
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: section.st.drag === true
             opacity: section.dragId !== "" ? 0 : 1
@@ -548,7 +559,7 @@ Rectangle {
             readonly property var info: section.shelfInfo(section.selId)
             readonly property bool inTitle: section.selSide === "left" || section.selSide === "right"
 
-            Text {
+            RexonText {
                 id: selText
                 height: 40
                 verticalAlignment: Text.AlignVCenter
@@ -556,21 +567,31 @@ Rectangle {
                 color: section.pal.text_primary
                 font.bold: true
             }
-            RexonButton {
-                objectName: "windowButtonsMoveLeft"
+            // Пары «Левее/Правее» и «Добавить слева/справа» — про стороны
+            // заголовка (физическая зона, как макет выше): при языке справа
+            // налево ряд действий зеркалится, а кнопка «Левее» внутри пары
+            // остаётся левой — в ту сторону, куда двигает.
+            Row {
+                id: moveRow
                 visible: selFlow.inTitle
-                enabled: !(section.selSide === "left" && section.selIndex === 0)
-                pal: section.pal
-                text: qsTranslate("rexon", "Move left")
-                onClicked: section.nudge("left")
-            }
-            RexonButton {
-                objectName: "windowButtonsMoveRight"
-                visible: selFlow.inTitle
-                enabled: !(section.selSide === "right" && section.selIndex === (section.st.right || []).length - 1)
-                pal: section.pal
-                text: qsTranslate("rexon", "Move right")
-                onClicked: section.nudge("right")
+                spacing: selFlow.spacing
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
+
+                RexonButton {
+                    objectName: "windowButtonsMoveLeft"
+                    enabled: !(section.selSide === "left" && section.selIndex === 0)
+                    pal: section.pal
+                    text: qsTranslate("rexon", "Move left")
+                    onClicked: section.nudge("left")
+                }
+                RexonButton {
+                    objectName: "windowButtonsMoveRight"
+                    enabled: !(section.selSide === "right" && section.selIndex === (section.st.right || []).length - 1)
+                    pal: section.pal
+                    text: qsTranslate("rexon", "Move right")
+                    onClicked: section.nudge("right")
+                }
             }
             RexonButton {
                 objectName: "windowButtonsToShelf"
@@ -579,21 +600,27 @@ Rectangle {
                 text: qsTranslate("rexon", "Remove from the title bar")
                 onClicked: section.nudge("shelf")
             }
-            RexonButton {
-                objectName: "windowButtonsAddLeft"
+            Row {
+                id: addRow
                 visible: !selFlow.inTitle && selFlow.info.available === true
-                pal: section.pal
-                text: qsTranslate("rexon", "Add on the left")
-                onClicked: section.addSelected("left")
+                spacing: selFlow.spacing
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
+
+                RexonButton {
+                    objectName: "windowButtonsAddLeft"
+                    pal: section.pal
+                    text: qsTranslate("rexon", "Add on the left")
+                    onClicked: section.addSelected("left")
+                }
+                RexonButton {
+                    objectName: "windowButtonsAddRight"
+                    pal: section.pal
+                    text: qsTranslate("rexon", "Add on the right")
+                    onClicked: section.addSelected("right")
+                }
             }
-            RexonButton {
-                objectName: "windowButtonsAddRight"
-                visible: !selFlow.inTitle && selFlow.info.available === true
-                pal: section.pal
-                text: qsTranslate("rexon", "Add on the right")
-                onClicked: section.addSelected("right")
-            }
-            Text {
+            RexonText {
                 height: 40
                 verticalAlignment: Text.AlignVCenter
                 visible: !selFlow.inTitle && selFlow.info.available !== true
@@ -614,7 +641,7 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.preferredWidth: section.labelWidth
                     Layout.alignment: Qt.AlignTop
                     wrapMode: Text.WordWrap
@@ -644,7 +671,7 @@ Rectangle {
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.unavailable || "") !== ""
             text: section.st.unavailable || ""
@@ -652,7 +679,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.custom || "") !== ""
             text: qsTranslate("rexon", "Your own layout is set now (%1); changing the buttons here replaces it.")
@@ -682,7 +709,7 @@ Rectangle {
                     onToggled: section.did(actions.setFlag(flagRow.modelData.id, checked))
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     visible: (flagRow.modelData.hint || "") !== ""
                     text: flagRow.modelData.hint || ""
@@ -692,7 +719,7 @@ Rectangle {
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.flags_note || "") !== ""
             text: section.st.flags_note || ""
@@ -705,7 +732,7 @@ Rectangle {
             visible: section.st.has_border === true
             spacing: 8
 
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 text: qsTranslate("rexon", "Window border size:")
@@ -725,7 +752,7 @@ Rectangle {
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.border_note || "") !== ""
             text: section.st.border_note || ""

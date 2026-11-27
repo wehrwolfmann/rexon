@@ -2,6 +2,10 @@
 // Причина отдельного типа — та же, что у RexonButton: стиль Basic не следует
 // палитре приложения.
 
+// Делегат делений обращается к id самого ползунка; без прагмы проверка QML
+// справедливо ругается на неквалифицированный доступ.
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 
@@ -33,8 +37,13 @@ Slider {
         radius: 3
         color: control.colTrack
 
+        // Заливка — от НАЧАЛА шкалы до ручки: слева направо от левого края,
+        // при языке справа налево от правого. Ширина по `position`, а не по
+        // `visualPosition`: в зеркальном ползунке второе равно 1 − position,
+        // и от левого края залилась бы не та сторона.
         Rectangle {
-            width: control.visualPosition * parent.width
+            x: control.mirrored ? parent.width - width : 0
+            width: control.position * parent.width
             height: parent.height
             radius: 3
             color: control.colAccent
@@ -51,8 +60,11 @@ Slider {
             required property int index
             readonly property real ratio: control.tickStep * index
                                           / (control.to - control.from)
+            // Место штриха на экране: зеркальный ползунок отсчитывает шкалу
+            // от правого края, как и ручку (`visualPosition`).
+            readonly property real visualRatio: control.mirrored ? 1 - ratio : ratio
             x: control.leftPadding + control.handle.width / 2
-               + ratio * (control.availableWidth - control.handle.width) - width / 2
+               + visualRatio * (control.availableWidth - control.handle.width) - width / 2
             y: control.topPadding + control.availableHeight / 2
                + control.background.height / 2 + 3
             width: 1

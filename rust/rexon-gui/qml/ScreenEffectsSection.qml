@@ -140,6 +140,14 @@ Rectangle {
         width: 320
         height: 200
 
+        // Физическая зона: это картинка экрана, которую шейдер искажает, а
+        // не строка интерфейса. Окно, солнце и холмы стоят ручными `x`, а
+        // ряды и якоря зеркалирование перевернуло бы — при языке справа
+        // налево вышла бы каша (часы поверх значков панели). Картинка одна
+        // при любом языке.
+        LayoutMirroring.enabled: false
+        LayoutMirroring.childrenInherit: true
+
         Rectangle {
             anchors.fill: parent
             gradient: Gradient {
@@ -250,13 +258,14 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         height: implicitHeight
         spacing: section.sty.group.spacing
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Screen effects")
             color: section.pal.text_primary
@@ -265,7 +274,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "Make the screen look like an old tube monitor, a worn video tape or a film print. Pick an effect and press “Apply”; “Off” returns the screen to normal.")
             color: section.pal.text_secondary
@@ -273,7 +282,7 @@ Rectangle {
         }
 
         // Что умеет это окружение — фраза ядра (таблица `support`).
-        Text {
+        RexonText {
             objectName: "screenEffectsNote"
             Layout.fillWidth: true
             visible: (section.st.note || "") !== ""
@@ -282,7 +291,7 @@ Rectangle {
             wrapMode: Text.WordWrap
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: (section.st.needs || "") !== ""
             // TRANSLATORS: %1 is what must be installed, e.g. "picom instead of the built-in compositor".
@@ -330,9 +339,10 @@ Rectangle {
 
                     Column {
                         id: tileColumn
-                        x: 6
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: 6
                         y: 6
-                        width: parent.width - 12
                         spacing: 4
 
                         ShaderEffect {
@@ -354,14 +364,14 @@ Rectangle {
                             width: parent.width
                             spacing: 4
 
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 text: (tile.chosen ? "◉ " : "○ ") + tile.modelData.label
                                 color: section.pal.text_primary
                                 elide: Text.ElideRight
                             }
 
-                            Text {
+                            RexonText {
                                 visible: tile.current
                                 text: qsTranslate("rexon", "(current)")
                                 color: section.pal.accent
@@ -376,14 +386,14 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 8
 
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 text: qsTranslate("rexon", "Strength:")
                 color: section.pal.text_primary
             }
 
-            Text {
+            RexonText {
                 text: qsTranslate("rexon", "Subtle")
                 color: section.pal.text_secondary
             }
@@ -401,7 +411,7 @@ Rectangle {
                 onMoved: section.strength = strengthSlider.value
             }
 
-            Text {
+            RexonText {
                 text: qsTranslate("rexon", "Strong")
                 color: section.pal.text_secondary
             }
@@ -414,14 +424,14 @@ Rectangle {
             // хост даёт им время.
             visible: section.st.moving === true
 
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 text: qsTranslate("rexon", "Motion speed:")
                 color: section.pal.text_primary
             }
 
-            Text {
+            RexonText {
                 text: qsTranslate("rexon", "Still")
                 color: section.pal.text_secondary
             }
@@ -439,13 +449,13 @@ Rectangle {
                 onMoved: section.speed = speedSlider.value
             }
 
-            Text {
+            RexonText {
                 text: qsTranslate("rexon", "Fast")
                 color: section.pal.text_secondary
             }
         }
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             visible: section.st.moving === true && section.selectedTile !== null
                      && section.selectedTile.animated === true && section.speed > 0
@@ -468,12 +478,13 @@ Rectangle {
 
             RowLayout {
                 id: confirmRow
-                x: 10
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.margins: 10
                 y: 8
-                width: parent.width - 20
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     // TRANSLATORS: %1 is the number of seconds left.
                     text: qsTranslate("rexon", "Keep this effect? Otherwise the screen goes back as it was in %1 s.").arg(section.secondsLeft)

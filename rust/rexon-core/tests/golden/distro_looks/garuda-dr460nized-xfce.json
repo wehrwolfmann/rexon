@@ -301,7 +301,8 @@
     "pgrep -u $UID -x compiz",
     "pgrep -u $UID -x compiz",
     "pgrep -u $UID -x gtk-window-deco",
-    "cp $HOME/.config/compiz-1/rexon-compiz.desktop $HOME/.config/autostart/rexon-compiz.desktop"
+    "cp $HOME/.config/compiz-1/rexon-compiz.desktop $HOME/.config/autostart/rexon-compiz.desktop",
+    "xfconf-query -c xsettings -p /Net/ThemeName"
   ],
   "missing": [],
   "message": "“Like Garuda Linux (Dr460nized)” applied.\nSkipped: panel layout — Rexon can't lay out Xfce panels yet, so your panels stay as they are",

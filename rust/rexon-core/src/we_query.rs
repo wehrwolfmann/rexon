@@ -610,6 +610,73 @@ impl From<pb::SettingSchema> for SettingSchema {
     }
 }
 
+// ── Границы вкладки «Wallpaper Engine» ──────────────────────────────────
+//
+// Решение Wehrwolfmann (06.11.2026): вкладка — копия оригинального
+// Wallpaper Engine. В ней Мастерская Steam (плагин OWE), локальные видео и
+// картинки, плейлисты, и ничего сверх того. Демон waywallen несёт больше:
+// каталог Wallhaven (уже в v0.5.0), Sketchfab и тип обоев «gltf» (в main
+// после v0.5.0). Wallhaven переезжает в «Оформление → Обои HD», 3D-обоям
+// место тоже вне этой вкладки.
+//
+// Отбор делается здесь, в нашем порте запросов, а не патчем вендорного QML:
+// патч конфликтует при каждом обновлении вендора, а эти функции
+// `rexon-vendor-update` не задевает.
+
+/// Плагины, чьи каталоги «Обзора» вкладка показывает (`owner_plugin_id`
+/// из `RemoteSourceInfo`).
+///
+/// ⭐ Белый, а не чёрный список: каталог, который апстрим добавит завтра,
+/// по умолчанию во вкладку НЕ попадает. Пустой владелец тоже не проходит:
+/// неизвестно, чей это каталог.
+pub const WE_TAB_REMOTE_OWNERS: &[&str] = &[crate::engine_update::OWE_PLUGIN_ID];
+
+/// Типы обоев, которых во вкладке нет: ни в фильтре типов, ни в списке
+/// рендереров, ни среди источников библиотек, ни в самой библиотеке.
+///
+/// Здесь список чёрный, и это сознательно: типы обоев оригинала
+/// («scene», «video», «web», «application», «image» и что ещё отдаст OWE)
+/// полностью не перечислены, а белый список спрятал бы обои пользователя
+/// при первом же незнакомом типе. Новый тип апстрима сверх WE дописывать
+/// сюда при обновлении вендора.
+pub const WE_TAB_HIDDEN_TYPES: &[&str] = &["gltf"];
+
+/// Показывать ли во вкладке каталог «Обзора» этого плагина-владельца.
+pub fn we_tab_shows_remote_owner(owner_plugin_id: &str) -> bool {
+    WE_TAB_REMOTE_OWNERS.contains(&owner_plugin_id)
+}
+
+/// Показывать ли во вкладке тип обоев.
+pub fn we_tab_shows_type(wp_type: &str) -> bool {
+    !WE_TAB_HIDDEN_TYPES.contains(&wp_type)
+}
+
+/// Типы без скрытых, порядок сохраняется.
+pub fn we_tab_types(types: Vec<String>) -> Vec<String> {
+    types.into_iter().filter(|t| we_tab_shows_type(t)).collect()
+}
+
+/// Остаётся ли во вкладке плагин с таким набором типов (рендерер или
+/// источник библиотек): да, если у него есть хоть один видимый тип. Пустой
+/// набор не повод прятать — по нему ничего не известно.
+pub fn we_tab_keeps_plugin(types: &[String]) -> bool {
+    types.is_empty() || types.iter().any(|t| we_tab_shows_type(t))
+}
+
+/// `skip_types` запроса библиотеки: выбор пользователя плюс скрытые типы.
+///
+/// Скрытые добавляются только в кадр, свойство `skipTypes` остаётся
+/// выбором пользователя: оно уходит в настройки и в быстрый фильтр.
+pub fn we_tab_skip_types(user: &[String]) -> Vec<String> {
+    let mut out = user.to_vec();
+    for t in WE_TAB_HIDDEN_TYPES {
+        if !out.iter().any(|u| u == t) {
+            out.push((*t).to_string());
+        }
+    }
+    out
+}
+
 /// `RendererPluginInfo` в виде карты моста.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -659,12 +726,22 @@ pub fn apply_renderer_plugin_list(
         return Ok(out);
     };
     if let Some(pb::response::Payload::RendererPluginList(pl)) = rsp.payload {
-        let renderers: Vec<RendererPlugin> =
-            pl.renderers.into_iter().map(RendererPlugin::from).collect();
+        // Границы вкладки: рендерер, умеющий только скрытые типы (gltf),
+        // не показывается; у остальных скрытые типы вычеркнуты.
+        let renderers: Vec<RendererPlugin> = pl
+            .renderers
+            .into_iter()
+            .filter(|r| we_tab_keeps_plugin(&r.types))
+            .map(|r| {
+                let mut r = RendererPlugin::from(r);
+                r.types = we_tab_types(r.types);
+                r
+            })
+            .collect();
         assign(&mut data.renderers, renderers, "renderers", &mut out);
         assign(
             &mut data.supported_types,
-            pl.supported_types,
+            we_tab_types(pl.supported_types),
             "supportedTypes",
             &mut out,
         );
@@ -673,7 +750,7 @@ pub fn apply_renderer_plugin_list(
         let type_labels = pl
             .type_labels
             .iter()
-            .filter(|t| !t.r#type.is_empty())
+            .filter(|t| !t.r#type.is_empty() && we_tab_shows_type(&t.r#type))
             .map(|t| (t.r#type.clone(), plugin_text(t.label_text.as_ref(), &t.label)))
             .collect();
         assign(&mut data.type_labels, type_labels, "typeLabels", &mut out);
@@ -838,4 +915,86 @@ pub fn find_gpu(gpus: &[pb::GpuInfo], major: u32, minor: u32) -> Option<usize> {
         (g.render_major == major && g.render_minor == minor)
             || (g.primary_major == major && g.primary_minor == minor)
     })
+}
+
+#[cfg(test)]
+mod we_tab_scope_tests {
+    use super::*;
+
+    fn frame(payload: pb::response::Payload) -> Vec<u8> {
+        let rsp = pb::Response {
+            request_id: 1,
+            status: pb::Status::Ok as i32,
+            payload: Some(payload),
+            ..Default::default()
+        };
+        pb::ServerFrame {
+            kind: Some(pb::server_frame::Kind::Response(rsp)),
+        }
+        .encode_to_vec()
+    }
+
+    fn strings(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn remote_owners_are_a_whitelist() {
+        assert!(we_tab_shows_remote_owner("org.waywallen.open-wallpaper-engine"));
+        assert!(!we_tab_shows_remote_owner("org.waywallen.wallhaven"));
+        assert!(!we_tab_shows_remote_owner("org.waywallen.sketchfab"));
+        // Каталог, которого апстрим ещё не придумал, и каталог без владельца.
+        assert!(!we_tab_shows_remote_owner("org.waywallen.some-future-catalog"));
+        assert!(!we_tab_shows_remote_owner(""));
+    }
+
+    #[test]
+    fn hidden_types_and_plugins() {
+        assert!(!we_tab_shows_type("gltf"));
+        for t in ["scene", "video", "web", "image", "application"] {
+            assert!(we_tab_shows_type(t), "{t}");
+        }
+        assert_eq!(we_tab_types(strings(&["scene", "gltf", "video"])), ["scene", "video"]);
+        assert!(!we_tab_keeps_plugin(&strings(&["gltf"])));
+        assert!(we_tab_keeps_plugin(&strings(&["gltf", "image"])));
+        assert!(we_tab_keeps_plugin(&[]));
+    }
+
+    #[test]
+    fn skip_types_add_hidden_once() {
+        assert_eq!(we_tab_skip_types(&[]), ["gltf"]);
+        assert_eq!(we_tab_skip_types(&strings(&["web"])), ["web", "gltf"]);
+        assert_eq!(we_tab_skip_types(&strings(&["gltf", "web"])), ["gltf", "web"]);
+    }
+
+    #[test]
+    fn renderer_plugin_list_drops_gltf() {
+        let renderer = |name: &str, types: &[&str]| pb::RendererPluginInfo {
+            name: name.into(),
+            types: strings(types),
+            ..Default::default()
+        };
+        let label = |t: &str| pb::WallpaperTypeInfo {
+            r#type: t.into(),
+            label: t.to_uppercase(),
+            ..Default::default()
+        };
+        let payload = pb::response::Payload::RendererPluginList(pb::RendererPluginListResponse {
+            renderers: vec![
+                renderer("owe", &["scene", "web"]),
+                renderer("gltf", &["gltf"]),
+                renderer("mixed", &["image", "gltf"]),
+            ],
+            supported_types: strings(&["scene", "web", "gltf", "image"]),
+            type_labels: vec![label("scene"), label("gltf")],
+        });
+        let mut st = QueryState::default();
+        let mut data = RendererPluginListData::default();
+        apply_renderer_plugin_list(&mut st, &mut data, &frame(payload)).expect("кадр разобран");
+        let names: Vec<&str> = data.renderers.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["owe", "mixed"]);
+        assert_eq!(data.renderers[1].types, ["image"]);
+        assert_eq!(data.supported_types, ["scene", "web", "image"]);
+        assert_eq!(data.type_labels.keys().collect::<Vec<_>>(), ["scene"]);
+    }
 }

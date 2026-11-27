@@ -199,7 +199,7 @@ Item {
 
     /// Текст окна. `Text.Wrap` — по словам, а слово длиннее строки (путь
     /// без пробелов) — где придётся: иначе путь уходил бы за край.
-    component Body: Label {
+    component Body: RexonText {
         Layout.fillWidth: true
         wrapMode: Text.Wrap
         // Тексты продукта — rich text (`<b>`, `<br>`, `<pre>`, `<h2>`), и
@@ -239,8 +239,12 @@ Item {
             // Место под полосой прокрутки держится всегда: полоса стиля
             // Basic рисуется поверх содержимого и закрывала бы концы строк,
             // а ширина, зависящая от её видимости, замкнула бы круг
-            // «ширина → высота → полоса → ширина».
-            width: scrollBody.availableWidth - 14
+            // «ширина → высота → полоса → ширина». Ширина — якорями, место
+            // под полосу — отступом с её стороны: справа налево полоса
+            // уходит влево, и зеркалирование переносит туда же и отступ.
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.rightMargin: 14
         }
     }
 
@@ -282,7 +286,7 @@ Item {
             color: root.pal.modal_dim
         }
 
-        header: Label {
+        header: RexonText {
             text: menuDialog.title
             color: root.pal.text_primary
             font.pointSize: 14

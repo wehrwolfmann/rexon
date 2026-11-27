@@ -1819,6 +1819,9 @@ const TEXT_FIXES: &[(&str, &str)] = &[
 /// закрытый — новая строка обязана попасть сюда осознанно, а не проехать
 /// мимо сверки.
 const TEXT_ADDITIONS: &[&str] = &[
+    // Защита цветов терминала от тем (`terminal_guard`, 06.11.2026).
+    "prot.terminal_colors",
+    "prot.terminal_colors_tip",
     // Отказ фонового звука при установленном mpv: у оригинала на любой отказ
     // был один ответ «нужен mpv» — неправда, когда не играет сам файл.
     "amb.start_unplayable",
@@ -1891,6 +1894,8 @@ const TEXT_ADDITIONS: &[&str] = &[
 /// (`golden/qt_settings_ru_before.json`): «как было» у них нет, их русский
 /// сверяется отдельно ([`language_section_russian`]).
 const AFTER_RU_SNAPSHOT_TEXTS: &[&str] = &[
+    "prot.terminal_colors",
+    "prot.terminal_colors_tip",
     "snd.theme_missing",
     "lang.row",
     "lang.system",

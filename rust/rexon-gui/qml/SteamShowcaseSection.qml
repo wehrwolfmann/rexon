@@ -291,25 +291,26 @@ Rectangle {
 
     ColumnLayout {
         id: body
-        x: section.sty.group.marginH + section.border.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: section.sty.group.marginH + section.border.width
         y: section.sty.group.marginV + section.border.width
-        width: parent.width - 2 * (section.sty.group.marginH + section.border.width)
         spacing: section.sty.group.spacing
 
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: qsTranslate("rexon", "🖼️ Profile Showcases")
             color: section.pal.text_primary
             font.bold: true
             font.pointSize: 13
         }
-        Text {
+        RexonText {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: section.pal.text_secondary
             text: qsTranslate("rexon", "Rexon cuts your picture to the sizes of a Steam profile showcase and shows how the profile will look. Then it walks you through the upload: opens the right Steam pages, copies the titles and checks the result. Rexon uploads nothing by itself — you press the buttons on the Steam pages.")
         }
-        Text {
+        RexonText {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: section.pal.text_secondary
@@ -327,7 +328,7 @@ Rectangle {
                 text: qsTranslate("rexon", "Choose a Picture…")
                 onClicked: section.chooseSource(actions.pickImage())
             }
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 elide: Text.ElideMiddle
                 color: section.srcError !== "" ? section.warnColor : section.pal.text_primary
@@ -340,7 +341,7 @@ Rectangle {
         }
         Repeater {
             model: section.srcNotes
-            delegate: Text {
+            delegate: RexonText {
                 required property var modelData
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
@@ -353,7 +354,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 text: qsTranslate("rexon", "Showcase type:")
                 color: section.pal.text_primary
@@ -370,7 +371,7 @@ Rectangle {
                 onActivated: section.kind = kindCombo.currentValue
             }
         }
-        Text {
+        RexonText {
             Layout.fillWidth: true
             Layout.leftMargin: section.labelWidth + 8
             wrapMode: Text.WordWrap
@@ -382,7 +383,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 text: qsTranslate("rexon", "Profile background:")
                 color: section.pal.text_primary
@@ -424,7 +425,7 @@ Rectangle {
                 }
             }
         }
-        Text {
+        RexonText {
             Layout.fillWidth: true
             Layout.leftMargin: section.labelWidth + 8
             visible: text !== ""
@@ -441,7 +442,7 @@ Rectangle {
             rowSpacing: 2
             enabled: section.srcInfo !== null
 
-            Text { Layout.preferredWidth: section.labelWidth; text: qsTranslate("rexon", "Zoom:"); color: section.pal.text_primary }
+            RexonText { Layout.preferredWidth: section.labelWidth; text: qsTranslate("rexon", "Zoom:"); color: section.pal.text_primary }
             RexonSlider {
                 objectName: "showcaseZoom"
                 Layout.fillWidth: true
@@ -450,9 +451,9 @@ Rectangle {
                 value: section.zoom
                 onMoved: section.zoom = value
             }
-            Text { Layout.preferredWidth: 60; text: "×" + section.zoom.toFixed(2); color: section.pal.text_secondary }
+            RexonText { Layout.preferredWidth: 60; text: "×" + section.zoom.toFixed(2); color: section.pal.text_secondary }
 
-            Text { Layout.preferredWidth: section.labelWidth; text: qsTranslate("rexon", "Horizontal position:"); color: section.pal.text_primary }
+            RexonText { Layout.preferredWidth: section.labelWidth; text: qsTranslate("rexon", "Horizontal position:"); color: section.pal.text_primary }
             RexonSlider {
                 objectName: "showcasePanX"
                 Layout.fillWidth: true
@@ -461,9 +462,9 @@ Rectangle {
                 value: section.panX
                 onMoved: section.panX = value
             }
-            Text { Layout.preferredWidth: 60; text: Math.round(section.panX * 100) + " %"; color: section.pal.text_secondary }
+            RexonText { Layout.preferredWidth: 60; text: Math.round(section.panX * 100) + " %"; color: section.pal.text_secondary }
 
-            Text { Layout.preferredWidth: section.labelWidth; text: qsTranslate("rexon", "Vertical position:"); color: section.pal.text_primary }
+            RexonText { Layout.preferredWidth: section.labelWidth; text: qsTranslate("rexon", "Vertical position:"); color: section.pal.text_primary }
             RexonSlider {
                 objectName: "showcasePanY"
                 Layout.fillWidth: true
@@ -472,9 +473,9 @@ Rectangle {
                 value: section.panY
                 onMoved: section.panY = value
             }
-            Text { Layout.preferredWidth: 60; text: Math.round(section.panY * 100) + " %"; color: section.pal.text_secondary }
+            RexonText { Layout.preferredWidth: 60; text: Math.round(section.panY * 100) + " %"; color: section.pal.text_secondary }
         }
-        Text {
+        RexonText {
             Layout.fillWidth: true
             Layout.leftMargin: section.labelWidth + 8
             wrapMode: Text.WordWrap
@@ -485,7 +486,7 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: 8
-            Text {
+            RexonText {
                 Layout.preferredWidth: section.labelWidth
                 wrapMode: Text.WordWrap
                 text: qsTranslate("rexon", "Showcase lower by:")
@@ -501,12 +502,12 @@ Rectangle {
                 ToolTip.visible: hovered
                 ToolTip.text: qsTranslate("rexon", "Only for the preview: if other showcases stand above this one, it moves down the page.")
             }
-            Text { Layout.preferredWidth: 60; text: section.shiftY + " px"; color: section.pal.text_secondary }
+            RexonText { Layout.preferredWidth: 60; text: section.shiftY + " px"; color: section.pal.text_secondary }
         }
 
         Repeater {
             model: section.layWarnings
-            delegate: Text {
+            delegate: RexonText {
                 required property var modelData
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
@@ -516,7 +517,7 @@ Rectangle {
         }
 
         // ── Предпросмотр профиля ──────────────────────────────────────
-        Text {
+        RexonText {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             color: section.pal.text_secondary
@@ -528,6 +529,14 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: preview.viewHeight * preview.s
             clip: true
+
+            // Физическая зона: снимок страницы профиля Steam. Части витрины
+            // нарезаны из одной картинки по её настоящим координатам и стоят
+            // на фоне профиля ручными `x` — зеркалить их нельзя, иначе левая
+            // часть картинки уедет в правую ячейку. При языке справа налево
+            // зона остаётся как есть.
+            LayoutMirroring.enabled: false
+            LayoutMirroring.childrenInherit: true
 
             readonly property var g: section.geo
             readonly property real s: width / (g.viewWidth || 1440)
@@ -682,7 +691,7 @@ Rectangle {
                 text: qsTranslate("rexon", "Cancel")
                 onClicked: actions.cancel()
             }
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: section.sliceError !== "" ? (section.warnColor) : section.pal.text_secondary
@@ -695,7 +704,7 @@ Rectangle {
         }
         Repeater {
             model: section.result ? section.result.files : []
-            delegate: Text {
+            delegate: RexonText {
                 required property var modelData
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
@@ -706,7 +715,7 @@ Rectangle {
         }
         Repeater {
             model: section.result ? section.result.report.warnings : []
-            delegate: Text {
+            delegate: RexonText {
                 required property var modelData
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
@@ -720,7 +729,7 @@ Rectangle {
             spacing: 8
             visible: section.wiz === null && section.recent.length > 0
 
-            Text {
+            RexonText {
                 height: 40
                 verticalAlignment: Text.AlignVCenter
                 color: section.pal.text_secondary
@@ -746,7 +755,7 @@ Rectangle {
             visible: section.wiz !== null
             spacing: section.sty.group.spacing
 
-            Text {
+            RexonText {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 color: section.pal.text_primary
@@ -774,12 +783,13 @@ Rectangle {
 
                     ColumnLayout {
                         id: stepBody
-                        x: section.sty.card.margin
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.margins: section.sty.card.margin
                         y: section.sty.card.margin
-                        width: parent.width - 2 * section.sty.card.margin
                         spacing: 6
 
-                        Text {
+                        RexonText {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             color: section.pal.text_primary
@@ -788,7 +798,7 @@ Rectangle {
                         }
                         Repeater {
                             model: stepCard.modelData.lines
-                            delegate: Text {
+                            delegate: RexonText {
                                 required property string modelData
                                 required property int index
                                 Layout.fillWidth: true
@@ -839,7 +849,7 @@ Rectangle {
                                         onActivated: section.zoomRequested(section.partViewerItems(false), partRow.index)
                                     }
                                 }
-                                Text {
+                                RexonText {
                                     Layout.fillWidth: true
                                     wrapMode: Text.WordWrap
                                     color: section.pal.text_primary
@@ -875,7 +885,7 @@ Rectangle {
                                 onClicked: section.copy(section.wiz.blankTitle,
                                                         qsTranslate("rexon", "An invisible character is copied — paste it into the Title field."))
                             }
-                            Text {
+                            RexonText {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
                                 color: section.pal.text_secondary
@@ -921,7 +931,7 @@ Rectangle {
                                                         : qsTranslate("rexon", "Check my profile")
                                 onClicked: section.startCheck()
                             }
-                            Text {
+                            RexonText {
                                 objectName: "showcaseCheckText"
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
@@ -933,7 +943,7 @@ Rectangle {
                         }
                         Repeater {
                             model: stepCard.key === "check" && section.checkReport ? section.checkReport.lines : []
-                            delegate: Text {
+                            delegate: RexonText {
                                 required property string modelData
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
@@ -963,12 +973,20 @@ Rectangle {
                                     Layout.alignment: Qt.AlignTop
                                     spacing: 4
 
-                                    Text {
+                                    RexonText {
                                         color: section.pal.text_secondary
                                         text: side.modelData ? qsTranslate("rexon", "On your profile")
                                                              : qsTranslate("rexon", "Calculated")
                                     }
+                                    // Физическая зона: части витрины — куски одной
+                                    // картинки, стоят рядом, как в профиле Steam
+                                    // (большая слева, боковая справа). Справа
+                                    // налево их не переставлять, иначе картинка
+                                    // распадётся; подписи над рядом зеркалятся.
                                     Row {
+                                        id: cmpParts
+                                        LayoutMirroring.enabled: false
+                                        LayoutMirroring.childrenInherit: true
                                         spacing: 9 * compareRow.k
                                         Repeater {
                                             model: section.checkReport ? section.checkReport.parts : []

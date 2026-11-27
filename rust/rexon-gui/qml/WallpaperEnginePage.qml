@@ -257,6 +257,20 @@ Item {
     Loader {
         id: vendorHost
 
+        // ⚠️ Вендорная вкладка — СЛЕВА НАПРАВО и при языке справа налево:
+        // разметка waywallen на зеркалирование не рассчитана (`x:`, стрелки,
+        // порядок колонок), а своих правок раскладки в серию патчей вендора мы
+        // не кладём. Текст на ней переводится как обычно, зеркальной встанет
+        // только раскладка вокруг (рейл и разделы Rexon). Полное зеркалирование
+        // вкладки — через апстрим waywallen; когда он его примет, эта заглушка
+        // снимается.
+        // ⚠️ Заглушка закрывает только то, что лежит ВНУТРИ хоста. Всплывающие
+        // окна Qt (`Popup`, `Menu`, список `ComboBox`) Qt кладёт в слой окна
+        // (`Overlay`), и зеркалирование они берут у окна, а не отсюда
+        // (проверено запуском с `-reverse` на offscreen, 06.11.2026).
+        LayoutMirroring.enabled: false
+        LayoutMirroring.childrenInherit: true
+
         anchors.fill: parent
         asynchronous: true
         active: page.qmlAvailable
@@ -453,7 +467,7 @@ Item {
                 anchors.margins: 12
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     visible: page.shellBannerVisible
                     text: page.shellBannerText
@@ -484,7 +498,7 @@ Item {
 
                 // Итог нажатия: успех — приглушённо, отказ — жирным (своих
                 // красок у страницы нет, правило #17).
-                Text {
+                RexonText {
                     objectName: "shellActionMessage"
                     Layout.fillWidth: true
                     visible: page.shellActionMessage !== ""
@@ -523,7 +537,7 @@ Item {
                 anchors.margins: 12
                 spacing: 8
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     text: ownActions.kdePluginNotice
                     color: root.colText
@@ -565,7 +579,7 @@ Item {
             Layout.fillHeight: true
 
             // ── Ожидание движка ───────────────────────────────────────────
-            Text {
+            RexonText {
                 anchors.centerIn: parent
                 width: parent.width - 2 * page.stateColumnMargin
                 visible: page.state === page.stateConnecting && !root.onDevPage
@@ -590,13 +604,13 @@ Item {
                 spacing: page.stateColumnSpacing
                 visible: page.state === page.stateNoDaemon && !root.onDevPage
 
-                Text {
+                RexonText {
                     Layout.alignment: Qt.AlignHCenter
                     text: page.noDaemonIcon
                     font.pixelSize: page.noDaemonIconFontSize
                 }
 
-                Text {
+                RexonText {
                     Layout.fillWidth: true
                     // Заголовок отказа и причина — одной строкой из ядра:
                     // склейку держит оно, а не разметка.
@@ -636,7 +650,7 @@ Item {
                 // виджетной версии.
                 // Обычная роль текста, как у метки оригинала без стиля,
                 // а не «вторичная» краска скина.
-                Text {
+                RexonText {
                     anchors.centerIn: parent
                     width: parent.width - 2 * page.stateColumnMargin
                     visible: !page.qmlAvailable && !root.onDevPage

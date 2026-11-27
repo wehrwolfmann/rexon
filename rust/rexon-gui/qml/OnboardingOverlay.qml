@@ -279,7 +279,7 @@ Popup {
                 anchors.topMargin: tour.st.marginTop
                 spacing: tour.st.spacing
 
-                Label {
+                RexonText {
                     Layout.fillWidth: true
                     visible: tour.mode === "step"
                     text: tour.content.progress ?? ""
@@ -287,7 +287,7 @@ Popup {
                     font.pointSize: tour.sizes.progress
                 }
 
-                Label {
+                RexonText {
                     objectName: "onboardingTitle"
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
@@ -298,7 +298,7 @@ Popup {
                     font.bold: true
                 }
 
-                Label {
+                RexonText {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     text: tour.mode === "ask" ? tour.texts.askText
@@ -328,7 +328,7 @@ Popup {
                         KeyNavigation.right: primaryButton
                         onClicked: tour.secondary()
 
-                        contentItem: Text {
+                        contentItem: RexonText {
                             text: secondaryButton.text
                             font: secondaryButton.font
                             color: secondaryButton.hovered || secondaryButton.activeFocus
@@ -363,7 +363,7 @@ Popup {
                         KeyNavigation.left: secondaryButton.visible ? secondaryButton : null
                         onClicked: tour.primary()
 
-                        contentItem: Text {
+                        contentItem: RexonText {
                             text: primaryButton.text
                             font: primaryButton.font
                             color: tour.st.onAccent

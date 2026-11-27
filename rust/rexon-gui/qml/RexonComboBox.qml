@@ -90,8 +90,10 @@ ComboBox {
     wheelEnabled: false
 
     implicitHeight: 40
-    leftPadding: 10
-    rightPadding: 28
+    // Широкий отступ — под стрелку, узкий — с другой стороны. При языке
+    // справа налево стрелка стоит слева, и отступы меняются местами.
+    leftPadding: control.mirrored ? 28 : 10
+    rightPadding: control.mirrored ? 10 : 28
 
     // Ширина — по самой длинной строке, а не по текущей (см. widestTextWidth).
     implicitWidth: Math.max(control.implicitBackgroundWidth + control.leftInset
@@ -143,7 +145,7 @@ ComboBox {
         border.width: control.activeFocus ? 2 : 1
     }
 
-    contentItem: Text {
+    contentItem: RexonText {
         text: control.displayText
         color: control.colText
         font: control.font
@@ -165,8 +167,8 @@ ComboBox {
         }
     }
 
-    indicator: Text {
-        x: control.width - width - 10
+    indicator: RexonText {
+        x: control.mirrored ? 10 : control.width - width - 10
         y: (control.height - height) / 2
         text: "▾"
         color: control.colText
@@ -184,7 +186,7 @@ ComboBox {
         background: Rectangle {
             color: item.highlighted ? control.colHover : "transparent"
         }
-        contentItem: Text {
+        contentItem: RexonText {
             text: control.textRole
                   ? (item.modelData[control.textRole] !== undefined
                      ? item.modelData[control.textRole] : "")
@@ -196,6 +198,9 @@ ComboBox {
     }
 
     popup: Popup {
+        // Выпадашка шире контрола растёт в сторону конца строки: при языке
+        // справа налево — влево, правым краем вровень с контролом.
+        x: control.mirrored ? control.width - width : 0
         y: control.height
         // Не уже контрола, но и не уже самой длинной строки: раскладка вправе
         // прижать контрол (Layout.preferredWidth), а названия в списке должны

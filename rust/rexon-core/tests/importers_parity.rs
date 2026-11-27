@@ -430,7 +430,7 @@ fn russian_texts_as_before() {
     assert!(filter.starts_with("Все темы Windows (*.themepack "), "{filter}");
     for group in [
         "Темы и стили (",
-        "Иконки (",
+        "Значки (",
         "Курсоры (",
         "Видеообои DreamScene (",
         "Гаджеты рабочего стола (*.gadget)",

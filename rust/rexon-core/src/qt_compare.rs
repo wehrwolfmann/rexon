@@ -134,33 +134,43 @@ pub const QUICK_PAIRS: &[(&str, &str, &str)] = &[
 ///
 /// Тексты — `msgid` каталога; переводит их место показа ([`rec_rows`]).
 pub const RECOMMENDATIONS: &[(&str, &str, &str)] = &[
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     (n_("🎮 For gamers"), n_("Minimal overhead → XFCE or KDE"), "xfce"),
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     (n_("💻 Low-end hardware"), n_("Under 2 GB of RAM → MATE or XFCE"), "mate"),
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     (n_("🎨 For eye candy fans"), n_("Animations and widgets → KDE Plasma"), "kde"),
     (
         n_("🟢 For newcomers"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         n_("Simple out of the box → Cinnamon or GNOME"),
         "cinnamon-mint",
     ),
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     (n_("🔧 For power users"), n_("Full customization → KDE Plasma"), "kde"),
+    // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
     (n_("⚡ Maximum speed"), n_("The fastest one → XFCE"), "xfce"),
     (
         n_("⌨️ For keyboard lovers"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         n_("Keyboard-driven window management → Hyprland"),
         "hyprland",
     ),
     (
         n_("🧩 Tiling out of the box"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         n_("Automatic window layout → Sway, niri or River"),
         "sway",
     ),
     (
         n_("🎞️ Scrollable tiling"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         n_("Windows on an endless strip → niri"),
         "niri",
     ),
     (
         n_("✨ Effects like in Compiz"),
+        // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
         n_("Wobbly windows and the desktop cube → Wayfire"),
         "wayfire",
     ),
@@ -412,11 +422,18 @@ pub struct CardBody {
 /// Строка-шапка карточки: стрелка, значок, имя, отметка установки и краткие
 /// ТТХ одной строкой.
 pub fn card_header(de_id: &str, expanded: bool, installed: bool) -> Option<String> {
-    let m = meta(de_id)?;
     let arrow = if expanded { "▼" } else { "▶" };
+    Some(format!("{arrow}  {}", card_header_tail(de_id, installed)?))
+}
+
+/// Шапка карточки без стрелки раскрытия. Стрелку ставит страница: свёрнутая
+/// смотрит к концу строки, и при языке справа налево это «◀», а знать о
+/// зеркалировании раскладки ядру неоткуда.
+pub fn card_header_tail(de_id: &str, installed: bool) -> Option<String> {
+    let m = meta(de_id)?;
     let mark = if installed { "  ✅" } else { "" };
     Some(format!(
-        "{arrow}  {icon}  {name}{mark}   ·   {mem_word} {ram}   ·   {cpu_word} {cpu}   ·   {toolkit}   ·   {comp}",
+        "{icon}  {name}{mark}   ·   {mem_word} {ram}   ·   {cpu_word} {cpu}   ·   {toolkit}   ·   {comp}",
         mem_word = trc("desktop spec", "Memory"),
         cpu_word = trc("desktop spec", "Processor"),
         icon = de_icon(de_id),

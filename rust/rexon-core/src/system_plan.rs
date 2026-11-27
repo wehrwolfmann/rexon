@@ -12158,6 +12158,7 @@ pub fn mate_post_install_summary(errors: usize) -> (Vec<String>, String) {
     (
         vec![
             format!("\n{}", tr("✅ MATE post-install complete — the full Ubuntu MATE!")),
+            // TRANSLATORS: arrows ← → point the way they should in your language: in right-to-left languages swap them.
             format!("   → {}", tr("8 layouts: mate-tweak → Panel")),
             "   → Familiar | Redmond | Cupertino | Mutiny".into(),
             "   → Pantheon | Contemporary | Netbook | Traditional".into(),

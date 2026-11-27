@@ -77,7 +77,14 @@ use serde::Serialize;
 /// `6` — СЛОВАРЬ ПОПРАВОК ТЕРМИНОВ (03.10, [`TERM_FIXES`]): «расстегните
 /// файл» → «распакуйте файл», «скачать скачать» → «скачать». Без бампа старые
 /// «расстегните» жили бы в кеше до конца TTL.
-pub const TRANSLATOR_VERSION: u32 = 6;
+///
+/// `7` — ОПИСАНИЕ ТЕМЫ 2380824 (06.11, KDE Store «Windows XP Professional -
+/// Luna Blue and Classic Suite»): охрана имён из таблиц ядра (программы,
+/// столы, дистрибутивы), знаки-картинки и края фразы мимо движка, второй
+/// проход прячет только потерянные имена, выдуманные повторы («и и») и
+/// поправки «проводник»/«вход в систему»/«системный лоток». Без бампа
+/// «Базцитовый Linux» и «разногласия» жили бы в кеше до конца TTL.
+pub const TRANSLATOR_VERSION: u32 = 7;
 
 // ── src_hash (ключ кеша переводов) ─────────────────────────────────────────
 
@@ -495,7 +502,54 @@ const PRODUCT_NAMES: &[&str] = &[
     // Палитра Nord: в описании товара «Nordic KDE» стоит «the awesome Nord
     // color palette», и движок делает из неё «Норд цветовая палитра».
     "Nord",
+    // Платформы и программы, которые живая модель переводит как слова
+    // (замер 06.11, KDE Store, «Windows XP Professional - Luna Blue and
+    // Classic Suite»): «Discord, Steam» → «разногласия, Steam». Список
+    // программ ядро нигде больше не держит, поэтому он здесь, рядом с
+    // остальными именами. Регистр строгий ([`name_casing_matches`]):
+    // «open windows» и «a steam cloud» по-прежнему переводятся.
+    "Windows", "Linux", "Steam", "Discord", "GitHub", "GitLab", "Wayland", "Proton", "Telegram",
+    "Spotify", "Chromium", "Thunderbird", "LibreOffice", "macOS", "Android",
 ];
+
+/// Имена рабочих столов из таблицы ядра [`crate::screenshots::DE_DISPLAY_NAMES`],
+/// которые одновременно — обычные английские слова: их как имя не берём
+/// («Mint green theme», «River of colors»). Остальные имена этой таблицы
+/// (`Deepin`, `Hyprland`, `LXQt`, `Wayfire`, `COSMIC`…) охраняются наравне с
+/// [`PRODUCT_NAMES`], и новый стол в таблице попадает в охрану сам.
+const DE_NAME_WORDS_THAT_ARE_PLAIN_WORDS: &[&str] = &["Mint", "River"];
+
+/// Идентификаторы дистрибутивов из [`crate::system::ID_MAP`], которые —
+/// обычные английские слова (`arch`, `pop`, `crystal`, `void`…): «a crystal
+/// clear theme» должно переводиться. Остальные (`bazzite`, `cachyos`,
+/// `fedora`, `nobara`…) — имена в ЛЮБОМ регистре: ни словами, ни частью
+/// прозы они не бывают, а живая модель делает из «Bazzite Linux»
+/// «Базцитовый Linux» (замер 06.11).
+const DISTRO_IDS_THAT_ARE_PLAIN_WORDS: &[&str] = &[
+    "arch", "crystal", "pop", "elementary", "parrot", "rocky", "tuxedo", "peppermint", "void",
+    "alpine", "clear", "simply", "boss", "calculate", "rosa", "astra",
+];
+
+/// Слово — имя рабочего стола из таблицы ядра (регистр строгий).
+fn is_de_display_word(word: &str) -> bool {
+    crate::screenshots::DE_DISPLAY_NAMES.iter().any(|(_, display)| {
+        display.split_whitespace().any(|w| {
+            w.chars().count() >= MIN_GUARDED_NAME_CHARS
+                && !DE_NAME_WORDS_THAT_ARE_PLAIN_WORDS.contains(&w)
+                && name_casing_matches(w, word)
+        })
+    })
+}
+
+/// Слово — идентификатор дистрибутива из таблицы ядра (в любом регистре).
+fn is_distro_id_word(word: &str) -> bool {
+    word.chars().count() >= 4
+        && crate::system::ID_MAP.iter().any(|(id, _)| {
+            !id.contains('-')
+                && !DISTRO_IDS_THAT_ARE_PLAIN_WORDS.contains(id)
+                && id.eq_ignore_ascii_case(word)
+        })
+}
 
 /// Описательные слова НАЗВАНИЯ ТОВАРА: по такому слову одному имя не узнаётся.
 ///
@@ -593,7 +647,10 @@ pub fn is_technical_token(tok: &str) -> bool {
 /// ([`name_casing_matches`]).
 pub fn is_product_name_token(tok: &str) -> bool {
     let t = trim_token_punct(tok);
-    !t.is_empty() && PRODUCT_NAMES.iter().any(|n| n.eq_ignore_ascii_case(t))
+    !t.is_empty()
+        && (PRODUCT_NAMES.iter().any(|n| n.eq_ignore_ascii_case(t))
+            || is_de_display_word(t)
+            || is_distro_id_word(t))
 }
 
 /// «Человеческое слово»: одни буквы (после обрезки краевой пунктуации) и их не
@@ -937,7 +994,8 @@ fn is_acronym_name(canonical: &str) -> bool {
 fn is_masked_name(word: &str) -> bool {
     PRODUCT_NAMES.iter().any(|n| {
         name_casing_matches(n, word) || (is_acronym_name(n) && word.eq_ignore_ascii_case(n))
-    })
+    }) || is_de_display_word(word)
+        || is_distro_id_word(word)
 }
 
 /// Границы слов: максимальные пробеги букв и цифр. Именно они дают «границу
@@ -1172,7 +1230,16 @@ pub fn mask_names(text: &str, guarded: &[&str]) -> MaskedNames {
     // заполнитель наравне с именами ([`technical_spans`]). Имя ВНУТРИ куска
     // техники (`kde` в `~/.local/share/kde`) отдельно не прячется: кусок
     // уходит целиком.
-    let tech = technical_spans(text);
+    // Знаки-картинки (эмодзи, ✨, ™, стрелки) — туда же: модель их не знает и
+    // подменяет своими («### ✨ Features:» → «### 👍 Особенности:», замер
+    // 06.11), а знак автора обязан доехать байт в байт.
+    let mut tech = technical_spans(text);
+    let pictures: Vec<(usize, usize)> = pictograph_spans(text)
+        .into_iter()
+        .filter(|(s, e)| !tech.iter().any(|(a, b)| s < b && e > a))
+        .collect();
+    tech.extend(pictures);
+    tech.sort();
     let overlaps_tech = |s: usize, e: usize| tech.iter().any(|(a, b)| s < *b && e > *a);
     let mut spans: Vec<(usize, usize)> = tech.clone();
 
@@ -1287,6 +1354,255 @@ fn collapse_adjacent_repeat(text: &str, placeholder: &str) -> String {
         }
     }
     out.push_str(rest);
+    out
+}
+
+// ── Знаки-картинки, края предложения, мягкие имена, выдуманные повторы ────
+
+/// Знак-картинка: эмодзи и родня (✨ 🚀 ★ ™ © ➜), а также невидимые части
+/// эмодзи (вариант-селектор, соединитель, модификаторы тона и флаги).
+///
+/// ⭐ ЗАЧЕМ. Словарь модели Firefox этих знаков почти не знает, и декодировщик
+/// ставит на их место «похожее»: «### ✨ Features:» → «### 👍 Особенности:»
+/// (замер 06.11, KDE Store, тема 2380824). Знак автора — не текст, переводить
+/// его нечего, и до движка он доходить не должен вовсе.
+///
+/// Диапазоны — блоки Unicode, где живут пиктограммы (стрелки, технические
+/// знаки, геометрия, «разные символы», дингбаты, блок эмодзи U+1F000–1FAFF),
+/// плюс ©, ®, ™. Буквы, цифры и обычная пунктуация сюда не попадают.
+pub fn is_pictograph(c: char) -> bool {
+    matches!(c,
+        '\u{00A9}' | '\u{00AE}' | '\u{203C}' | '\u{2049}' | '\u{2122}' | '\u{2139}'
+        | '\u{2190}'..='\u{21FF}'
+        | '\u{2300}'..='\u{23FF}'
+        | '\u{24C2}'
+        | '\u{25A0}'..='\u{27BF}'
+        | '\u{2900}'..='\u{297F}'
+        | '\u{2B00}'..='\u{2BFF}'
+        | '\u{3030}' | '\u{303D}' | '\u{3297}' | '\u{3299}'
+        | '\u{FE0E}' | '\u{FE0F}' | '\u{200D}' | '\u{20E3}'
+        | '\u{1F000}'..='\u{1FAFF}'
+        | '\u{E0020}'..='\u{E007F}')
+}
+
+/// Пробеги знаков-картинок в строке: (начало, конец) в байтах. Соседние знаки
+/// (флаг из двух букв-регионов, эмодзи с соединителем) — один пробег.
+pub fn pictograph_spans(text: &str) -> Vec<(usize, usize)> {
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    let mut start: Option<usize> = None;
+    for (i, c) in text.char_indices() {
+        if is_pictograph(c) {
+            start.get_or_insert(i);
+        } else if let Some(s) = start.take() {
+            spans.push((s, i));
+        }
+    }
+    if let Some(s) = start {
+        spans.push((s, text.len()));
+    }
+    spans
+}
+
+/// Знаки, с которых может начинаться сама фраза, — их от края НЕ отрезаем:
+/// скобка и кавычка парные (вторая половина внутри фразы), а `~ . / $ \` ` и
+/// `@` начинают технику, которую узнаёт [`technical_spans`].
+const SENTENCE_OPENERS: &[char] =
+    &['(', '[', '{', '"', '\'', '«', '“', '‘', '„', '<', '¿', '¡', '`', '~', '.', '/', '$', '\\', '@'];
+
+/// Разрезать предложение на (край слева, середина, край справа). Движку
+/// уходит только середина; края возвращаются в вывод байт в байт.
+///
+/// ⭐ ЗАЧЕМ (замер 06.11 на живой модели, тема 2380824):
+///   * узел после `</strong>` начинается с «: Full Windows XP …» — движок
+///     меняет двоеточие на тире («- Светло-голубая область…») или съедает его
+///     («</strong>Выбор между…»);
+///   * «### ✨ Features:» — движок меняет знак автора на свой (✨ → 👍).
+/// Края эти — разметка текста (маркеры списка, решётки заголовков, двоеточие
+/// после жирной подписи, эмодзи), а не язык: переводить в них нечего.
+///
+/// Левый край — пунктуация и знаки-картинки ДО первого пробела включительно
+/// (кроме [`SENTENCE_OPENERS`]); без пробела за ним край не режется
+/// (`-r`, `:Note` — часть слова). Правый край — только пробелы и
+/// знаки-картинки («Enjoy! 🎉»): точку, вопрос и двоеточие в конце фразы
+/// движок ставит сам, и правильно для своего языка.
+pub fn split_sentence_edges(sentence: &str) -> (&str, &str, &str) {
+    let mut lead_end = 0usize;
+    for (i, c) in sentence.char_indices() {
+        if c.is_whitespace() {
+            lead_end = i + c.len_utf8();
+            continue;
+        }
+        // Первая буква, цифра или «открывающий» знак — дальше уже фраза.
+        // Знаки до неё краем становятся только вместе с пробелом за ними.
+        if c.is_alphanumeric() || SENTENCE_OPENERS.contains(&c) {
+            break;
+        }
+    }
+    // Край слева — только то, за чем шёл пробел: «### ✨ » режется целиком,
+    // «-r» не режется вовсе.
+    let lead = &sentence[..lead_end];
+    let rest = &sentence[lead_end..];
+    let trail_start = rest
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| c.is_whitespace() || is_pictograph(*c))
+        .last()
+        .map(|(i, _)| i)
+        .unwrap_or(rest.len());
+    let (core, trail) = rest.split_at(trail_start);
+    // Справа режем, только если там правда была картинка (одни пробелы
+    // движку не мешают и в вывод всё равно не попадают).
+    if !trail.chars().any(is_pictograph) {
+        return (lead, rest, "");
+    }
+    (lead, core, trail)
+}
+
+/// Заново спрятать под заполнители ТОЛЬКО выбранные имена: `keep[i] == true` —
+/// `names[i]` остаётся под заполнителем, остальные возвращаются в текст.
+/// Номера заполнителей идут подряд с нуля по оставшимся.
+///
+/// ⭐ ЗАЧЕМ. Второй проход прятал ВСЕ имена фразы, хотя движок в первом
+/// потерял одно. Заполнители сами сбивают декодировщик, и на четырёх сразу
+/// он ломается: «: Full Windows XP Explorer replica with … Classic View …»
+/// (товар «… Luna Blue and Classic Suite», замер 06.11) вернулась с `@0@`
+/// дважды — сегмент выбрасывался, и абзац оставался английским целиком, хотя
+/// в первом проходе потерялось одно `Classic`.
+pub fn mask_only(masked: &MaskedNames, keep: &[bool]) -> MaskedNames {
+    let mut text = masked.text.clone();
+    let mut names: Vec<String> = Vec::new();
+    // Сначала свои номера ВСЕМ через временную метку, чтобы `@1@` не
+    // спутался с уже переписанным `@1@`.
+    for (i, name) in masked.names.iter().enumerate() {
+        let from = name_placeholder(i);
+        let to = if keep.get(i).copied().unwrap_or(false) {
+            let t = format!("\u{0}{}\u{0}", names.len());
+            names.push(name.clone());
+            t
+        } else {
+            name.clone()
+        };
+        text = text.replacen(&from, &to, 1);
+    }
+    for i in 0..names.len() {
+        text = text.replacen(&format!("\u{0}{i}\u{0}"), &name_placeholder(i), 1);
+    }
+    MaskedNames { text, names }
+}
+
+/// «Мягкое» имя: одно слово из названия товара, а не само название, не имя из
+/// списков ядра и не техника. Потеря такого имени — не порча, а перевод слова:
+/// из «… Luna Blue and Classic Suite» охраняется и `Classic`, а в прозе
+/// «Classic View» движок честно пишет «классическим представлением».
+///
+/// Если такое имя не удержалось и под заполнителем, предложение берётся
+/// переводом без него, а НЕ выбрасывается вместе со всем абзацем: английский
+/// абзац хуже, чем переведённое слово из названия.
+pub fn is_soft_guarded_name(name: &str, guarded: &[&str]) -> bool {
+    let runs = word_runs(name);
+    if runs.len() != 1 || runs[0] != (0, name.len()) {
+        return false;
+    }
+    if is_masked_name(name) || !technical_spans(name).is_empty() {
+        return false;
+    }
+    !guarded.iter().any(|g| g.trim().eq_ignore_ascii_case(name))
+}
+
+/// Начала, на которых движок сам дописывает союз «и» в начало фразы:
+/// «Full documentation and source code available on GitHub:» → «и полная
+/// документация…» (замер 06.11). Союз законен, только если он был в
+/// источнике: `and`, `both … and` («И X, и Y»), `plus`, `also`, `&`.
+const SOURCE_LEADING_CONJUNCTIONS: &[&str] = &["and", "both", "plus", "also"];
+
+/// Союз, который движок выдумывает в начале фразы, — на целевом языке.
+fn invented_leading_word(tgt: &str) -> Option<&'static str> {
+    match tgt {
+        "ru" => Some("и"),
+        "de" => Some("und"),
+        _ => None,
+    }
+}
+
+/// Убрать из перевода то, чего в источнике не было и что движок ДОПИСАЛ сам:
+///   * повтор соседних одинаковых слов («для KDE Plasma 6 и и Bazzite»: живая
+///     модель на одинокое «and» отвечает «и и»). Убирается, только если в
+///     источнике самом нет ни одного повтора подряд — иначе повтор авторский
+///     («very very nice» → «очень очень мило»);
+///   * союз «и» в начале фразы, которой в источнике союз не начинался («и
+///     полная документация…» на «Full documentation…»).
+pub fn drop_invented_repeats(src: &str, tgt: &str, source: &str, translated: &str) -> String {
+    let mut out = translated.to_string();
+    if !has_adjacent_repeat(source) {
+        out = collapse_word_repeats(&out);
+    }
+    // Тире или двоеточие в начале, которых в источнике не было: «Lock Screen»
+    // → «- экран замка» (замер 06.11). Источник начинается с буквы — значит
+    // знак выдуман.
+    if source.trim_start().chars().next().is_some_and(char::is_alphanumeric) {
+        let trimmed = out.trim_start();
+        let mut chars = trimmed.chars();
+        if let (Some(mark), Some(gap)) = (chars.next(), chars.next()) {
+            if matches!(mark, '-' | '–' | '—' | ':') && gap.is_whitespace() {
+                out = chars.as_str().trim_start().to_string();
+            }
+        }
+    }
+    let first_source = source
+        .split_whitespace()
+        .next()
+        .map(|w| trim_token_punct(w).to_lowercase())
+        .unwrap_or_default();
+    let word = if src == "en" { invented_leading_word(tgt) } else { None };
+    if let Some(word) = word {
+        let source_starts_with_conjunction = SOURCE_LEADING_CONJUNCTIONS
+            .contains(&first_source.as_str())
+            || source.trim_start().starts_with('&');
+        if !source_starts_with_conjunction {
+            let trimmed = out.trim_start();
+            let lead = &out[..out.len() - trimmed.len()];
+            let mut parts = trimmed.splitn(2, char::is_whitespace);
+            let head = parts.next().unwrap_or_default();
+            if let Some(tail) = parts.next() {
+                if head.to_lowercase() == word && tail.trim_start().chars().next().is_some_and(char::is_alphabetic) {
+                    out = format!("{lead}{}", tail.trim_start());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Есть ли в строке два одинаковых слова подряд (без учёта регистра).
+fn has_adjacent_repeat(text: &str) -> bool {
+    let words: Vec<String> = text.split_whitespace().map(|w| w.to_lowercase()).collect();
+    words.windows(2).any(|p| p[0] == p[1] && p[0].chars().any(char::is_alphabetic))
+}
+
+/// Свернуть повторы соседних одинаковых слов: «и и» → «и». Сравнивается слово
+/// целиком (с пунктуацией): «да, да» — это не «да да», а авторская интонация.
+fn collapse_word_repeats(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut last: Option<String> = None;
+    let mut rest = text;
+    loop {
+        let ws = rest.len() - rest.trim_start().len();
+        let (gap, after) = rest.split_at(ws);
+        if after.is_empty() {
+            out.push_str(gap);
+            break;
+        }
+        let end = after.find(char::is_whitespace).unwrap_or(after.len());
+        let (word, tail) = after.split_at(end);
+        let key = word.to_lowercase();
+        let repeat = last.as_deref() == Some(key.as_str()) && key.chars().any(char::is_alphabetic);
+        if !repeat {
+            out.push_str(gap);
+            out.push_str(word);
+        }
+        last = Some(key);
+        rest = tail;
+    }
     out
 }
 
@@ -1677,6 +1993,89 @@ pub const TERM_FIXES: &[TermFix] = &[
             TermForm::Word("инсталляция", "установка"),
             TermForm::Word("инсталляцию", "установку"),
             TermForm::Word("инсталляцией", "установкой"),
+        ],
+        collapse_repeats: false,
+    },
+    // Explorer — «Проводник»: так файловый менеджер назван в русской Windows,
+    // и так же живая модель переводит его ВНУТРИ фразы («Full Windows XP
+    // Explorer replica» → «Полная копия проводника Windows XP», замер 06.11).
+    // Одинокое «Explorer» (подпись в <strong>, без контекста) она отдаёт как
+    // «исследователь». Оба слова — м. р. второго склонения, падеж
+    // переносится как есть. Латиницей не оставляем: в соседней фразе того же
+    // описания модель уже написала «проводник», и два имени одной программы
+    // в одной карточке путали бы.
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["explorer"],
+        gate: always,
+        forms: &[
+            TermForm::Word("исследователь", "проводник"),
+            TermForm::Word("исследователя", "проводника"),
+            TermForm::Word("исследователю", "проводнику"),
+            TermForm::Word("исследователем", "проводником"),
+            TermForm::Word("исследователе", "проводнике"),
+        ],
+        collapse_repeats: false,
+    },
+    // Lock Screen — «экран блокировки» (KDE ru, kscreenlocker; так же в
+    // русской Windows). Одинокое «Lock Screen» модель отдаёт «экран замка»
+    // (замер 06.11).
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["lock"],
+        gate: |s| s.contains("lock screen") || s.contains("lockscreen"),
+        forms: &[
+            TermForm::Phrase("экран замка", "экран блокировки"),
+            TermForm::Phrase("экрана замка", "экрана блокировки"),
+            TermForm::Phrase("экране замка", "экране блокировки"),
+            TermForm::Phrase("экраном замка", "экраном блокировки"),
+        ],
+        collapse_repeats: false,
+    },
+    // Start Menu — «меню «Пуск»» (русская Windows; кнопку «Start» модель и
+    // так переводит «Пуск»). Модель пишет «Начало Меню» (замер 06.11).
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["start"],
+        gate: |s| s.contains("start menu"),
+        forms: &[
+            TermForm::Phrase("начало меню", "меню «Пуск»"),
+            TermForm::Phrase("меню начала", "меню «Пуск»"),
+            TermForm::Phrase("стартовое меню", "меню «Пуск»"),
+        ],
+        collapse_repeats: false,
+    },
+    // Logon — «вход в систему» (так в русской Windows: «Экран входа в
+    // систему»). Одинокое «Logon» модель не знает и выдумывает «Лофон»
+    // (замер 06.11) — выдумку и меняем.
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["logon"],
+        gate: always,
+        forms: &[
+            TermForm::Word("лофон", "вход в систему"),
+            TermForm::Word("логон", "вход в систему"),
+        ],
+        collapse_repeats: false,
+    },
+    // System Tray — «системный лоток»: так панель зовут KDE и сам Rexon
+    // («🔔 Лоток: значок поставлен»). Живая модель переворачивает порядок
+    // слов — «Лоток системы Windows XP» (замер 06.11); слово верное, порядок
+    // нет.
+    TermFix {
+        src: "en",
+        tgt: "ru",
+        source_words: &["tray"],
+        gate: |s| s.contains("system tray"),
+        forms: &[
+            TermForm::Phrase("лоток системы", "системный лоток"),
+            TermForm::Phrase("лотка системы", "системного лотка"),
+            TermForm::Phrase("лотке системы", "системном лотке"),
+            TermForm::Phrase("лотком системы", "системным лотком"),
         ],
         collapse_repeats: false,
     },

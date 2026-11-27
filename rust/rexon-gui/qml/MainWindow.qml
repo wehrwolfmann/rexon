@@ -29,6 +29,20 @@ import org.rexon.gui 1.0
 ApplicationWindow {
     id: root
 
+    // Язык справа налево (арабский, персидский, иврит): вся раскладка окна
+    // зеркалится от корня — якоря, Row/Grid/Layout, горизонтальные списки и
+    // явное выравнивание текста (`RexonText`). Направление ставит Qt по
+    // переводу самой Qt (`QT_LAYOUT_DIRECTION` в qtbase_ar/he/fa), проверка
+    // без перевода — запуск с `-reverse`. Где раскладка физическая и
+    // зеркалиться не должна, ставится местное `LayoutMirroring.enabled: false`.
+    // Сторож — `rust/rexon-core/tests/rtl_parity.rs`.
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.childrenInherit: true
+    /// Стрелки ← → в подписях окна — по его зеркалированию.
+    readonly property RexonArrows arrows: RexonArrows {
+        mirrored: root.LayoutMirroring.enabled
+    }
+
     // ── Ядро окна ─────────────────────────────────────────────────────────
 
     MainWindowModel {
@@ -384,7 +398,7 @@ ApplicationWindow {
                 implicitHeight: 44
                 font.pointSize: 11
 
-                contentItem: Text {
+                contentItem: RexonText {
                     text: tabButton.text
                     font: tabButton.font
                     color: bar.currentIndex === tabButton.index
@@ -532,7 +546,7 @@ ApplicationWindow {
                 // Раздел, у которого Rust-хозяина ещё нет. Пустая страница
                 // читается как поломка (правило #13), поэтому объяснение
                 // приходит из ядра, а не рисуется пустотой.
-                Label {
+                RexonText {
                     anchors.centerIn: parent
                     width: Math.min(parent.width - 80, 560)
                     visible: section.pageComponent === null
@@ -621,7 +635,8 @@ ApplicationWindow {
                         Layout.topMargin: 10
                         Layout.bottomMargin: 4
                         pal: root.pal
-                        text: desktopsView.compareBackText
+                        // Стрелка «назад» — к началу строки (`RexonArrows.keyHint`).
+                        text: root.arrows.keyHint(desktopsView.compareBackText)
                         onClicked: desktopsStack.currentIndex = 0
                     }
 
@@ -733,7 +748,7 @@ ApplicationWindow {
             color: root.colBorder
         }
 
-        Label {
+        RexonText {
             anchors.fill: parent
             anchors.leftMargin: 14
             anchors.rightMargin: 14

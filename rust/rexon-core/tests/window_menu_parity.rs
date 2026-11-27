@@ -115,8 +115,13 @@ fn the_only_separator_stands_before_quit() {
 /// разделов, и кнопка, поставленная там же, читается как первый раздел.
 /// Решение живёт в `qml/WindowMenu.qml`: `contentItem` полосы меню
 /// раскладывается `Qt.RightToLeft`, а подменю — отдельное окно — раскладки
-/// полосы не наследует и остаётся слева направо (зеркалить его нечем:
-/// `LayoutMirroring` в разметке не включается).
+/// полосы не наследует и остаётся слева направо.
+///
+/// Язык справа налево: зеркалирование включает КОРЕНЬ окна
+/// (`MainWindow.qml`, сторож `rtl_parity.rs`), и при нём переворачиваются
+/// полоса и подменю вместе — так и задумано. Запрещено здесь МЕСТНОЕ
+/// `LayoutMirroring` в самом `WindowMenu.qml`: оно развернуло бы подменю и
+/// при языке слева направо.
 #[test]
 fn menu_button_stands_on_the_right_and_the_popup_reads_left_to_right() {
     let qml = source("rust/rexon-gui/qml/WindowMenu.qml");
@@ -131,7 +136,8 @@ fn menu_button_stands_on_the_right_and_the_popup_reads_left_to_right() {
     );
     assert!(
         !code.contains("LayoutMirroring"),
-        "в полосе меню включили зеркалирование — развернётся и подменю"
+        "в полосе меню включили местное зеркалирование — развернётся и подменю; \
+         зеркалирование для языка справа налево ставится только на корне окна"
     );
 }
 
@@ -156,7 +162,7 @@ fn about_text_matches_the_product() {
         wm::about_html(),
         format!(
             "<h2>Rexon {}</h2><p>Менеджер рабочих столов для Linux</p>\
-             <p>Установка, удаление и настройка рабочих столов, тем, иконок, курсоров, \
+             <p>Установка, удаление и настройка рабочих столов, тем, значков, курсоров, \
              шрифтов, обоев (включая Wallpaper&nbsp;Engine), экрана входа и загрузочной \
              заставки (SDDM/Plymouth), виджетов и расширений — всё в одном окне.</p>\
              <p><b>Поддержка:</b> KDE, GNOME, Cinnamon, XFCE, MATE, Budgie, Pantheon, Deepin, LXQt, \
@@ -176,12 +182,12 @@ fn about_text_matches_the_product() {
 fn about_features_reworded_on_purpose() {
     let _lang = i18n_pin::ru();
     let html = wm::about_html();
-    let want = "<p>Установка, удаление и настройка рабочих столов, тем, иконок, курсоров, \
+    let want = "<p>Установка, удаление и настройка рабочих столов, тем, значков, курсоров, \
                 шрифтов, обоев (включая Wallpaper&nbsp;Engine), экрана входа и загрузочной \
                 заставки (SDDM/Plymouth), виджетов и расширений — всё в одном окне.</p>";
     assert!(html.contains(want), "{html}");
     let mut at = 0;
-    for item in ["рабочих столов", "тем", "иконок", "курсоров", "шрифтов", "обоев",
+    for item in ["рабочих столов", "тем", "значков", "курсоров", "шрифтов", "обоев",
                  "Wallpaper&nbsp;Engine", "SDDM", "Plymouth", "виджетов", "расширений"] {
         let pos = want[at..].find(item).unwrap_or_else(|| panic!("пропал раздел «{item}»"));
         at += pos + item.len();
@@ -471,7 +477,7 @@ fn uninstall_dialog_texts_match_the_product() {
     assert_eq!(
         squash(&informative),
         squash(
-            "<pre style=\"white-space: pre-wrap\">  • /tmp/rexon</pre>\
+            "<pre dir=\"ltr\" align=\"left\" style=\"white-space: pre-wrap\">  • /tmp/rexon</pre>\
              <p>При любом выборе удаляются сама программа (список выше) и временные файлы Rexon.</p>\
              <p>«Удалить всё» удалит также настройки Rexon, резервные копии рабочих столов и \
              установленные обои, темы и дополнения.</p>\

@@ -50,12 +50,12 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         spacing: 8
-        Text {
+        RexonText {
             text: box.t.title || ""
             color: box.colText
             font.bold: true
         }
-        Text {
+        RexonText {
             Layout.fillWidth: true
             text: box.t.hint || ""
             color: box.colHint
@@ -90,7 +90,7 @@ ColumnLayout {
         }
     }
 
-    Text {
+    RexonText {
         Layout.fillWidth: true
         visible: box.rows.length === 0
         text: box.t.empty || ""
@@ -122,13 +122,13 @@ ColumnLayout {
                     spacing: 8
                     ColumnLayout {
                         spacing: 0
-                        Text {
+                        RexonText {
                             text: chip.modelData.name
                                   + (chip.modelData.applied ? "  " + (box.t.applied || "") : "")
                             color: box.colText
                             font.bold: true
                         }
-                        Text {
+                        RexonText {
                             Layout.maximumWidth: 260
                             text: chip.modelData.summary
                             color: box.colHint

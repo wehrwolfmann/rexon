@@ -2469,12 +2469,12 @@ impl Default for PresentationManagerRust {
 
 /// Строка вендорного перевода из контекста менеджера показов с подстановкой.
 fn presentation_fallback_label(source: &str, id: &str) -> String {
-    qobject::rexon_we_vendor_tr(
+    let template = qobject::rexon_we_vendor_tr(
         &QString::from("waywallen::PresentationManager"),
         &QString::from(source),
     )
-    .to_string()
-    .replace("%1", id)
+    .to_string();
+    rexon_core::i18n::fill(&template, &[&id])
 }
 
 impl qobject::PresentationManager {

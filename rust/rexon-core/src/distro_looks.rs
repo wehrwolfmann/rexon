@@ -1203,6 +1203,17 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
 
     record(look, plan, t, undo, placed, &item_paths, &restore, &installed);
 
+    // Образ сменил тему и цвета: терминалы, берущие цвета темы, — на
+    // читаемую пару, под ту же запись образа в общем журнале.
+    let term_env = crate::terminal_guard::Env {
+        de: t.de.clone(),
+        home: t.home.clone(),
+        config: t.config.clone(),
+        data: t.data.clone(),
+    };
+    let terminal_line =
+        crate::terminal_guard::guard(&term_env, m.ctx, &section_of(&plan.id), &plan.id, Some(journal_key(&plan.id)));
+
     let after_apply = look
         .settings
         .as_ref()
@@ -1215,6 +1226,9 @@ pub fn apply(look: &Look, plan: &LookPlan, t: &Target, m: &Machine) -> Result<Ap
     }
     if !plan.aur.is_empty() {
         lines.push(aur_text(&plan.aur));
+    }
+    if let Some(l) = terminal_line {
+        lines.push(l);
     }
     if let Some(a) = &after_apply {
         lines.push(a.clone());
