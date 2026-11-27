@@ -1,1 +1,8 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/wehrwolfmann/rexon/discussions
+    about: Ask how to do something or share an idea in Discussions.
+  - name: A problem in the wallpaper engine itself (waywallen)
+    url: https://github.com/waywallen/waywallen/issues
+    about: Scene and web wallpapers are drawn by waywallen. If a wallpaper misbehaves outside Rexon too, report it there.

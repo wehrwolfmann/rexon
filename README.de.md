@@ -1,5 +1,7 @@
 [English](README.md) | [Русский](README.ru.md) | Deutsch | [简体中文](README.zh-CN.md) | [Français](README.fr.md) | [Español](README.es.md) | [Українська](README.uk.md)
 
+[![Release](https://img.shields.io/github/v/release/wehrwolfmann/rexon)](https://github.com/wehrwolfmann/rexon/releases/latest) [![CI](https://github.com/wehrwolfmann/rexon/actions/workflows/ci.yml/badge.svg)](https://github.com/wehrwolfmann/rexon/actions/workflows/ci.yml) [![License](https://img.shields.io/github/license/wehrwolfmann/rexon)](LICENSE)
+
 # Rexon
 
 Rexon ist ein kostenloser Desktop-Manager für Linux. In einem einzigen Fenster
