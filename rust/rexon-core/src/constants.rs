@@ -14,7 +14,7 @@ use crate::i18n::{n_, tr};
 
 // ── Versions ─────────────────────────────────────────────────────────
 
-pub const REXON_VERSION: (u32, u32, u32) = (0, 1, 1);
+pub const REXON_VERSION: (u32, u32, u32) = (0, 1, 2);
 pub const FORMAT_VERSION: u32 = 3;
 
 // ── Extension types ──────────────────────────────────────────────────

@@ -3358,7 +3358,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
 name = "rexon-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aes",
  "cbc",
@@ -3390,7 +3390,7 @@ dependencies = [
 
 [[package]]
 name = "rexon-gui"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cxx",
  "cxx-qt",
@@ -3415,7 +3415,7 @@ dependencies = [
 
 [[package]]
 name = "rexon-qt-filter"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cxx",
  "cxx-qt",
@@ -3425,7 +3425,7 @@ dependencies = [
 
 [[package]]
 name = "rexon-splash-overlay"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "khronos-egl",
  "libc",

@@ -1,6 +1,6 @@
 pkgbase = rexon-git
 	pkgdesc = Universal desktop environment manager for Linux: install/switch DE, themes, live wallpapers (git version)
-	pkgver = 0.1.1.r2100.g0000000
+	pkgver = 0.1.2.r0.g0000000
 	pkgrel = 1
 	url = https://github.com/wehrwolfmann/rexon
 	install = rexon-git.install

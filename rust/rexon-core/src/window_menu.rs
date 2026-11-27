@@ -190,7 +190,7 @@ pub fn log_location_text(path: &str) -> String {
 /// and fits into an email, and the last runs are enough for an analysis.
 pub const LOG_COPY_BYTES: u64 = 200 * 1024;
 
-/// Product version for a human — «0.1.1». Built from [`crate::constants`], not
+/// Product version for a human — «0.1.2». Built from [`crate::constants`], not
 /// rewritten as a string: `rexon.__version__` and the core must match.
 pub fn version_string() -> String {
     let (major, minor, patch) = crate::constants::REXON_VERSION;
