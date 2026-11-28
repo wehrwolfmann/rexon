@@ -231,23 +231,6 @@ selenium-webdriver-at-spi drives the same AT-SPI interfaces from Python tests.
 ---
 
 
-## Agent tools
-
-Installed to strengthen the agent workflow (2026-05-22):
-
-- **`ast-grep`** (`~/.local/bin/ast-grep`, v0.42.3) — AST-based grep instead of regex. Matches syntactic constructs precisely, ignoring comments/strings. Example:
-  ```bash
-  # Correct (subclasses only):
-  ast-grep --pattern 'class $NAME(BaseWallpaper)' --lang python rexon/
-  # Wrong (catches both the definition and a comment):
-  grep -rn 'class.*BaseWallpaper' rexon/ --include='*.py'
-  ```
-  Use it for refactoring, finding definitions, anti-pattern audits.
-
-- **`imagehash` + `Pillow`** — perceptual hash for wallpaper regression detection. Installed in the venv `~/.local/share/rexon-tools-venv/` (`--system-site-packages`, Pillow 12.2.0 from the system, imagehash 4.3.2 in the venv). Helper: `scripts/image-diff actual.png reference.png [threshold]` — exit 0 = match (≤ threshold phash distance), 1 = regression, 2 = error. Default threshold = 5.
-
-- **`qmllint` Qt 6.11.1** (`/usr/lib/qt6/bin/qmllint`, via qt6-declarative) — pre-flight QML syntax/semantics check. Wrapper: `scripts/qmllint-check file.qml [...]` — exit 0 if only warnings, 1 if errors. Use it AFTER any edit of a `.qml` file — BEFORE the kpackage rebuild and `plasmashell --replace`. Saves you from "edited all day, learned about the error after a plasmashell restart".
-
 ## References: one entry point for everything
 
 There are more than two hundred references in the tree, and they used to be updated in four different
